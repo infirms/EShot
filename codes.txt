@@ -1,0 +1,1041 @@
+================================================================================ File: CMakeLists.txt
+cmake_minimum_required(VERSION 3.16) project(EShot VERSION 1.0.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17) set(CMAKE_CXX_STANDARD_REQUIRED ON) set(CMAKE_AUTOMOC ON) set(CMAKE_AUTORCC ON) set(CMAKE_AUTOUIC ON)
+
+Find Qt6
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
+
+Source files
+set(SOURCES src/main.cpp src/core/HotkeyManager.cpp src/capture/CaptureOverlay.cpp src/annotation/AnnotationEngine.cpp src/ui/AnnotationToolbar.cpp src/ui/SettingsDialog.cpp )
+
+set(HEADERS src/core/HotkeyManager.h src/capture/CaptureOverlay.h src/annotation/AnnotationEngine.h src/ui/AnnotationToolbar.h src/ui/SettingsDialog.h )
+
+Resources
+set(RESOURCES resources/icons.qrc )
+
+Create executable (WIN32 for Windows GUI app without console)
+qt_add_executable(${PROJECT_NAME} WIN32 ${SOURCES} ${HEADERS} ${RESOURCES} )
+
+Link Qt libraries and Windows User32 (for RegisterHotKey)
+target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets User32 )
+
+Include directories
+target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src )
+
+Set output directory
+set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin )
+
+Install target
+install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin )
+
+================================================================================ File: src/main.cpp
+#include #include #include #include #include #include #include
+
+#include "core/HotkeyManager.h" #include "capture/CaptureOverlay.h" #include "ui/SettingsDialog.h"
+
+class EShotApp : public QObject { Q_OBJECT
+
+public: EShotApp(QObject *parent = nullptr) : QObject(parent) { setupTrayIcon(); setupOverlay(); setupHotkey();
+
+qDebug() << "[EShot] Application started. Press PrtSc to capture.";
+}
+~EShotApp()
+{
+    if (m_trayIcon) {
+        m_trayIcon->hide();
+    }
+}
+private slots: void onCaptureRequested() { qDebug() << "[EShot] Capture requested"; if (m_overlay) { m_overlay->startCapture(); } }
+
+void onCaptureCompleted(const QPixmap &pixmap)
+{
+    Q_UNUSED(pixmap);
+    qDebug() << "[EShot] Capture completed";
+}
+void onCaptureCancelled()
+{
+    qDebug() << "[EShot] Capture cancelled";
+}
+void onTrayActivated(QSystemTrayIcon::ActivationReason reason)
+{
+    if (reason == QSystemTrayIcon::DoubleClick) {
+        onCaptureRequested();
+    }
+}
+void onQuitAction()
+{
+    qApp->quit();
+}
+void onSettingsRequested()
+{
+    SettingsDialog dlg;
+    dlg.exec();
+}
+private: void setupTrayIcon() { m_trayIcon = new QSystemTrayIcon(this);
+
+// Use SVG icon for tray
+    QIcon trayIcon(":/icons/pen.svg");
+    if (trayIcon.isNull()) {
+        // Fallback simple icon
+        QPixmap pix(32,32); pix.fill(Qt::blue);
+        trayIcon = QIcon(pix);
+    }
+    
+    m_trayIcon->setIcon(trayIcon);
+    m_trayIcon->setToolTip("EShot - Windows Screenshot Tool\nPress PrtSc to capture");
+    
+    QMenu *menu = new QMenu();
+    QAction *captureAction = menu->addAction("📷 Capture");
+    connect(captureAction, &QAction::triggered, this, &EShotApp::onCaptureRequested);
+    
+    QAction *settingsAction = menu->addAction("⚙️ Settings");
+    connect(settingsAction, &QAction::triggered, this, &EShotApp::onSettingsRequested);
+    
+    menu->addSeparator();
+    
+    QAction *quitAction = menu->addAction("❌ Quit");
+    connect(quitAction, &QAction::triggered, this, &EShotApp::onQuitAction);
+    
+    m_trayIcon->setContextMenu(menu);
+    connect(m_trayIcon, &QSystemTrayIcon::activated, this, &EShotApp::onTrayActivated);
+    m_trayIcon->show();
+}
+void setupOverlay()
+{
+    m_overlay = new CaptureOverlay();
+    connect(m_overlay, &CaptureOverlay::captureCompleted, this, &EShotApp::onCaptureCompleted);
+    connect(m_overlay, &CaptureOverlay::captureCancelled, this, &EShotApp::onCaptureCancelled);
+}
+void setupHotkey()
+{
+    connect(&HotkeyManager::instance(), &HotkeyManager::captureRequested, this, &EShotApp::onCaptureRequested);
+}
+QSystemTrayIcon *m_trayIcon;
+CaptureOverlay *m_overlay;
+};
+
+#include "main.moc"
+
+int main(int argc, char *argv[]) { #ifdef Q_OS_WIN QGuiApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough); #endif
+
+QCoreApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
+QApplication app(argc, argv);
+app.setApplicationName("EShot");
+app.setApplicationVersion("1.0.0");
+app.setOrganizationName("EShot");
+app.setQuitOnLastWindowClosed(false);
+if (!QSystemTrayIcon::isSystemTrayAvailable()) {
+    qWarning() << "[EShot] System tray is not available!";
+    return 1;
+}
+EShotApp eshotApp;
+return app.exec();
+}
+
+================================================================================ File: src/capture/CaptureOverlay.h
+#ifndef CAPTUREOVERLAY_H #define CAPTUREOVERLAY_H
+
+#include #include #include #include
+
+class AnnotationToolbar; class AnnotationEngine;
+
+class CaptureOverlay : public QWidget { Q_OBJECT
+
+public: explicit CaptureOverlay(QWidget *parent = nullptr); ~CaptureOverlay();
+
+void startCapture();
+signals: void captureCompleted(const QPixmap &pixmap); void captureCancelled();
+
+protected: void paintEvent(QPaintEvent *event) override; void mousePressEvent(QMouseEvent *event) override; void mouseMoveEvent(QMouseEvent *event) override; void mouseReleaseEvent(QMouseEvent *event) override; void keyPressEvent(QKeyEvent *event) override;
+
+private: void captureAllScreens(); void showToolbar(); void hideToolbar(); void finishCapture(); QRect normalizedSelectionRect() const;
+
+QPixmap m_screenSnapshot;
+QPoint m_selectionStart;
+QPoint m_selectionEnd;
+bool m_isSelecting;
+bool m_selectionComplete;
+// Virtual desktop rect (all monitors)
+QRect m_virtualDesktopRect;
+AnnotationToolbar *m_toolbar;
+AnnotationEngine *m_annotationEngine;
+// Annotation state
+QVector<QPair<QRect, QPixmap>> m_annotations;
+private slots: void onToolSelected(int toolId); void onCopyToClipboard(); void onSave(); void onClose(); };
+
+#endif // CAPTUREOVERLAY_H
+
+================================================================================ File: src/capture/CaptureOverlay.cpp
+#include "CaptureOverlay.h" #include "annotation/AnnotationEngine.h" #include "ui/AnnotationToolbar.h"
+
+#include #include #include #include #include #include #include #include #include #include #include #include #include
+
+CaptureOverlay::CaptureOverlay(QWidget *parent) : QWidget(parent, Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool) , m_isSelecting(false) , m_selectionComplete(false) , m_toolbar(nullptr) , m_annotationEngine(nullptr) { setAttribute(Qt::WA_TranslucentBackground, false); setAttribute(Qt::WA_DeleteOnClose, false); setMouseTracking(true); setCursor(Qt::CrossCursor);
+
+// Create annotation engine
+m_annotationEngine = new AnnotationEngine(this);
+// Create toolbar as a CHILD widget (Embedded)
+m_toolbar = new AnnotationToolbar(this);
+m_toolbar->hide();
+// Connect toolbar signals
+connect(m_toolbar, &AnnotationToolbar::toolSelected, this, &CaptureOverlay::onToolSelected);
+connect(m_toolbar, &AnnotationToolbar::copyRequested, this, &CaptureOverlay::onCopyToClipboard);
+connect(m_toolbar, &AnnotationToolbar::saveRequested, this, &CaptureOverlay::onSave);
+connect(m_toolbar, &AnnotationToolbar::closeRequested, this, &CaptureOverlay::onClose);
+// New feature connections
+connect(m_toolbar, &AnnotationToolbar::undoRequested, [this]() {
+    if (m_annotationEngine) {
+        m_annotationEngine->undo();
+        update();
+    }
+});
+connect(m_toolbar, &AnnotationToolbar::redoRequested, [this]() {
+    if (m_annotationEngine) {
+        m_annotationEngine->redo();
+        update();
+    }
+});
+connect(m_toolbar, &AnnotationToolbar::colorChanged, [this](<const QColor &color>) {
+    if (m_annotationEngine) m_annotationEngine->setColor(color);
+});
+connect(m_toolbar, &AnnotationToolbar::penWidthChanged, [this](<int width>) {
+    if (m_annotationEngine) m_annotationEngine->setPenWidth(width);
+});
+}
+
+CaptureOverlay::~CaptureOverlay() { }
+
+void CaptureOverlay::startCapture() { m_isSelecting = false; m_selectionComplete = false; m_selectionStart = QPoint(); m_selectionEnd = QPoint();
+
+if (m_annotationEngine) {
+    m_annotationEngine->clear();
+}
+hideToolbar();
+captureAllScreens();
+// Set geometry to cover virtual desktop
+setGeometry(m_virtualDesktopRect);
+showFullScreen();
+activateWindow();
+setFocus();
+qDebug() << "[CaptureOverlay] Capture started, geometry:" << m_virtualDesktopRect;
+}
+
+void CaptureOverlay::captureAllScreens() { // 1. Calculate Virtual Desktop Rect in LOGICAL coordinates QRect virtualRect; QList<QScreen*> screens = QGuiApplication::screens();
+
+for (QScreen *screen : screens) {
+    virtualRect = virtualRect.united(screen->geometry());
+}
+m_virtualDesktopRect = virtualRect;
+// 2. Create composite pixmap (LOGICAL size)
+// Qt handles High-DPI scaling internally for QPixmap.
+m_screenSnapshot = QPixmap(m_virtualDesktopRect.size());
+m_screenSnapshot.fill(Qt::black);
+// 3. Draw each screen
+QPainter painter(&m_screenSnapshot);
+for (QScreen *screen : screens) {
+    // grabWindow(0) returns native pixels.
+    QPixmap screenGrab = screen->grabWindow(0);
+    qreal dpr = screen->devicePixelRatio();
+    
+    // geometry() tells us the logical position.
+    QRect screenGeo = screen->geometry();
+    QPoint targetPos = screenGeo.topLeft() - m_virtualDesktopRect.topLeft();
+    
+    // IMPORTANT: We must specify the logical size to draw into.
+    // If we just say drawPixmap(pos, pix), Qt uses pix.size() / pix.devicePixelRatio().
+    // But screenGrab comes from grabWindow, which might not have the DPR set correctly
+    // (it might just be a raw bitmap).
+    // So we explicitly calculate the logical size: Native / DPR.
+    
+    int logicalW = screenGrab.width() / dpr;
+    int logicalH = screenGrab.height() / dpr;
+    
+    painter.drawPixmap(targetPos.x(), targetPos.y(), logicalW, logicalH, screenGrab);
+    
+    qDebug() << "[CaptureOverlay] Screen:" << screen->name() 
+             << " Geo:" << screenGeo << " DPR:" << dpr
+             << " Native:" << screenGrab.size() 
+             << " Draw:" << logicalW << "x" << logicalH;
+}
+painter.end();
+}
+
+void CaptureOverlay::paintEvent(QPaintEvent *event) { Q_UNUSED(event);
+
+QPainter painter(this);
+// Draw the captured screen background
+painter.drawPixmap(0, 0, m_screenSnapshot);
+// Dim the background
+painter.fillRect(rect(), QColor(0, 0, 0, 100));
+// Calculate selection rect
+QRect selRect = normalizedSelectionRect();
+if (!selRect.isEmpty()) {
+    // Draw clear selected area (source composite)
+    painter.setCompositionMode(QPainter::CompositionMode_Source);
+    painter.drawPixmap(selRect, m_screenSnapshot, selRect);
+    
+    // Go back to drawing over
+    painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+    
+    // Draw border
+    QPen borderPen(QColor(0, 122, 204), 2);
+    painter.setPen(borderPen);
+    painter.setBrush(Qt::NoBrush);
+    painter.drawRect(selRect);
+    
+    // Draw annotations clipped to selection
+    if (m_annotationEngine && m_selectionComplete) {
+        painter.setClipRect(selRect);
+        m_annotationEngine->render(&painter, selRect.topLeft());
+        painter.setClipping(false);
+    }
+    
+    // Draw dimensions text
+    if (m_isSelecting) {
+        QString dimensions = QString("%1 x %2").arg(selRect.width()).arg(selRect.height());
+         int labelX = selRect.left();
+         int labelY = selRect.top() - 25;
+         if (labelY < 0) labelY = selRect.top() + 5;
+         
+         painter.setPen(Qt::white);
+         painter.drawText(labelX, labelY, dimensions);
+    }
+}
+}
+
+void CaptureOverlay::mousePressEvent(QMouseEvent *event) { if (event->button() == Qt::LeftButton) { if (m_toolbar && m_toolbar->isVisible() && m_toolbar->geometry().contains(event->pos())) { return; }
+
+if (m_selectionComplete) {
+        QRect selRect = normalizedSelectionRect();
+        if (selRect.contains(event->pos())) {
+            if (m_annotationEngine) {
+                 m_annotationEngine->beginDraw(event->pos() - selRect.topLeft());
+                 update();
+            }
+        } else {
+            m_selectionComplete = false;
+            m_isSelecting = true;
+            m_selectionStart = event->pos();
+            m_selectionEnd = event->pos();
+            hideToolbar();
+            if (m_annotationEngine) m_annotationEngine->clear();
+            update();
+        }
+    } else {
+        m_isSelecting = true;
+        m_selectionStart = event->pos();
+        m_selectionEnd = event->pos();
+        hideToolbar();
+        update();
+    }
+}
+}
+
+void CaptureOverlay::mouseMoveEvent(QMouseEvent *event) { if (m_isSelecting) { m_selectionEnd = event->pos(); update(); } else if (m_selectionComplete && m_annotationEngine && m_annotationEngine->currentTool() != AnnotationEngine::None) { QRect selRect = normalizedSelectionRect(); if (selRect.contains(event->pos())) { m_annotationEngine->continueDraw(event->pos() - selRect.topLeft()); update(); } } }
+
+void CaptureOverlay::mouseReleaseEvent(QMouseEvent *event) { if (event->button() == Qt::LeftButton) { if (m_isSelecting) { m_isSelecting = false; m_selectionEnd = event->pos();
+
+QRect selRect = normalizedSelectionRect();
+        if (selRect.width() > 10 && selRect.height() > 10) {
+            m_selectionComplete = true;
+            showToolbar();
+        }
+        update();
+    } else if (m_selectionComplete) {
+        QRect selRect = normalizedSelectionRect();
+        QPoint relativePos = event->pos() - selRect.topLeft();
+        
+        relativePos.setX(qBound(0, relativePos.x(), selRect.width()));
+        relativePos.setY(qBound(0, relativePos.y(), selRect.height()));
+        
+        if (m_annotationEngine && m_annotationEngine->currentTool() == AnnotationEngine::Text) {
+            if (selRect.contains(event->pos())) {
+                bool ok;
+                QString text = QInputDialog::getText(this, tr("Metin Ekle"), tr("Yazı:"), QLineEdit::Normal, "", &ok);
+                if (ok && !text.isEmpty()) {
+                    m_annotationEngine->addTextAnnotation(relativePos, text);
+                    update();
+                }
+            }
+        } else if (m_annotationEngine) {
+            m_annotationEngine->endDraw(relativePos);
+            update();
+        }
+    }
+}
+}
+
+void CaptureOverlay::keyPressEvent(QKeyEvent *event) { if (event->key() == Qt::Key_Escape) { if (m_selectionComplete) { m_selectionComplete = false; m_isSelecting = false; m_selectionStart = QPoint(); hideToolbar(); if (m_annotationEngine) m_annotationEngine->clear(); update(); } else { onClose(); } } else if (event->matches(QKeySequence::Copy)) { onCopyToClipboard(); } else if (event->matches(QKeySequence::Save)) { onSave(); } else if (event->matches(QKeySequence::Undo)) { if (m_annotationEngine) { m_annotationEngine->undo(); update(); } } else if (event->matches(QKeySequence::Redo)) { if (m_annotationEngine) { m_annotationEngine->redo(); update(); } } }
+
+void CaptureOverlay::showToolbar() { if (!m_toolbar) return;
+
+QRect selRect = normalizedSelectionRect();
+int x = selRect.right() - m_toolbar->width();
+int y = selRect.bottom() + 10;
+if (x < 0) x = 0;
+if (y + m_toolbar->height() > height()) y = selRect.top() - m_toolbar->height() - 10;
+m_toolbar->move(x, y);
+m_toolbar->show();
+m_toolbar->raise();
+}
+
+void CaptureOverlay::hideToolbar() { if (m_toolbar) m_toolbar->hide(); }
+
+void CaptureOverlay::finishCapture() { onClose(); }
+
+void CaptureOverlay::onClose() { hide(); m_selectionComplete = false; m_isSelecting = false; emit captureCancelled(); }
+
+QRect CaptureOverlay::normalizedSelectionRect() const { return QRect(m_selectionStart, m_selectionEnd).normalized(); }
+
+void CaptureOverlay::onToolSelected(int toolId) { if (m_annotationEngine) { m_annotationEngine->setCurrentTool(static_cast
+AnnotationEngine::Tool
+(toolId)); } }
+
+void CaptureOverlay::onCopyToClipboard() { QRect selRect = normalizedSelectionRect(); if (selRect.isEmpty()) return;
+
+QPixmap copyPix = m_screenSnapshot.copy(selRect);
+QPainter painter(&copyPix);
+if (m_annotationEngine) {
+    m_annotationEngine->render(&painter, QPoint(0,0)); 
+}
+painter.end();
+QClipboard *clipboard = QGuiApplication::clipboard();
+clipboard->setPixmap(copyPix);
+finishCapture();
+}
+
+void CaptureOverlay::onSave() { QRect selRect = normalizedSelectionRect(); if (selRect.isEmpty()) return;
+
+QPixmap savePix = m_screenSnapshot.copy(selRect);
+QPainter painter(&savePix);
+if (m_annotationEngine) {
+    m_annotationEngine->render(&painter, QPoint(0,0));
+}
+painter.end();
+QSettings settings("EShot", "EShot");
+QString path = settings.value("savePath", QStandardPaths::writableLocation(QStandardPaths::PicturesLocation)).toString();
+QString filename = QString("%1/Screenshot_%2.png").arg(path).arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"));
+savePix.save(filename);
+finishCapture();
+}
+
+================================================================================ File: src/annotation/AnnotationEngine.h
+#ifndef ANNOTATIONENGINE_H #define ANNOTATIONENGINE_H
+
+#include #include #include #include #include #include
+
+class AnnotationEngine : public QObject { Q_OBJECT
+
+public: enum Tool { None = 0, Pen, Arrow, Rectangle, Text, Blur, Highlighter }; Q_ENUM(Tool)
+
+explicit AnnotationEngine(QObject *parent = nullptr);
+~AnnotationEngine();
+void setCurrentTool(Tool tool);
+Tool currentTool() const { return m_currentTool; }
+void setColor(const QColor &color);
+QColor color() const { return m_color; }
+void setPenWidth(int width);
+int penWidth() const { return m_penWidth; }
+void beginDraw(const QPoint &pos);
+void continueDraw(const QPoint &pos);
+void endDraw(const QPoint &pos);
+void render(QPainter *painter, const QPoint &offset);
+bool hasAnnotations() const { return !m_annotations.isEmpty(); }
+void clear();
+void undo();
+void redo();
+void addTextAnnotation(const QPoint &pos, const QString &text);
+signals: void annotationAdded(); void colorChanged(const QColor &color); void penWidthChanged(int width);
+
+private: struct Annotation { Tool tool; QColor color; int penWidth; QVector points; QString text; QRect boundingRect; };
+
+void drawAnnotation(QPainter *painter, const Annotation &annotation, const QPoint &offset);
+void drawBlurEffect(QPainter *painter, const QRect &rect, const QPoint &offset);
+Tool m_currentTool;
+QColor m_color;
+int m_penWidth;
+QVector<Annotation> m_annotations;
+QVector<Annotation> m_redoStack;  // For redo functionality
+Annotation m_currentAnnotation;
+bool m_isDrawing;
+QPixmap m_blurBuffer;
+};
+
+#endif // ANNOTATIONENGINE_H
+
+================================================================================ File: src/annotation/AnnotationEngine.cpp
+#include "AnnotationEngine.h" #include #include #include
+
+AnnotationEngine::AnnotationEngine(QObject *parent) : QObject(parent) , m_currentTool(None) , m_color(Qt::red) , m_penWidth(3) , m_isDrawing(false) { }
+
+AnnotationEngine::~AnnotationEngine() { }
+
+void AnnotationEngine::setCurrentTool(Tool tool) { m_currentTool = tool; }
+
+void AnnotationEngine::setColor(const QColor &color) { m_color = color; }
+
+void AnnotationEngine::setPenWidth(int width) { m_penWidth = qBound(1, width, 20); }
+
+void AnnotationEngine::beginDraw(const QPoint &pos) { if (m_currentTool == None) return;
+
+m_isDrawing = true;
+m_currentAnnotation = Annotation();
+m_currentAnnotation.tool = m_currentTool;
+m_currentAnnotation.color = m_color;
+m_currentAnnotation.penWidth = m_penWidth;
+m_currentAnnotation.points.append(pos);
+if (m_currentTool == Highlighter) {
+    m_currentAnnotation.color = QColor(255, 255, 0, 100); // Yellow highlighter
+}
+}
+
+void AnnotationEngine::continueDraw(const QPoint &pos) { if (!m_isDrawing || m_currentTool == None) return;
+
+m_currentAnnotation.points.append(pos);
+}
+
+void AnnotationEngine::endDraw(const QPoint &pos) { if (!m_isDrawing || m_currentTool == None) return;
+
+m_currentAnnotation.points.append(pos);
+// Calculate bounding rect
+if (!m_currentAnnotation.points.isEmpty()) {
+    int minX = INT_MAX, minY = INT_MAX;
+    int maxX = INT_MIN, maxY = INT_MIN;
+    
+    for (const QPoint &p : m_currentAnnotation.points) {
+        minX = qMin(minX, p.x());
+        minY = qMin(minY, p.y());
+        maxX = qMax(maxX, p.x());
+        maxY = qMax(maxY, p.y());
+    }
+    
+    m_currentAnnotation.boundingRect = QRect(minX, minY, maxX - minX, maxY - minY);
+}
+// Clear redo stack when new drawing is added
+m_redoStack.clear();
+m_annotations.append(m_currentAnnotation);
+m_isDrawing = false;
+emit annotationAdded();
+}
+
+void AnnotationEngine::render(QPainter *painter, const QPoint &offset) { // Draw completed annotations for (const Annotation &annotation : m_annotations) { drawAnnotation(painter, annotation, offset); }
+
+// Draw current annotation (while drawing)
+if (m_isDrawing) {
+    drawAnnotation(painter, m_currentAnnotation, offset);
+}
+}
+
+void AnnotationEngine::drawAnnotation(QPainter *painter, const Annotation &annotation, const QPoint &offset) { if (annotation.points.isEmpty()) return;
+
+painter->save();
+switch (annotation.tool) {
+    case Pen: {
+        QPen pen(annotation.color, annotation.penWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+        painter->setPen(pen);
+        painter->setBrush(Qt::NoBrush);
+        
+        if (annotation.points.size() > 1) {
+            QPainterPath path;
+            path.moveTo(annotation.points.first() + offset);
+            for (int i = 1; i < annotation.points.size(); ++i) {
+                path.lineTo(annotation.points[i] + offset);
+            }
+            painter->drawPath(path);
+        }
+        break;
+    }
+    
+    case Arrow: {
+        if (annotation.points.size() < 2) break;
+        
+        QPoint start = annotation.points.first() + offset;
+        QPoint end = annotation.points.last() + offset;
+        
+        QPen pen(annotation.color, annotation.penWidth, Qt::SolidLine, Qt::RoundCap);
+        painter->setPen(pen);
+        painter->drawLine(start, end);
+        
+        // Draw arrowhead
+        double angle = qAtan2(end.y() - start.y(), end.x() - start.x());
+        int arrowSize = 15;
+        
+        QPointF arrowP1 = end - QPointF(qCos(angle - M_PI / 6) * arrowSize,
+                                        qSin(angle - M_PI / 6) * arrowSize);
+        QPointF arrowP2 = end - QPointF(qCos(angle + M_PI / 6) * arrowSize,
+                                        qSin(angle + M_PI / 6) * arrowSize);
+        
+        painter->setBrush(annotation.color);
+        QPolygonF arrowHead;
+        arrowHead << end << arrowP1 << arrowP2;
+        painter->drawPolygon(arrowHead);
+        break;
+    }
+    
+    case Rectangle: {
+        if (annotation.points.size() < 2) break;
+        
+        QPoint start = annotation.points.first() + offset;
+        QPoint end = annotation.points.last() + offset;
+        QRect rect(start, end);
+        
+        QPen pen(annotation.color, annotation.penWidth);
+        painter->setPen(pen);
+        painter->setBrush(Qt::NoBrush);
+        painter->drawRect(rect.normalized());
+        break;
+    }
+    
+    case Highlighter: {
+        QPen pen(annotation.color, annotation.penWidth * 5, Qt::SolidLine, Qt::FlatCap, Qt::BevelJoin);
+        painter->setPen(pen);
+        painter->setOpacity(0.4);
+        
+        if (annotation.points.size() > 1) {
+            QPainterPath path;
+            path.moveTo(annotation.points.first() + offset);
+            for (int i = 1; i < annotation.points.size(); ++i) {
+                path.lineTo(annotation.points[i] + offset);
+            }
+            painter->drawPath(path);
+        }
+        break;
+    }
+    
+    case Blur: {
+        if (annotation.points.size() < 2) break;
+        
+        QPoint start = annotation.points.first();
+        QPoint end = annotation.points.last();
+        QRect rect = QRect(start, end).normalized();
+        
+        drawBlurEffect(painter, rect, offset);
+        break;
+    }
+    
+    case Text: {
+        if (annotation.text.isEmpty() || annotation.points.isEmpty()) break;
+        
+        painter->setPen(annotation.color);
+        QFont font = painter->font();
+        font.setPointSize(annotation.penWidth * 5 + 10);
+        painter->setFont(font);
+        
+        painter->drawText(annotation.points.first() + offset, annotation.text);
+        break;
+    }
+    
+    case None:
+    default:
+        break;
+}
+painter->restore();
+}
+
+void AnnotationEngine::drawBlurEffect(QPainter *painter, const QRect &rect, const QPoint &offset) { // Simple pixelation effect for blur QRect targetRect = rect.translated(offset);
+
+painter->save();
+// Get the image from the painter's device
+QImage *image = dynamic_cast<QImage*>(painter->device());
+if (image) {
+    QImage region = image->copy(targetRect);
+    
+    // Pixelate by scaling down and up
+    int pixelSize = 8;
+    QImage pixelated = region.scaled(
+        qMax(1, region.width() / pixelSize),
+        qMax(1, region.height() / pixelSize),
+        Qt::IgnoreAspectRatio,
+        Qt::FastTransformation
+    ).scaled(
+        region.width(),
+        region.height(),
+        Qt::IgnoreAspectRatio,
+        Qt::FastTransformation
+    );
+    
+    painter->drawImage(targetRect.topLeft(), pixelated);
+} else {
+    // Fallback: draw a semi-transparent rectangle
+    painter->fillRect(targetRect, QColor(128, 128, 128, 180));
+}
+painter->restore();
+}
+
+void AnnotationEngine::clear() { m_annotations.clear(); m_redoStack.clear(); }
+
+void AnnotationEngine::undo() { if (!m_annotations.isEmpty()) { m_redoStack.append(m_annotations.takeLast()); } }
+
+void AnnotationEngine::redo() { if (!m_redoStack.isEmpty()) { m_annotations.append(m_redoStack.takeLast()); } }
+
+void AnnotationEngine::addTextAnnotation(const QPoint &pos, const QString &text) { if (text.isEmpty()) return;
+
+Annotation ann;
+ann.tool = Text;
+ann.color = m_color;
+ann.penWidth = m_penWidth;
+ann.points.append(pos);
+ann.text = text;
+m_redoStack.clear();
+m_annotations.append(ann);
+emit annotationAdded();
+}
+
+================================================================================ File: src/ui/AnnotationToolbar.h
+#ifndef ANNOTATIONTOOLBAR_H #define ANNOTATIONTOOLBAR_H
+
+#include #include #include #include #include
+
+class AnnotationToolbar : public QWidget { Q_OBJECT
+
+public: explicit AnnotationToolbar(QWidget *parent = nullptr); ~AnnotationToolbar();
+
+signals: void toolSelected(int toolId); void copyRequested(); void saveRequested(); void closeRequested(); void undoRequested(); void redoRequested(); void colorChanged(const QColor &color); void penWidthChanged(int width);
+
+private slots: void onToolButtonClicked(); void onActionButtonClicked(); void onColorButtonClicked(); void onWidthSliderChanged(int value);
+
+private: void setupUI(); void applyStyles(); QPushButton* createToolButton(const QString &iconPath, const QString &tooltip, int toolId); QPushButton* createActionButton(const QString &iconPath, const QString &tooltip, const QString &action); QPushButton* createColorButton(const QColor &color);
+
+QHBoxLayout *m_layout;
+QMap<int, QPushButton*> m_toolButtons;
+QPushButton *m_colorButton;
+int m_currentToolId;
+QColor m_currentColor;
+};
+
+#endif // ANNOTATIONTOOLBAR_H
+
+================================================================================ File: src/ui/AnnotationToolbar.cpp
+#include "AnnotationToolbar.h" #include "annotation/AnnotationEngine.h" #include #include #include #include #include #include #include
+
+AnnotationToolbar::AnnotationToolbar(QWidget *parent) : QWidget(parent) , m_layout(nullptr) , m_currentToolId(-1) , m_currentColor(Qt::red) { // If parent is null, make it a window (old behavior, though we won't use it like this anymore) if (!parent) { setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint); setAttribute(Qt::WA_TranslucentBackground); } else { // Embedded mode setAttribute(Qt::WA_TranslucentBackground, false); }
+
+setFixedHeight(56);
+setupUI();
+applyStyles();
+}
+
+AnnotationToolbar::~AnnotationToolbar() { }
+
+void AnnotationToolbar::setupUI() { m_layout = new QHBoxLayout(this); m_layout->setContentsMargins(10, 8, 10, 8); m_layout->setSpacing(6);
+
+// Tools
+m_layout->addWidget(createToolButton(":/icons/pen.svg", "Kalem", AnnotationEngine::Pen));
+m_layout->addWidget(createToolButton(":/icons/arrow.svg", "Ok", AnnotationEngine::Arrow));
+m_layout->addWidget(createToolButton(":/icons/rectangle.svg", "Dikdörtgen", AnnotationEngine::Rectangle));
+m_layout->addWidget(createToolButton(":/icons/text.svg", "Metin", AnnotationEngine::Text));
+m_layout->addWidget(createToolButton(":/icons/highlighter.svg", "Vurgulayıcı", AnnotationEngine::Highlighter));
+m_layout->addWidget(createToolButton(":/icons/blur.svg", "Buzlama", AnnotationEngine::Blur));
+// Separator
+QFrame *sep1 = new QFrame(this);
+sep1->setFrameShape(QFrame::VLine);
+sep1->setFixedWidth(1);
+sep1->setFixedHeight(24);
+sep1->setStyleSheet("background-color: #555;");
+m_layout->addWidget(sep1);
+// Color Picker
+m_colorButton = createColorButton(m_currentColor);
+m_layout->addWidget(m_colorButton);
+// Separator
+QFrame *sep2 = new QFrame(this);
+sep2->setFrameShape(QFrame::VLine);
+sep2->setFixedWidth(1);
+sep2->setFixedHeight(24);
+sep2->setStyleSheet("background-color: #555;");
+m_layout->addWidget(sep2);
+// Undo/Redo
+m_layout->addWidget(createActionButton(":/icons/undo.svg", "Geri Al (Ctrl+Z)", "undo"));
+m_layout->addWidget(createActionButton(":/icons/redo.svg", "İleri Al (Ctrl+Shift+Z)", "redo"));
+// Separator
+QFrame *sep3 = new QFrame(this);
+sep3->setFrameShape(QFrame::VLine);
+sep3->setFixedWidth(1);
+sep3->setFixedHeight(24);
+sep3->setStyleSheet("background-color: #555;");
+m_layout->addWidget(sep3);
+// Pen Width slider
+QSlider *slider = new QSlider(Qt::Horizontal, this);
+slider->setRange(1, 20);
+slider->setValue(3);
+slider->setFixedWidth(80);
+slider->setToolTip("Çizgi Kalınlığı");
+connect(slider, &QSlider::valueChanged, this, &AnnotationToolbar::onWidthSliderChanged);
+m_layout->addWidget(slider);
+// Spacer
+m_layout->addStretch();
+// Main Actions
+m_layout->addWidget(createActionButton(":/icons/copy.svg", "Kopyala", "copy"));
+m_layout->addWidget(createActionButton(":/icons/save.svg", "Kaydet", "save"));
+m_layout->addWidget(createActionButton(":/icons/close.svg", "Kapat", "close"));
+adjustSize();
+}
+
+void AnnotationToolbar::applyStyles() { setStyleSheet(R"( AnnotationToolbar { background-color: #202020; border: 1px solid #3d3d3d; border-radius: 12px; } QToolTip { color: #ffffff; background-color: #333333; border: 1px solid #555555; padding: 4px; } )");
+
+QGraphicsDropShadowEffect *shadow = new QGraphicsDropShadowEffect(this);
+shadow->setBlurRadius(24);
+shadow->setColor(QColor(0, 0, 0, 120));
+shadow->setOffset(0, 8);
+setGraphicsEffect(shadow);
+}
+
+QPushButton* AnnotationToolbar::createToolButton(const QString &iconPath, const QString &tooltip, int toolId) { QPushButton *button = new QPushButton(this); button->setToolTip(tooltip); button->setProperty("toolId", toolId); button->setProperty("iconPath", iconPath); // Store path to reload if needed button->setCursor(Qt::PointingHandCursor); button->setFixedSize(36, 36); button->setIcon(QIcon(iconPath)); button->setIconSize(QSize(20, 20)); // Optimal size for 24px SVG
+
+button->setStyleSheet(R"(
+    QPushButton {
+        background-color: transparent;
+        border: none;
+        border-radius: 6px;
+    }
+    QPushButton:hover {
+        background-color: #3d3d3d;
+    }
+    QPushButton:pressed {
+        background-color: #2d2d2d;
+    }
+    QPushButton[selected="true"] {
+        background-color: #3d3d3d;
+        border: 1px solid #0078D4;
+    }
+)");
+connect(button, &QPushButton::clicked, this, &AnnotationToolbar::onToolButtonClicked);
+m_toolButtons[toolId] = button;
+return button;
+}
+
+QPushButton* AnnotationToolbar::createActionButton(const QString &iconPath, const QString &tooltip, const QString &action) { QPushButton *button = new QPushButton(this); button->setToolTip(tooltip); button->setProperty("action", action); button->setCursor(Qt::PointingHandCursor); button->setFixedSize(36, 36); button->setIcon(QIcon(iconPath)); button->setIconSize(QSize(20, 20));
+
+QString bgColor = "transparent";
+QString hoverColor = "#3d3d3d";
+QString borderColor = "transparent";
+if (action == "copy") {
+    bgColor = "#0078D4";
+    hoverColor = "#1084D8";
+} else if (action == "save") {
+    bgColor = "#107C10";
+    hoverColor = "#1a8c1a";
+} else if (action == "close") {
+    bgColor = "#C42B1C";
+    hoverColor = "#d43c2d";
+}
+button->setStyleSheet(QString(R"(
+    QPushButton {
+        background-color: %1;
+        border: 1px solid %3;
+        border-radius: 6px;
+    }
+    QPushButton:hover {
+        background-color: %2;
+    }
+    QPushButton:pressed {
+        background-color: %1;
+        padding-top: 1px;
+        padding-left: 1px;
+    }
+)").arg(bgColor, hoverColor, borderColor));
+connect(button, &QPushButton::clicked, this, &AnnotationToolbar::onActionButtonClicked);
+return button;
+}
+
+QPushButton* AnnotationToolbar::createColorButton(const QColor &color) { QPushButton *button = new QPushButton(this); button->setToolTip("Renk Seç"); button->setCursor(Qt::PointingHandCursor); button->setFixedSize(28, 28);
+
+QString style = QString(R"(
+    QPushButton {
+        background-color: %1;
+        border: 2px solid #555;
+        border-radius: 14px;
+    }
+    QPushButton:hover {
+        border-color: #fff;
+    }
+)").arg(color.name());
+button->setStyleSheet(style);
+connect(button, &QPushButton::clicked, this, &AnnotationToolbar::onColorButtonClicked);
+return button;
+}
+
+void AnnotationToolbar::onToolButtonClicked() { QPushButton button = qobject_cast<QPushButton>(sender()); if (!button) return;
+
+int toolId = button->property("toolId").toInt();
+// Toggle logic: if clicking same tool, deselect it
+if (m_currentToolId == toolId) {
+    toolId = AnnotationEngine::None;
+}
+// Update UI state
+for (auto it = m_toolButtons.begin(); it != m_toolButtons.end(); ++it) {
+    bool isSelected = (it.key() == toolId);
+    it.value()->setProperty("selected", isSelected ? "true" : "false");
+    it.value()->style()->unpolish(it.value());
+    it.value()->style()->polish(it.value());
+}
+m_currentToolId = toolId;
+emit toolSelected(toolId);
+}
+
+void AnnotationToolbar::onActionButtonClicked() { QPushButton button = qobject_cast<QPushButton>(sender()); if (!button) return;
+
+QString action = button->property("action").toString();
+if (action == "copy") emit copyRequested();
+else if (action == "save") emit saveRequested();
+else if (action == "close") emit closeRequested();
+else if (action == "undo") emit undoRequested();
+else if (action == "redo") emit redoRequested();
+}
+
+void AnnotationToolbar::onColorButtonClicked() { QColor color = QColorDialog::getColor(m_currentColor, this, "Renk Seç"); if (color.isValid()) { m_currentColor = color;
+
+// Update button style
+    m_colorButton->setStyleSheet(QString(R"(
+        QPushButton {
+            background-color: %1;
+            border: 2px solid #555;
+            border-radius: 14px;
+        }
+        QPushButton:hover {
+            border-color: #fff;
+        }
+    )").arg(color.name()));
+    
+    emit colorChanged(color);
+}
+}
+
+void AnnotationToolbar::onWidthSliderChanged(int value) { emit penWidthChanged(value); }
+
+================================================================================ File: src/ui/SettingsDialog.h
+#ifndef SETTINGSDIALOG_H #define SETTINGSDIALOG_H
+
+#include #include #include #include
+
+class SettingsDialog : public QDialog { Q_OBJECT
+
+public: explicit SettingsDialog(QWidget *parent = nullptr); ~SettingsDialog();
+
+private slots: void onBrowse(); void onSave();
+
+private: void loadSettings(); void setupUI();
+
+QLineEdit *m_savePathEdit;
+QLineEdit *m_hotkeyEdit;
+QSettings *m_settings;
+};
+
+#endif // SETTINGSDIALOG_H
+
+================================================================================ File: src/ui/SettingsDialog.cpp
+#include "SettingsDialog.h" #include #include #include #include #include
+
+SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) { setWindowTitle("EShot Ayarlar"); setMinimumWidth(400); m_settings = new QSettings("EShot", "EShot", this);
+
+setupUI();
+loadSettings();
+}
+
+SettingsDialog::~SettingsDialog() { }
+
+void SettingsDialog::setupUI() { QVBoxLayout *mainLayout = new QVBoxLayout(this);
+
+// Save path
+mainLayout->addWidget(new QLabel("Kayıt Dizini:"));
+QHBoxLayout *pathLayout = new QHBoxLayout();
+m_savePathEdit = new QLineEdit();
+QPushButton *browseBtn = new QPushButton("Gözat...");
+connect(browseBtn, &QPushButton::clicked, this, &SettingsDialog::onBrowse);
+pathLayout->addWidget(m_savePathEdit);
+pathLayout->addWidget(browseBtn);
+mainLayout->addLayout(pathLayout);
+// Hotkey
+mainLayout->addWidget(new QLabel("Kısayol (PrtSc varsayılan):"));
+m_hotkeyEdit = new QLineEdit();
+m_hotkeyEdit->setReadOnly(true);
+m_hotkeyEdit->setPlaceholderText("PrtSc");
+mainLayout->addWidget(m_hotkeyEdit);
+mainLayout->addSpacing(20);
+// Buttons
+QHBoxLayout *btnLayout = new QHBoxLayout();
+btnLayout->addStretch();
+QPushButton *saveBtn = new QPushButton("Kaydet");
+QPushButton *cancelBtn = new QPushButton("İptal");
+connect(saveBtn, &QPushButton::clicked, this, &SettingsDialog::onSave);
+connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
+btnLayout->addWidget(saveBtn);
+btnLayout->addWidget(cancelBtn);
+mainLayout->addLayout(btnLayout);
+}
+
+void SettingsDialog::loadSettings() { QString defPath = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation); m_savePathEdit->setText(m_settings->value("savePath", defPath).toString()); }
+
+void SettingsDialog::onBrowse() { QString dir = QFileDialog::getExistingDirectory(this, "Klasör Seç", m_savePathEdit->text()); if (!dir.isEmpty()) { m_savePathEdit->setText(dir); } }
+
+void SettingsDialog::onSave() { m_settings->setValue("savePath", m_savePathEdit->text()); accept(); }
+
+================================================================================ File: src/core/HotkeyManager.h
+#ifndef HOTKEYMANAGER_H #define HOTKEYMANAGER_H
+
+#include #include #include <windows.h>
+
+class HotkeyManager : public QObject, public QAbstractNativeEventFilter { Q_OBJECT
+
+public: static HotkeyManager& instance();
+
+bool registerHotkey(int id, UINT modifiers, UINT virtualKey);
+void unregisterHotkey(int id);
+void unregisterAllHotkeys();
+// Native event filter
+bool nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result) override;
+signals: void hotkeyTriggered(int id); void captureRequested();
+
+private: explicit HotkeyManager(QObject *parent = nullptr); ~HotkeyManager();
+
+HotkeyManager(const HotkeyManager&) = delete;
+HotkeyManager& operator=(const HotkeyManager&) = delete;
+QList<int> m_registeredHotkeys;
+static constexpr int HOTKEY_CAPTURE = 1;
+};
+
+#endif // HOTKEYMANAGER_H
+
+================================================================================ File: src/core/HotkeyManager.cpp
+#include "HotkeyManager.h" #include #include
+
+HotkeyManager& HotkeyManager::instance() { static HotkeyManager instance; return instance; }
+
+HotkeyManager::HotkeyManager(QObject *parent) : QObject(parent) { // Install native event filter qApp->installNativeEventFilter(this);
+
+// Register PrtSc hotkey (VK_SNAPSHOT = 0x2C)
+if (registerHotkey(HOTKEY_CAPTURE, 0, VK_SNAPSHOT)) {
+    qDebug() << "[HotkeyManager] PrtSc hotkey registered successfully";
+} else {
+    qWarning() << "[HotkeyManager] Failed to register PrtSc hotkey";
+}
+}
+
+HotkeyManager::~HotkeyManager() { unregisterAllHotkeys(); qApp->removeNativeEventFilter(this); }
+
+bool HotkeyManager::registerHotkey(int id, UINT modifiers, UINT virtualKey) { if (RegisterHotKey(nullptr, id, modifiers, virtualKey)) { m_registeredHotkeys.append(id); return true; } return false; }
+
+void HotkeyManager::unregisterHotkey(int id) { UnregisterHotKey(nullptr, id); m_registeredHotkeys.removeAll(id); }
+
+void HotkeyManager::unregisterAllHotkeys() { for (int id : m_registeredHotkeys) { UnregisterHotKey(nullptr, id); } m_registeredHotkeys.clear(); }
+
+bool HotkeyManager::nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result) { Q_UNUSED(result);
+
+if (eventType == "windows_generic_MSG" || eventType == "windows_dispatcher_MSG") {
+    MSG *msg = static_cast<MSG*>(message);
+    
+    if (msg->message == WM_HOTKEY) {
+        int hotkeyId = static_cast<int>(msg->wParam);
+        emit hotkeyTriggered(hotkeyId);
+        
+        if (hotkeyId == HOTKEY_CAPTURE) {
+            emit captureRequested();
+        }
+        return true;
+    }
+}
+return false;
+}
+
+================================================================================ File: resources/icons.qrc
+../icons/pen.svg ../icons/arrow.svg ../icons/rectangle.svg ../icons/highlighter.svg ../icons/blur.svg ../icons/copy.svg ../icons/save.svg ../icons/close.svg ../icons/text.svg ../icons/color.svg ../icons/undo.svg ../icons/redo.svg
