@@ -15,6 +15,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QFileInfo>
+#include <QTimer>
+#include <QPainter>
 
 #include "core/HotkeyManager.h"
 #include "core/TranslationManager.h"
@@ -127,7 +129,7 @@ private:
         QAction *quitAction = m_trayMenu->addAction(QIcon(":/icons/close.svg"), TranslationManager::trayQuit());
         connect(quitAction, &QAction::triggered, this, &EShotApp::onQuitAction);
 
-        m_trayIcon->setToolTip(TranslationManager::appTitle());
+        m_trayIcon->setToolTip(QString("%1 v%2").arg(TranslationManager::appTitle(), QCoreApplication::applicationVersion()));
     }
 
     void setupTrayIcon()
@@ -157,7 +159,7 @@ private:
             trayIcon = QIcon(pix);
         }
         m_trayIcon->setIcon(trayIcon);
-        m_trayIcon->setToolTip(TranslationManager::appTitle());
+        m_trayIcon->setToolTip(QString("%1 v%2").arg(TranslationManager::appTitle(), QCoreApplication::applicationVersion()));
 
         m_trayMenu = new QMenu();
         rebuildTrayMenu();
@@ -199,18 +201,15 @@ private:
                     qDebug() << "[EShot] Update check: current=" << currentVersion << "latest=" << latestTag;
                     if (!latestTag.isEmpty() && latestTag != currentVersion) {
                         qDebug() << "[EShot] Update available:" << latestTag;
-                        if (m_trayIcon && m_showNotifications) {
-                            m_trayIcon->showMessage(
-                                TranslationManager::updateTitle(),
-                                TranslationManager::updateMessage(latestTag),
-                                QSystemTrayIcon::Information, 8000);
-                        }
+                        m_updateAvailable = true;
+                        m_latestVersion = latestTag;
+                        setTrayIconUpdate();
                     } else {
                         qDebug() << "[EShot] Already up to date";
                     }
                 }
             } else {
-                qDebug() << "[EShot] Update check failed:" << reply->errorString() << reply->error();
+                qDebug() << "[EShot] Update check failed:" << reply->errorString();
             }
             reply->deleteLater();
             mgr->deleteLater();
@@ -218,10 +217,61 @@ private:
         mgr->get(QNetworkRequest(QUrl("https://api.github.com/repos/Benoks/EShot/releases/latest")));
     }
 
+    void setTrayIconUpdate()
+    {
+        if (!m_trayIcon) return;
+        // Sarı kalem ikonu oluştur
+        QPixmap base(":/icons/pen.svg");
+        if (!base.isNull()) {
+            QPixmap yellow(base.size());
+            yellow.fill(Qt::transparent);
+            QPainter p(&yellow);
+            p.setCompositionMode(QPainter::CompositionMode_SourceOver);
+            // Orijinal ikonu çiz
+            p.drawPixmap(0, 0, base);
+            // Sarı renk maskesi uygula
+            p.setCompositionMode(QPainter::CompositionMode_SourceIn);
+            p.fillRect(yellow.rect(), QColor(255, 200, 0));
+            p.end();
+            m_trayIcon->setIcon(QIcon(yellow));
+        }
+        m_trayIcon->setToolTip(QString("%1 v%2 — %3").arg(
+            TranslationManager::appTitle(),
+            QCoreApplication::applicationVersion(),
+            TranslationManager::updateTitle()));
+    }
+
+    void setTrayIconNormal()
+    {
+        if (!m_trayIcon) return;
+        QSettings s("EShot", "EShot");
+        QString iconStyle = s.value("trayIconStyle", "dark").toString();
+        QIcon trayIcon;
+        if (iconStyle == "light") {
+            QPixmap pix(":/icons/pen.svg");
+            if (!pix.isNull()) {
+                QPixmap colored(pix.size());
+                colored.fill(Qt::white);
+                colored.setMask(pix.createMaskFromColor(Qt::transparent));
+                trayIcon = QIcon(colored);
+            }
+        } else {
+            trayIcon = QIcon(":/icons/pen.svg");
+        }
+        if (trayIcon.isNull()) {
+            QPixmap pix(32, 32); pix.fill(Qt::blue);
+            trayIcon = QIcon(pix);
+        }
+        m_trayIcon->setIcon(trayIcon);
+        m_trayIcon->setToolTip(QString("%1 v%2").arg(TranslationManager::appTitle(), QCoreApplication::applicationVersion()));
+    }
+
     QSystemTrayIcon *m_trayIcon = nullptr;
     QMenu *m_trayMenu = nullptr;
     CaptureOverlay *m_overlay = nullptr;
     bool m_showNotifications = true;
+    bool m_updateAvailable = false;
+    QString m_latestVersion;
     QList<QPointer<PinnedWindow>> m_pinnedWindows;
 };
 
@@ -237,7 +287,7 @@ int main(int argc, char *argv[])
 
     QApplication app(argc, argv);
     app.setApplicationName("EShot");
-    app.setApplicationVersion("2.1.3");
+    app.setApplicationVersion("2.2.0");
     app.setOrganizationName("EShot");
     app.setQuitOnLastWindowClosed(false);
     app.setStyle("Fusion");

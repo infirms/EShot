@@ -7,7 +7,8 @@
 #include <QRect>
 #include <QTimer>
 #include <QList>
-#include <QLineEdit>
+#include <QTextEdit>
+#include <QPointer>
 
 class AnnotationToolbar;
 class AnnotationEngine;
@@ -35,6 +36,7 @@ protected:
     void mouseReleaseEvent(QMouseEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void keyReleaseEvent(QKeyEvent *event) override;
+    bool eventFilter(QObject *obj, QEvent *event) override;
 
 private:
     void captureAllScreens();
@@ -62,11 +64,12 @@ private:
     QWidget *m_actionPanel;
     AnnotationEngine *m_annotationEngine;
 
-    // Satır içi metin düzenleme
-    QLineEdit *m_textEdit;
+    // Metin düzenleme — çoklu satır desteği
+    QTextEdit *m_textEdit;
     QPoint m_textEditPosition;
     void commitText();
     void cancelTextEdit();
+    void updateUndoRedoState();
 
     // Boyutlandırma ve Taşıma
     enum ResizeMode { ResNone, ResTopLeft, ResTopRight, ResBottomRight, ResBottomLeft, ResMove, ResNewSelection };
@@ -99,7 +102,11 @@ private:
     // Pinned pencereler listesi (ömür yönetimi için)
     QList<QPointer<QWidget>> m_pinnedWindows;
 
+    // Yeni: Renk seçici (eyedropper) modu
+    bool m_eyedropperActive;
 
+    // Yeni: Seçim kilidi
+    bool m_selectionLocked;
 
 private slots:
     void onToolSelected(int toolId);
@@ -107,6 +114,9 @@ private slots:
     void onSave();
     void onClose();
     void onPinToDesktop();
+    void onEyedropperRequested();
+    void onSelectionLockToggled(bool locked);
+    void onBlurIntensityChanged(int intensity);
 
     void performCapture();
 };

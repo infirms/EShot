@@ -18,5 +18,10 @@
         <file alias="icons/gear.svg">../icons/gear.svg</file>
         <file alias="icons/eraser.svg">../icons/eraser.svg</file>
         <file alias="icons/line.svg">../icons/line.svg</file>
+        <file alias="icons/eyedropper.svg">../icons/eyedropper.svg</file>
+        <file alias="icons/lock.svg">../icons/lock.svg</file>
+        <file alias="icons/lock_open.svg">../icons/lock_open.svg</file>
+        <file alias="icons/semirect.svg">../icons/semirect.svg</file>
+        <file alias="icons/paste.svg">../icons/paste.svg</file>
     </qresource>
 </RCC>

@@ -8,6 +8,7 @@
 #include <QGraphicsDropShadowEffect>
 #include <QStyle>
 #include <QSettings>
+#include <QHBoxLayout>
 
 AnnotationToolbar::AnnotationToolbar(QWidget *parent)
     : QWidget(parent)
@@ -15,6 +16,14 @@ AnnotationToolbar::AnnotationToolbar(QWidget *parent)
     , m_colorButton(nullptr)
     , m_currentToolId(-1)
     , m_currentColor(Qt::red)
+    , m_eyedropperButton(nullptr)
+    , m_lockButton(nullptr)
+    , m_selectionLocked(false)
+    , m_blurIntensitySlider(nullptr)
+    , m_blurIntensityLabel(nullptr)
+    , m_blurIntensityWidget(nullptr)
+    , m_undoButton(nullptr)
+    , m_redoButton(nullptr)
 {
     if (!parent) {
         setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
@@ -24,11 +33,11 @@ AnnotationToolbar::AnnotationToolbar(QWidget *parent)
     }
     setFixedHeight(48);
     setFocusPolicy(Qt::StrongFocus);
-    setMinimumWidth(500); // Butonların sığıdığı minimum genişlik
+    setMinimumWidth(500);
 
     QSettings s("EShot", "EShot");
     m_visibleTools = s.value("visibleTools",
-        QStringList{"Pen","Arrow","Rectangle","Circle","Text","Highlighter","Blur","Counter","Eraser","Line"})
+        QStringList{"Pen","Arrow","Line","Rectangle","Circle","Text","Highlighter","SemiRect","Blur","Counter","Eraser"})
         .toStringList();
 
     setupUI();
@@ -46,7 +55,7 @@ void AnnotationToolbar::refreshTools()
 {
     QSettings s("EShot", "EShot");
     m_visibleTools = s.value("visibleTools",
-        QStringList{"Pen","Arrow","Rectangle","Circle","Text","Highlighter","Blur","Counter","Eraser","Line"})
+        QStringList{"Pen","Arrow","Line","Rectangle","Circle","Text","Highlighter","SemiRect","Blur","Counter","Eraser"})
         .toStringList();
 
     for (auto btn : m_toolButtons) {
@@ -67,6 +76,93 @@ void AnnotationToolbar::selectTool(int toolId)
         it.value()->style()->polish(it.value());
     }
     m_currentToolId = toolId;
+
+    // Bulanıklık widget'ını göster/gizle
+    if (m_blurIntensityWidget) {
+        bool showBlur = (toolId == AnnotationEngine::Blur);
+        m_blurIntensityWidget->setVisible(showBlur);
+    }
+}
+
+void AnnotationToolbar::setUndoEnabled(bool enabled)
+{
+    if (m_undoButton) {
+        m_undoButton->setEnabled(enabled);
+        m_undoButton->setStyleSheet(enabled ?
+            R"(
+                QPushButton {
+                    background-color: #3a3a3a;
+                    border: 1px solid #505050;
+                    border-radius: 8px;
+                }
+                QPushButton:hover {
+                    background-color: #4a4a4a;
+                    border-color: #606060;
+                }
+                QPushButton:pressed {
+                    background-color: #333333;
+                }
+            )" :
+            R"(
+                QPushButton {
+                    background-color: #2d2d2d;
+                    border: 1px solid #353535;
+                    border-radius: 8px;
+                }
+            )");
+    }
+}
+
+void AnnotationToolbar::setRedoEnabled(bool enabled)
+{
+    if (m_redoButton) {
+        m_redoButton->setEnabled(enabled);
+        m_redoButton->setStyleSheet(enabled ?
+            R"(
+                QPushButton {
+                    background-color: #3a3a3a;
+                    border: 1px solid #505050;
+                    border-radius: 8px;
+                }
+                QPushButton:hover {
+                    background-color: #4a4a4a;
+                    border-color: #606060;
+                }
+                QPushButton:pressed {
+                    background-color: #333333;
+                }
+            )" :
+            R"(
+                QPushButton {
+                    background-color: #2d2d2d;
+                    border: 1px solid #353535;
+                    border-radius: 8px;
+                }
+            )");
+    }
+}
+
+void AnnotationToolbar::setBlurIntensity(int intensity)
+{
+    if (m_blurIntensitySlider) {
+        m_blurIntensitySlider->blockSignals(true);
+        m_blurIntensitySlider->setValue(intensity);
+        m_blurIntensitySlider->blockSignals(false);
+    }
+    if (m_blurIntensityLabel) {
+        m_blurIntensityLabel->setText(QString::number(intensity));
+    }
+}
+
+void AnnotationToolbar::setColor(const QColor &color)
+{
+    m_currentColor = color;
+    if (m_colorButton) {
+        m_colorButton->setStyleSheet(QString(R"(
+            QPushButton { background-color: %1; border: 2px solid #505050; border-radius: 8px; }
+            QPushButton:hover { border-color: #707070; }
+        )").arg(color.name()));
+    }
 }
 
 QWidget* AnnotationToolbar::createSeparator()
@@ -85,6 +181,7 @@ void AnnotationToolbar::setupUI()
     m_layout->setContentsMargins(8, 6, 8, 6);
     m_layout->setSpacing(4);
 
+    // Araç butonları
     m_layout->addWidget(createToolButton(":/icons/pen.svg", TranslationManager::toolPen(), AnnotationEngine::Pen, "Pen"));
     m_layout->addWidget(createToolButton(":/icons/arrow.svg", TranslationManager::toolArrow(), AnnotationEngine::Arrow, "Arrow"));
     m_layout->addWidget(createToolButton(":/icons/line.svg", TranslationManager::toolLine(), AnnotationEngine::Line, "Line"));
@@ -92,6 +189,7 @@ void AnnotationToolbar::setupUI()
     m_layout->addWidget(createToolButton(":/icons/circle.svg", TranslationManager::toolCircle(), AnnotationEngine::Circle, "Circle"));
     m_layout->addWidget(createToolButton(":/icons/text.svg", TranslationManager::toolText(), AnnotationEngine::Text, "Text"));
     m_layout->addWidget(createToolButton(":/icons/highlighter.svg", TranslationManager::toolHighlighter(), AnnotationEngine::Highlighter, "Highlighter"));
+    m_layout->addWidget(createToolButton(":/icons/semirect.svg", TranslationManager::toolSemiRect(), AnnotationEngine::SemiRect, "SemiRect"));
     m_layout->addWidget(createToolButton(":/icons/blur.svg", TranslationManager::toolBlur(), AnnotationEngine::Blur, "Blur"));
     m_layout->addWidget(createToolButton(":/icons/counter.svg", TranslationManager::toolCounter(), AnnotationEngine::Counter, "Counter"));
     m_layout->addWidget(createToolButton(":/icons/eraser.svg", TranslationManager::toolEraser(), AnnotationEngine::Eraser, "Eraser"));
@@ -100,9 +198,66 @@ void AnnotationToolbar::setupUI()
 
     m_layout->addWidget(createSeparator());
 
+    // Renk butonu
     m_colorButton = createColorButton(m_currentColor);
     m_layout->addWidget(m_colorButton);
 
+    // Eyedropper butonu
+    m_eyedropperButton = new QPushButton(this);
+    m_eyedropperButton->setToolTip(TranslationManager::toolEyedropper());
+    m_eyedropperButton->setCursor(Qt::PointingHandCursor);
+    m_eyedropperButton->setFixedSize(34, 34);
+    m_eyedropperButton->setIcon(QIcon(":/icons/eyedropper.svg"));
+    m_eyedropperButton->setIconSize(QSize(18, 18));
+    m_eyedropperButton->setStyleSheet(R"(
+        QPushButton {
+            background-color: #3a3a3a;
+            border: 1px solid #505050;
+            border-radius: 8px;
+        }
+        QPushButton:hover {
+            background-color: #4a4a4a;
+            border-color: #606060;
+        }
+        QPushButton:pressed {
+            background-color: #333333;
+        }
+    )");
+    connect(m_eyedropperButton, &QPushButton::clicked, this, &AnnotationToolbar::onEyedropperClicked);
+    m_layout->addWidget(m_eyedropperButton);
+
+    // Seçim kilidi butonu
+    m_lockButton = new QPushButton(this);
+    m_lockButton->setToolTip(TranslationManager::actionLock());
+    m_lockButton->setCursor(Qt::PointingHandCursor);
+    m_lockButton->setFixedSize(34, 34);
+    m_lockButton->setIcon(QIcon(":/icons/lock_open.svg"));
+    m_lockButton->setIconSize(QSize(18, 18));
+    m_lockButton->setCheckable(true);
+    m_lockButton->setStyleSheet(R"(
+        QPushButton {
+            background-color: #3a3a3a;
+            border: 1px solid #505050;
+            border-radius: 8px;
+        }
+        QPushButton:hover {
+            background-color: #4a4a4a;
+            border-color: #606060;
+        }
+        QPushButton:pressed {
+            background-color: #333333;
+        }
+        QPushButton:checked {
+            background-color: #0078D4;
+            border: 1px solid #1a8cff;
+        }
+    )");
+    connect(m_lockButton, &QPushButton::clicked, this, &AnnotationToolbar::onLockClicked);
+    m_layout->addWidget(m_lockButton);
+
+    m_layout->addWidget(createSeparator());
+
+    // Kalem genişliği slider'ı
     QSlider *slider = new QSlider(Qt::Horizontal, this);
     slider->setRange(1, 20);
     slider->setValue(3);
@@ -128,10 +283,49 @@ void AnnotationToolbar::setupUI()
     connect(slider, &QSlider::valueChanged, this, &AnnotationToolbar::onWidthSliderChanged);
     m_layout->addWidget(slider);
 
+    // Bulanıklık şiddeti widget'ı (başlangıçta gizli)
+    m_blurIntensityWidget = new QWidget(this);
+    QHBoxLayout *blurLayout = new QHBoxLayout(m_blurIntensityWidget);
+    blurLayout->setContentsMargins(0, 0, 0, 0);
+    blurLayout->setSpacing(4);
+    m_blurIntensityLabel = new QLabel("16", m_blurIntensityWidget);
+    m_blurIntensityLabel->setStyleSheet("color: #aaa; font-size: 11px;");
+    m_blurIntensityLabel->setFixedWidth(20);
+    m_blurIntensitySlider = new QSlider(Qt::Horizontal, m_blurIntensityWidget);
+    m_blurIntensitySlider->setRange(4, 64);
+    m_blurIntensitySlider->setValue(16);
+    m_blurIntensitySlider->setFixedWidth(80);
+    m_blurIntensitySlider->setToolTip(TranslationManager::toolBlurIntensity());
+    m_blurIntensitySlider->setStyleSheet(R"(
+        QSlider::groove:horizontal {
+            background: #404040;
+            height: 4px;
+            border-radius: 2px;
+        }
+        QSlider::handle:horizontal {
+            background: #ff6b6b;
+            width: 14px;
+            height: 14px;
+            margin: -5px 0;
+            border-radius: 7px;
+        }
+        QSlider::handle:horizontal:hover {
+            background: #ff8888;
+        }
+    )");
+    connect(m_blurIntensitySlider, &QSlider::valueChanged, this, &AnnotationToolbar::onBlurIntensityChanged);
+    blurLayout->addWidget(m_blurIntensitySlider);
+    blurLayout->addWidget(m_blurIntensityLabel);
+    m_blurIntensityWidget->hide();
+    m_layout->addWidget(m_blurIntensityWidget);
+
     m_layout->addWidget(createSeparator());
 
-    m_layout->addWidget(createActionButton(":/icons/undo.svg", TranslationManager::toolUndo(), "undo"));
-    m_layout->addWidget(createActionButton(":/icons/redo.svg", TranslationManager::toolRedo(), "redo"));
+    // Geri al / İleri al
+    m_undoButton = createActionButton(":/icons/undo.svg", TranslationManager::toolUndo(), "undo");
+    m_redoButton = createActionButton(":/icons/redo.svg", TranslationManager::toolRedo(), "redo");
+    m_layout->addWidget(m_undoButton);
+    m_layout->addWidget(m_redoButton);
 
     adjustSize();
 }
@@ -262,6 +456,13 @@ void AnnotationToolbar::onToolButtonClicked()
     }
 
     m_currentToolId = toolId;
+
+    // Bulanıklık widget'ını göster/gizle
+    if (m_blurIntensityWidget) {
+        bool showBlur = (toolId == AnnotationEngine::Blur);
+        m_blurIntensityWidget->setVisible(showBlur);
+    }
+
     emit toolSelected(toolId);
 }
 
@@ -294,9 +495,28 @@ void AnnotationToolbar::onColorButtonClicked()
 
 void AnnotationToolbar::onWidthSliderChanged(int value) { emit penWidthChanged(value); }
 
+void AnnotationToolbar::onBlurIntensityChanged(int value)
+{
+    if (m_blurIntensityLabel)
+        m_blurIntensityLabel->setText(QString::number(value));
+    emit blurIntensityChanged(value);
+}
+
+void AnnotationToolbar::onEyedropperClicked()
+{
+    emit eyedropperRequested();
+}
+
+void AnnotationToolbar::onLockClicked()
+{
+    m_selectionLocked = !m_selectionLocked;
+    m_lockButton->setIcon(QIcon(m_selectionLocked ? ":/icons/lock.svg" : ":/icons/lock_open.svg"));
+    m_lockButton->setChecked(m_selectionLocked);
+    emit lockToggled(m_selectionLocked);
+}
+
 void AnnotationToolbar::refreshToolTips()
 {
-    // Araç butonları
     for (auto it = m_toolButtons.begin(); it != m_toolButtons.end(); ++it) {
         int id = it.key();
         switch (id) {
@@ -304,6 +524,7 @@ void AnnotationToolbar::refreshToolTips()
             case AnnotationEngine::Arrow:      it.value()->setToolTip(TranslationManager::toolArrow()); break;
             case AnnotationEngine::Line:       it.value()->setToolTip(TranslationManager::toolLine()); break;
             case AnnotationEngine::Rectangle:  it.value()->setToolTip(TranslationManager::toolRect()); break;
+            case AnnotationEngine::SemiRect:   it.value()->setToolTip(TranslationManager::toolSemiRect()); break;
             case AnnotationEngine::Circle:     it.value()->setToolTip(TranslationManager::toolCircle()); break;
             case AnnotationEngine::Text:       it.value()->setToolTip(TranslationManager::toolText()); break;
             case AnnotationEngine::Highlighter:it.value()->setToolTip(TranslationManager::toolHighlighter()); break;
@@ -312,8 +533,9 @@ void AnnotationToolbar::refreshToolTips()
             case AnnotationEngine::Eraser:     it.value()->setToolTip(TranslationManager::toolEraser()); break;
         }
     }
-    // Aksiyon butonları
     if (m_actionButtons.contains("undo")) m_actionButtons["undo"]->setToolTip(TranslationManager::toolUndo());
     if (m_actionButtons.contains("redo")) m_actionButtons["redo"]->setToolTip(TranslationManager::toolRedo());
-    m_colorButton->setToolTip(TranslationManager::toolColor());
+    if (m_colorButton) m_colorButton->setToolTip(TranslationManager::toolColor());
+    if (m_eyedropperButton) m_eyedropperButton->setToolTip(TranslationManager::toolEyedropper());
+    if (m_lockButton) m_lockButton->setToolTip(TranslationManager::actionLock());
 }

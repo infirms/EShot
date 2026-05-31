@@ -42,16 +42,21 @@ CaptureOverlay::CaptureOverlay(QWidget *parent)
     , m_foregroundHwnd(nullptr)
     , m_isDraggingAnnotation(false)
     , m_textJustCommitted(false)
+    , m_eyedropperActive(false)
+    , m_selectionLocked(false)
 {
     setAttribute(Qt::WA_TranslucentBackground, false);
     setAttribute(Qt::WA_DeleteOnClose, false);
     setMouseTracking(true);
     setCursor(Qt::CrossCursor);
 
-    // Satır içi metin editörü
-    m_textEdit = new QLineEdit(this);
+    // Metin editörü (çoklu satır desteği)
+    m_textEdit = new QTextEdit(this);
+    m_textEdit->setAcceptRichText(false);
+    m_textEdit->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_textEdit->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_textEdit->setStyleSheet(R"(
-        QLineEdit {
+        QTextEdit {
             background-color: rgba(0, 0, 0, 180);
             color: white;
             border: 2px solid #0078D4;
@@ -62,8 +67,16 @@ CaptureOverlay::CaptureOverlay(QWidget *parent)
         }
     )");
     m_textEdit->hide();
-    connect(m_textEdit, &QLineEdit::returnPressed, this, &CaptureOverlay::commitText);
-    connect(m_textEdit, &QLineEdit::editingFinished, this, &CaptureOverlay::cancelTextEdit);
+    m_textEdit->installEventFilter(this);
+    connect(m_textEdit, &QTextEdit::textChanged, this, [this]() {
+        // Otomatik yükseklik ayarı
+        if (m_textEdit && m_textEdit->isVisible()) {
+            QTextDocument *doc = m_textEdit->document();
+            QSizeF size = doc->size();
+            int h = qMax(30, static_cast<int>(size.height()) + 10);
+            m_textEdit->setFixedHeight(h);
+        }
+    });
 
     m_annotationEngine = new AnnotationEngine(this);
 
@@ -72,11 +85,24 @@ CaptureOverlay::CaptureOverlay(QWidget *parent)
 
     connect(m_toolbar, &AnnotationToolbar::toolSelected, this, &CaptureOverlay::onToolSelected);
     connect(m_toolbar, &AnnotationToolbar::undoRequested, [this]() {
-        if (m_annotationEngine) { m_annotationEngine->undo(); update(); }
+        if (m_annotationEngine) { m_annotationEngine->undo(); update(); updateUndoRedoState(); }
     });
     connect(m_toolbar, &AnnotationToolbar::redoRequested, [this]() {
-        if (m_annotationEngine) { m_annotationEngine->redo(); update(); }
+        if (m_annotationEngine) { m_annotationEngine->redo(); update(); updateUndoRedoState(); }
     });
+    connect(m_toolbar, &AnnotationToolbar::colorChanged, [this](const QColor &c) {
+        if (m_annotationEngine) m_annotationEngine->setColor(c);
+    });
+    connect(m_toolbar, &AnnotationToolbar::penWidthChanged, [this](int w) {
+        if (m_annotationEngine) m_annotationEngine->setPenWidth(w);
+    });
+    connect(m_toolbar, &AnnotationToolbar::blurIntensityChanged, [this](int i) {
+        if (m_annotationEngine) m_annotationEngine->setBlurIntensity(i);
+    });
+    connect(m_toolbar, &AnnotationToolbar::eyedropperRequested, this, &CaptureOverlay::onEyedropperRequested);
+    connect(m_toolbar, &AnnotationToolbar::lockToggled, this, &CaptureOverlay::onSelectionLockToggled);
+    connect(m_annotationEngine, &AnnotationEngine::annotationAdded, this, &CaptureOverlay::updateUndoRedoState);
+
     m_actionPanel = new QWidget(this);
     m_actionPanel->setStyleSheet(R"(
         QWidget { background-color: #2d2d2d; border: 1px solid #404040; border-radius: 10px; }
@@ -128,13 +154,6 @@ CaptureOverlay::CaptureOverlay(QWidget *parent)
     }
     m_actionPanel->hide();
 
-    connect(m_toolbar, &AnnotationToolbar::colorChanged, [this](const QColor &c) {
-        if (m_annotationEngine) m_annotationEngine->setColor(c);
-    });
-    connect(m_toolbar, &AnnotationToolbar::penWidthChanged, [this](int w) {
-        if (m_annotationEngine) m_annotationEngine->setPenWidth(w);
-    });
-
     m_captureDelayTimer = new QTimer(this);
     m_captureDelayTimer->setSingleShot(true);
     connect(m_captureDelayTimer, &QTimer::timeout, this, &CaptureOverlay::performCapture);
@@ -171,6 +190,7 @@ void CaptureOverlay::startCapture()
     m_resizeMode = ResNone;
     m_selectionStart = QPoint();
     m_selectionEnd = QPoint();
+    m_eyedropperActive = false;
 
     if (m_textEdit) m_textEdit->hide();
     m_textJustCommitted = false;
@@ -190,6 +210,11 @@ void CaptureOverlay::startCapture()
     m_crosshairStyle = s.value("crosshairStyle", "dash").toString();
     m_copyAfterCapture = s.value("copyAfterCapture", true).toBool();
     m_closeAfterCopy = s.value("closeAfterCopy", true).toBool();
+
+    // Bulanıklık şiddeti ayarını yükle
+    int blurIntensity = s.value("blurIntensity", 16).toInt();
+    if (m_annotationEngine) m_annotationEngine->setBlurIntensity(blurIntensity);
+    if (m_toolbar) m_toolbar->setBlurIntensity(blurIntensity);
 
     int delayMs = s.value("captureDelay", 0).toInt();
     if (delayMs > 0)
@@ -344,19 +369,16 @@ void CaptureOverlay::paintEvent(QPaintEvent *event)
         drawHandle(selRect.bottomLeft());
         drawHandle(selRect.bottomRight());
 
-        // Boyut bilgisi — cursor yakınında
-        if (m_isSelecting) {
+        // Boyut bilgisi — her zaman görünür (seçim sol üstünde)
+        if (m_isSelecting || m_selectionComplete) {
             QString dim = QString("%1 x %2").arg(selRect.width()).arg(selRect.height());
             QFont f = painter.font(); f.setPointSize(10); f.setBold(true);
             painter.setFont(f);
             QFontMetrics fm(f);
             int tw = fm.horizontalAdvance(dim) + 16;
             int th = fm.height() + 8;
-            QPoint cur = mapFromGlobal(QCursor::pos());
-            int lx = cur.x() + 15;
-            int ly = cur.y() + 15;
-            if (lx + tw > width() - 5) lx = cur.x() - tw - 5;
-            if (ly + th > height() - 5) ly = cur.y() - th - 5;
+            int lx = selRect.left();
+            int ly = selRect.top() - th - 4;
 
             painter.setPen(Qt::NoPen);
             painter.setBrush(QColor(0,0,0,180));
@@ -367,7 +389,7 @@ void CaptureOverlay::paintEvent(QPaintEvent *event)
     }
 
     // Crosshair
-    if (!m_isSelecting && !m_selectionComplete && m_crosshairStyle != "none") {
+    if (!m_isSelecting && !m_selectionComplete && m_crosshairStyle != "none" && !m_eyedropperActive) {
         QPoint cur = mapFromGlobal(QCursor::pos());
         QPen cp;
         cp.setColor(QColor(255,255,255,150));
@@ -380,6 +402,40 @@ void CaptureOverlay::paintEvent(QPaintEvent *event)
         painter.drawLine(cur.x(), 0, cur.x(), height());
         painter.drawLine(0, cur.y(), width(), cur.y());
     }
+
+    // Eyedropper: renk önizleme daire
+    if (m_eyedropperActive) {
+        QPoint cur = mapFromGlobal(QCursor::pos());
+        if (rect().contains(cur)) {
+            QColor pixelColor;
+            if (m_screenSnapshot.rect().contains(cur)) {
+                QImage img = m_screenSnapshot.toImage();
+                pixelColor = QColor(img.pixel(cur));
+            }
+            if (pixelColor.isValid()) {
+                // Daire
+                painter.setPen(QPen(Qt::white, 2));
+                painter.setBrush(pixelColor);
+                painter.drawEllipse(cur, 12, 12);
+                // Renk kodu etiketi
+                QString colorName = pixelColor.name().toUpper();
+                QFont f = painter.font(); f.setPointSize(9); f.setBold(true);
+                painter.setFont(f);
+                QFontMetrics fm(f);
+                int tw = fm.horizontalAdvance(colorName) + 12;
+                int th = fm.height() + 6;
+                int lx = cur.x() + 18;
+                int ly = cur.y() + 18;
+                if (lx + tw > width() - 5) lx = cur.x() - tw - 18;
+                if (ly + th > height() - 5) ly = cur.y() - th - 18;
+                painter.setPen(Qt::NoPen);
+                painter.setBrush(QColor(0,0,0,200));
+                painter.drawRoundedRect(lx, ly, tw, th, 4, 4);
+                painter.setPen(Qt::white);
+                painter.drawText(lx + 6, ly + fm.ascent() + 3, colorName);
+            }
+        }
+    }
 }
 
 void CaptureOverlay::mousePressEvent(QMouseEvent *event)
@@ -390,7 +446,24 @@ void CaptureOverlay::mousePressEvent(QMouseEvent *event)
         if (m_actionPanel && m_actionPanel->isVisible() && m_actionPanel->geometry().contains(event->pos()))
             return;
 
-        if (m_selectionComplete) {
+        // Eyedropper modunda tıklama — renk al ve normale dön
+        if (m_eyedropperActive) {
+            if (m_screenSnapshot.rect().contains(event->pos())) {
+                QImage img = m_screenSnapshot.toImage();
+                QColor c = QColor(img.pixel(event->pos()));
+                if (c.isValid()) {
+                    if (m_annotationEngine) m_annotationEngine->setColor(c);
+                    // Toolbar'daki renk butonunu güncelle
+                    if (m_toolbar) m_toolbar->setColor(c);
+                }
+            }
+            m_eyedropperActive = false;
+            setCursor(Qt::CrossCursor);
+            update();
+            return;
+        }
+
+        if (m_selectionComplete && !m_selectionLocked) {
             QRect selRect = normalizedSelectionRect();
 
             ResizeMode mode = getResizeMode(event->pos());
@@ -443,6 +516,14 @@ void CaptureOverlay::mousePressEvent(QMouseEvent *event)
                 if (m_annotationEngine) m_annotationEngine->clear();
                 update();
             }
+        } else if (m_selectionComplete && m_selectionLocked) {
+            // Seçim kilitli — sadece annotation çizimine izin ver
+            QRect selRect = normalizedSelectionRect();
+            bool isDrawingTool = (m_annotationEngine && m_annotationEngine->currentTool() != AnnotationEngine::None);
+            if (isDrawingTool && selRect.contains(event->pos())) {
+                m_annotationEngine->beginDraw(event->pos() - selRect.topLeft());
+                update();
+            }
         } else {
             m_isSelecting = true;
             m_selectionStart = event->pos();
@@ -451,6 +532,13 @@ void CaptureOverlay::mousePressEvent(QMouseEvent *event)
             update();
         }
     } else if (event->button() == Qt::RightButton) {
+        if (m_eyedropperActive) {
+            // Eyedropper iptal
+            m_eyedropperActive = false;
+            setCursor(Qt::CrossCursor);
+            update();
+            return;
+        }
         if (m_selectionComplete) {
             m_selectionComplete = false;
             m_isSelecting = false;
@@ -466,12 +554,34 @@ void CaptureOverlay::mousePressEvent(QMouseEvent *event)
 
 void CaptureOverlay::mouseMoveEvent(QMouseEvent *event)
 {
-    // Annotation taşıma
+    // Eyedropper modunda — sadece repaint
+    if (m_eyedropperActive) {
+        update();
+        return;
+    }
+
+    // Annotation taşıma (snap-to-edge ile)
     if (m_isDraggingAnnotation && m_annotationEngine && m_annotationEngine->selectedIndex() >= 0) {
         QRect selRect = normalizedSelectionRect();
         QPoint rel = event->pos() - selRect.topLeft();
         QPoint delta = rel - m_dragAnnotationStart;
         if (!delta.isNull()) {
+            // Snap-to-edge: kenara 8px yakınsa yapıştır
+            int snapThreshold = 8;
+            QRect annBounds = m_annotationEngine->boundingRectOf(m_annotationEngine->selectedIndex());
+            if (!annBounds.isEmpty()) {
+                QPoint newPos = annBounds.topLeft() + delta;
+                // Sol kenara snap
+                if (qAbs(newPos.x()) < snapThreshold) delta.setX(-annBounds.left());
+                // Sağ kenara snap
+                if (qAbs(newPos.x() + annBounds.width() - selRect.width()) < snapThreshold)
+                    delta.setX(selRect.width() - annBounds.width() - annBounds.left());
+                // Üst kenara snap
+                if (qAbs(newPos.y()) < snapThreshold) delta.setY(-annBounds.top());
+                // Alt kenara snap
+                if (qAbs(newPos.y() + annBounds.height() - selRect.height()) < snapThreshold)
+                    delta.setY(selRect.height() - annBounds.height() - annBounds.top());
+            }
             m_annotationEngine->moveAnnotation(m_annotationEngine->selectedIndex(), delta);
             m_dragAnnotationStart = rel;
             update();
@@ -564,6 +674,7 @@ void CaptureOverlay::mouseReleaseEvent(QMouseEvent *event)
             if (selRect.width() > 10 && selRect.height() > 10) {
                 m_selectionComplete = true;
                 showToolbar();
+                updateUndoRedoState();
                 // copyAfterCapture aktifse otomatik kopyala
                 if (m_copyAfterCapture) {
                     QPixmap result = getSelectedPixmap();
@@ -586,21 +697,21 @@ void CaptureOverlay::mouseReleaseEvent(QMouseEvent *event)
             } else if (m_annotationEngine && m_annotationEngine->currentTool() == AnnotationEngine::Text) {
                 if (selRect.contains(event->pos())) {
                     m_textEditPosition = event->pos();
-                    // QLineEdit overlay'in çocuğu, overlay koordinatlarını kullan
                     m_textEdit->setGeometry(event->pos().x(), event->pos().y(), 200, 30);
                     m_textEdit->clear();
                     m_textEdit->show();
                     m_textEdit->setFocus();
-                    m_textEdit->selectAll();
                 }
             } else if (m_annotationEngine && m_annotationEngine->currentTool() == AnnotationEngine::Counter) {
                 if (selRect.contains(event->pos())) {
                     m_annotationEngine->addCounterAnnotation(rel);
                     update();
+                    updateUndoRedoState();
                 }
             } else if (m_annotationEngine) {
                 m_annotationEngine->endDraw(rel);
                 update();
+                updateUndoRedoState();
             }
         }
     }
@@ -614,6 +725,13 @@ void CaptureOverlay::keyPressEvent(QKeyEvent *event)
     }
 
     if (event->key() == Qt::Key_Escape) {
+        // Eyedropper aktifse sadece onu kapat
+        if (m_eyedropperActive) {
+            m_eyedropperActive = false;
+            setCursor(Qt::CrossCursor);
+            update();
+            return;
+        }
         // Text edit açıksa sadece onu kapat
         if (m_textEdit && m_textEdit->isVisible()) {
             m_textEdit->hide();
@@ -636,17 +754,31 @@ void CaptureOverlay::keyPressEvent(QKeyEvent *event)
     } else if (event->matches(QKeySequence::Save)) {
         onSave();
     } else if (event->matches(QKeySequence::Undo)) {
-        if (m_annotationEngine) { m_annotationEngine->undo(); update(); }
+        if (m_annotationEngine) { m_annotationEngine->undo(); update(); updateUndoRedoState(); }
     } else if (event->matches(QKeySequence::Redo)) {
-        if (m_annotationEngine) { m_annotationEngine->redo(); update(); }
+        if (m_annotationEngine) { m_annotationEngine->redo(); update(); updateUndoRedoState(); }
     } else if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
-        // Text edit kapatıldıysa Enter'ı yut
+        // Text edit açıksa ve Shift basılıysa yeni satır ekle
+        if (m_textEdit && m_textEdit->isVisible()) {
+            if (event->modifiers() & Qt::ShiftModifier) {
+                m_textEdit->insertPlainText("\n");
+                return;
+            }
+            // Text edit kapatıldıysa Enter'ı yut
+            commitText();
+            return;
+        }
         if (m_textJustCommitted) {
             m_textJustCommitted = false;
             return;
         }
         if (m_selectionComplete) onCopyToClipboard();
     } else if (m_selectionComplete && m_annotationEngine) {
+        // Eyedropper kısayolu
+        if (event->key() == Qt::Key_I && !(event->modifiers() & (Qt::ControlModifier | Qt::AltModifier))) {
+            onEyedropperRequested();
+            return;
+        }
         // Araç kısayol tuşları
         int toolId = AnnotationEngine::None;
         switch (event->key()) {
@@ -660,6 +792,7 @@ void CaptureOverlay::keyPressEvent(QKeyEvent *event)
             case Qt::Key_NumberSign: toolId = AnnotationEngine::Counter; break;
             case Qt::Key_X: toolId = AnnotationEngine::Eraser; break;
             case Qt::Key_L: toolId = AnnotationEngine::Line; break;
+            case Qt::Key_D: toolId = AnnotationEngine::SemiRect; break;
             default: break;
         }
         if (toolId != AnnotationEngine::None) {
@@ -675,6 +808,24 @@ void CaptureOverlay::keyReleaseEvent(QKeyEvent *event)
     if (event->key() == Qt::Key_Shift && m_annotationEngine) {
         m_annotationEngine->setShiftHeld(false);
     }
+}
+
+bool CaptureOverlay::eventFilter(QObject *obj, QEvent *event)
+{
+    if (obj == m_textEdit && event->type() == QEvent::KeyPress) {
+        QKeyEvent *ke = static_cast<QKeyEvent*>(event);
+        if (ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter) {
+            if (ke->modifiers() & Qt::ShiftModifier) {
+                // Shift+Enter → yeni satır
+                m_textEdit->insertPlainText("\n");
+            } else {
+                // Enter → doğrudan onayla
+                commitText();
+            }
+            return true; // olayı tüket
+        }
+    }
+    return QWidget::eventFilter(obj, event);
 }
 
 QPixmap CaptureOverlay::getSelectedPixmap()
@@ -745,7 +896,14 @@ void CaptureOverlay::showToolbar()
     // Ekran sınırları kontrolü
     if (tx < 5) tx = 5;
     if (tx + toolbarWidth > width() - 5) tx = width() - toolbarWidth - 5;
-    if (ty + th > height() - 5) ty = selRect.top() - th - margin;
+    if (ty + th > height() - 5) {
+        // Altına sığmıyorsa üste dene
+        ty = selRect.top() - th - margin;
+    }
+    if (ty < 5) {
+        // Üste de sığmıyorsa çerçevenin içine, alta yapışık koy
+        ty = selRect.bottom() - th - 2;
+    }
 
     m_toolbar->setFixedWidth(toolbarWidth);
     m_toolbar->move(tx, ty);
@@ -764,22 +922,15 @@ void CaptureOverlay::showToolbar()
         if (px + pw > width() - 5)
             px = selRect.left() - pw - margin;
 
-        // Sola da sığmıyorsa içine koy
+        // Sola da sığmıyorsa çerçevenin içine, sağa yapışık koy
         if (px < 5) {
-            px = selRect.right() - pw - 5;
+            px = selRect.right() - pw - 2;
             py = selRect.top() + 5;
         }
 
-        // Üst-alt sınırları kontrolü
-        if (py < 5) py = 5;
-        if (py + ph > height() - 5) py = height() - ph - 5;
-
-        // Alt toolbar ile çakışma kontrolü
-        int toolbarBottom = ty + th + 5;
-        if (px + pw > selRect.right() - 5 && py + ph > toolbarBottom - 5 && py < toolbarBottom) {
-            py = toolbarBottom;
-            if (py + ph > height() - 5) py = selRect.top() + 5;
-        }
+        // Üst-alt sınırları kontrolü (çerçeve içindeyken)
+        if (py < selRect.top() + 2) py = selRect.top() + 2;
+        if (py + ph > selRect.bottom() - 2) py = selRect.bottom() - ph - 2;
 
         m_actionPanel->move(px, py);
         m_actionPanel->show();
@@ -824,12 +975,13 @@ void CaptureOverlay::cancelCapture()
 void CaptureOverlay::commitText()
 {
     if (!m_textEdit || m_textEdit->isHidden()) return;
-    QString text = m_textEdit->text().trimmed();
+    QString text = m_textEdit->toPlainText().trimmed();
     if (!text.isEmpty() && m_annotationEngine) {
         QRect selRect = normalizedSelectionRect();
         QPoint rel = m_textEditPosition - selRect.topLeft();
         m_annotationEngine->addTextAnnotation(rel, text);
         update();
+        updateUndoRedoState();
     }
     m_textEdit->hide();
     m_textJustCommitted = true;
@@ -842,7 +994,35 @@ void CaptureOverlay::cancelTextEdit()
     setFocus();
 }
 
+void CaptureOverlay::updateUndoRedoState()
+{
+    if (m_toolbar) {
+        m_toolbar->setUndoEnabled(m_annotationEngine && m_annotationEngine->canUndo());
+        m_toolbar->setRedoEnabled(m_annotationEngine && m_annotationEngine->canRedo());
+    }
+}
+
 void CaptureOverlay::onClose() { cancelCapture(); }
+
+void CaptureOverlay::onEyedropperRequested()
+{
+    m_eyedropperActive = true;
+    setCursor(Qt::CrossCursor);
+    update();
+}
+
+void CaptureOverlay::onSelectionLockToggled(bool locked)
+{
+    m_selectionLocked = locked;
+}
+
+void CaptureOverlay::onBlurIntensityChanged(int intensity)
+{
+    if (m_annotationEngine) m_annotationEngine->setBlurIntensity(intensity);
+    // Ayarlara kaydet
+    QSettings s("EShot", "EShot");
+    s.setValue("blurIntensity", intensity);
+}
 
 QRect CaptureOverlay::normalizedSelectionRect() const
 {

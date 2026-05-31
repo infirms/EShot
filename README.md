@@ -5,7 +5,7 @@ A fast, lightweight screenshot tool for Windows with annotation tools, pin-to-de
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-blue.svg)]()
 [![Qt](https://img.shields.io/badge/Qt-6.8-green.svg)]()
-[![Version](https://img.shields.io/badge/Version-2.1.3-orange.svg)]()
+[![Version](https://img.shields.io/badge/Version-2.2.0-orange.svg)]()
 
 <p align="center">
   <img src="preview.png" alt="EShot Preview" width="700">
@@ -17,11 +17,11 @@ A fast, lightweight screenshot tool for Windows with annotation tools, pin-to-de
 - **Multi-Monitor** — Pixel-perfect capture across all monitors with DPI awareness
 - **Area Selection** — Click and drag to select any region
 - **Corner Handles** — Resize selection precisely after capture
-- **Dimension Tooltip** — Live size indicator next to cursor
+- **Dimension Tooltip** — Always visible at the top-left corner of the selection
 - **Configurable Delay** — Set capture delay (0–10 seconds)
 - **Copy After Capture** — Auto-copy to clipboard on selection complete
 
-### Annotation Tools (10)
+### Annotation Tools (11)
 | Tool | Key | Description |
 |------|-----|-------------|
 | Pen | `P` | Freehand drawing with smooth Bezier curves |
@@ -29,14 +29,18 @@ A fast, lightweight screenshot tool for Windows with annotation tools, pin-to-de
 | Line | `L` | Straight line (no arrowhead) |
 | Rectangle | `R` | Rectangle (hold `Shift` for square) |
 | Circle | `C` | Ellipse (hold `Shift` for perfect circle) |
-| Text | `T` | Click to place text with dark background |
+| Text | `T` | Click to place text with dark background (multiline with `Shift+Enter`) |
 | Highlighter | `H` | Semi-transparent yellow stroke |
-| Blur | `B` | Mosaic pixelation with real screen content |
+| Semi-Rect | `D` | Semi-transparent filled rectangle for emphasis |
+| Blur | `B` | Mosaic pixelation with adjustable intensity |
 | Counter | `#` | Auto-incrementing numbered markers |
 | Eraser | `X` | Click to remove any annotation |
 
-- **Undo/Redo** — Full undo/redo support (`Ctrl+Z` / `Ctrl+Y`)
-- **Move Annotations** — Click any annotation to drag it
+- **Undo/Redo** — Full undo/redo support (`Ctrl+Z` / `Ctrl+Y`), buttons gray out when unavailable
+- **Move Annotations** — Click any annotation to drag it (snaps to selection edges)
+- **Eyedropper** — Pick any color from the screen (`I` key)
+- **Lock Selection** — Lock the selection rectangle to prevent accidental moves while annotating
+- **Blur Intensity** — Adjustable blur strength (4–64px) via toolbar slider
 - **Color Picker** — Choose any color for tools
 - **Pen Width** — Adjustable from 1–20px
 
@@ -61,7 +65,7 @@ A fast, lightweight screenshot tool for Windows with annotation tools, pin-to-de
 - **Export/Import Settings** — Save/load all settings as JSON
 - **Live Theme Switch** — Change dark/light/high-contrast without restart
 - **Customizable Tray Icon** — Dark or light icon style
-- **Auto-Update Check** — Notifications when new versions are available on GitHub
+- **Auto-Update Check** — Tray icon turns yellow when a new version is available
 - **Command-Line Arguments** — `eshot --capture`, `eshot --save /path`
 - **Smart Filename Templates** — `%Y` (year), `%M` (month), `%D` (day), `%h` (hour), `%m` (min), `%s` (sec), `%T` (window title)
 
@@ -84,7 +88,7 @@ A fast, lightweight screenshot tool for Windows with annotation tools, pin-to-de
 ### Annotation Shortcuts
 | Key | Action |
 |-----|--------|
-| `P` `A` `R` `C` `T` `H` `B` `#` `X` `L` | Select tool |
+| `P` `A` `L` `R` `C` `T` `H` `D` `B` `#` `X` | Select tool |
 | `Ctrl+Z` | Undo |
 | `Ctrl+Y` | Redo |
 | `Shift` + Draw | Perfect square / circle |
@@ -120,7 +124,7 @@ The executable will be at `build/bin/Release/EShot.exe`.
 "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" EShot_Setup.iss
 ```
 
-Output: `installer_output/EShot_Setup_v2.1.0.exe`
+Output: `installer_output/EShot_Setup_v2.2.0.exe`
 
 ## Tech Stack
 
@@ -144,7 +148,7 @@ EShot/
 │   │   ├── PinnedWindow.cpp        # Pin-to-desktop with resize/opacity
 │   │   └── PinManager.cpp          # Pin persistence (unused in v2.1)
 │   ├── annotation/
-│   │   └── AnnotationEngine.cpp    # 10 drawing tools + undo/redo
+│   │   └── AnnotationEngine.cpp    # 11 drawing tools + undo/redo
 │   └── ui/
 │       ├── AnnotationToolbar.cpp   # Floating toolbar with tools
 │       ├── SettingsDialog.cpp      # Settings (5 tabs, export/import)

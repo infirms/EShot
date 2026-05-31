@@ -391,6 +391,7 @@ QWidget* SettingsDialog::createInterfaceTab()
         {"Pen",         TranslationManager::toolListPen()},
         {"Arrow",       TranslationManager::toolListArrow()},
         {"Rectangle",   TranslationManager::toolListRect()},
+        {"SemiRect",    TranslationManager::toolListSemiRect()},
         {"Circle",      TranslationManager::toolListCircle()},
         {"Text",        TranslationManager::toolListText()},
         {"Highlighter", TranslationManager::toolListHighlight()},
@@ -525,7 +526,7 @@ void SettingsDialog::loadSettings()
     if (ti >= 0) m_trayIconCombo->setCurrentIndex(ti);
 
     QStringList visibleTools = m_settings->value("visibleTools",
-        QStringList{"Pen","Arrow","Rectangle","Circle","Text","Highlighter","Blur","Counter"})
+        QStringList{"Pen","Arrow","Rectangle","SemiRect","Circle","Text","Highlighter","Blur","Counter"})
         .toStringList();
     for (int i = 0; i < m_toolVisibilityList->count(); ++i) {
         QListWidgetItem *item = m_toolVisibilityList->item(i);

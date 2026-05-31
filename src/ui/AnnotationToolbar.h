@@ -7,6 +7,8 @@
 #include <QMap>
 #include <QColor>
 #include <QStringList>
+#include <QSlider>
+#include <QLabel>
 
 class AnnotationToolbar : public QWidget {
     Q_OBJECT
@@ -18,6 +20,10 @@ public:
     void refreshTools();
     void refreshToolTips();
     void selectTool(int toolId);
+    void setUndoEnabled(bool enabled);
+    void setRedoEnabled(bool enabled);
+    void setBlurIntensity(int intensity);
+    void setColor(const QColor &color);
 
 signals:
     void toolSelected(int toolId);
@@ -25,12 +31,18 @@ signals:
     void redoRequested();
     void colorChanged(const QColor &color);
     void penWidthChanged(int width);
+    void blurIntensityChanged(int intensity);
+    void eyedropperRequested();
+    void lockToggled(bool locked);
 
 private slots:
     void onToolButtonClicked();
     void onActionButtonClicked();
     void onColorButtonClicked();
     void onWidthSliderChanged(int value);
+    void onBlurIntensityChanged(int value);
+    void onEyedropperClicked();
+    void onLockClicked();
 
 private:
     void setupUI();
@@ -51,6 +63,22 @@ private:
     int m_currentToolId;
     QColor m_currentColor;
     QStringList m_visibleTools;
+
+    // Yeni: Eyedropper
+    QPushButton *m_eyedropperButton;
+
+    // Yeni: Seçim kilidi
+    QPushButton *m_lockButton;
+    bool m_selectionLocked;
+
+    // Yeni: Bulanıklık şiddeti
+    QSlider *m_blurIntensitySlider;
+    QLabel *m_blurIntensityLabel;
+    QWidget *m_blurIntensityWidget;
+
+    // Geri al/İleri al buton referansları
+    QPushButton *m_undoButton;
+    QPushButton *m_redoButton;
 };
 
 #endif

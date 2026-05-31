@@ -166,10 +166,15 @@ public:
     static QString toolWidth()        { return tr("toolWidth"); }
     static QString toolUndo()         { return tr("toolUndo"); }
     static QString toolRedo()         { return tr("toolRedo"); }
+    static QString toolEyedropper()   { return tr("toolEyedropper"); }
+    static QString toolSemiRect()     { return tr("toolSemiRect"); }
+    static QString toolBlurIntensity(){ return tr("toolBlurIntensity"); }
     static QString actionPin()        { return tr("actionPin"); }
     static QString actionCopy()       { return tr("actionCopy"); }
     static QString actionSave()       { return tr("actionSave"); }
     static QString actionClose()      { return tr("actionClose"); }
+    static QString actionLock()       { return tr("actionLock"); }
+    static QString actionPaste()      { return tr("actionPaste"); }
 
     // ─── Araç listesi ───
     static QString toolListPen()      { return tr("toolListPen"); }
@@ -182,6 +187,7 @@ public:
     static QString toolListCounter()  { return tr("toolListCounter"); }
     static QString toolListEraser()   { return tr("toolListEraser"); }
     static QString toolListLine()     { return tr("toolListLine"); }
+    static QString toolListSemiRect() { return tr("toolListSemiRect"); }
 
     // ─── Pinned ───
     static QString pinnedLabel()      { return tr("pinnedLabel"); }
@@ -203,6 +209,9 @@ public:
     // ─── About ───
     static QString aboutTitle()       { return tr("aboutTitle"); }
     static QString aboutDesc()        { return tr("aboutDesc"); }
+    static QString checkForUpdates()  { return tr("checkForUpdates"); }
+    static QString upToDate()         { return tr("upToDate"); }
+    static QString version()          { return tr("version"); }
 
     // ─── Bildirim ───
     static QString notifCaptureTitle(){ return tr("notifCaptureTitle"); }
@@ -348,6 +357,11 @@ private:
         {"actionCopy",     {"Kopyala (Ctrl+C)", "Copy (Ctrl+C)", "Kopieren (Strg+C)", "Copier (Ctrl+C)", "Copiar (Ctrl+C)", "コピー (Ctrl+C)", "复制 (Ctrl+C)"}},
         {"actionSave",     {"Kaydet (Ctrl+S)", "Save (Ctrl+S)", "Speichern (Strg+S)", "Enregistrer (Ctrl+S)", "Guardar (Ctrl+S)", "保存 (Ctrl+S)", "保存 (Ctrl+S)"}},
         {"actionClose",    {"Kapat (Esc)", "Close (Esc)", "Schließen (Esc)", "Fermer (Esc)", "Cerrar (Esc)", "閉じる (Esc)", "关闭 (Esc)"}},
+        {"actionLock",     {"Seçimi Kilitle", "Lock Selection", "Auswahl sperren", "Verrouiller sélection", "Blocar selección", "選択をロック", "锁定选区"}},
+        {"actionPaste",    {"Yapıştır (Ctrl+V)", "Paste (Ctrl+V)", "Einfügen (Strg+V)", "Coller (Ctrl+V)", "Pegar (Ctrl+V)", "貼り付け (Ctrl+V)", "粘贴 (Ctrl+V)"}},
+        {"toolEyedropper", {"Renk Seçici", "Eyedropper", "Pipette", "Pipette", "Cuentagotas", " eyedropper", "取色器"}},
+        {"toolSemiRect",   {"Saydam Kare", "Semi-Transparent", "Halbtransparent", "Semi-transparent", "Semi-transparente", "半透明", "半透明矩形"}},
+        {"toolBlurIntensity",{"Bulanıklık Şiddeti", "Blur Intensity", "Unschärfeintensität", "Intensité du flou", "Intensidad de desenfoque", "ぼかし強度", "模糊强度"}},
 
         // ─── Araç listesi ───
         {"toolListPen",    {"✏️ Kalem", "✏️ Pen", "✏️ Stift", "✏️ Stylo", "✏️ Lápiz", "✏️ ペン", "✏️ 画笔"}},
@@ -360,6 +374,7 @@ private:
         {"toolListCounter",{"🔢 Numara", "🔢 Counter", "🔢 Zähler", "🔢 Compteur", "🔢 Contador", "🔢 カウンター", "🔢 计数器"}},
         {"toolListEraser", {"🧹 Silgi", "🧹 Eraser", "🧹 Radierer", "🧹 Gomme", "🧹 Borrador", "🧹 消しゴム", "🧹 橡皮"}},
         {"toolListLine",   {"📏 Çizgi", "📏 Line", "📏 Linie", "📏 Ligne", "📏 Línea", "📏 線", "📏 线条"}},
+        {"toolListSemiRect",{"🔳 Saydam Kare", "🔳 Semi-Rect", "🔳 Halbtransparent", "🔳 Semi-rect", "🔳 Semi-rect", "🔳 半透明", "🔳 半透明矩形"}},
 
         // ─── Pinned ───
         {"pinnedLabel",    {"Sabitlendi", "Pinned", "Gepinnt", "Épinglé", "Fijado", "ピン留め", "已固定"}},
@@ -381,6 +396,9 @@ private:
         // ─── About ───
         {"aboutTitle",     {"EShot Hakkında", "About EShot", "Über EShot", "À propos", "Acerca de", "概要", "关于EShot"}},
         {"aboutDesc",      {"Gelişmiş Ekran Alıntısı Aracı", "Advanced Screenshot Tool", "Fortgeschrittenes Screenshot-Tool", "Outil de Capture Avancé", "Herramienta de Captura Avanzada", "高度なスクリーンショットツール", "高级截图工具"}},
+        {"checkForUpdates",{"Güncellemeleri Kontrol Et", "Check for Updates", "Nach Updates suchen", "Vérifier les mises à jour", "Buscar actualizaciones", "アップデートを確認", "检查更新"}},
+        {"upToDate",       {"Güncel", "Up to date", "Aktuell", "À jour", "Actualizado", "最新", "已是最新"}},
+        {"version",        {"Sürüm", "Version", "Version", "Version", "Versión", "バージョン", "版本"}},
 
         // ─── Bildirim ───
         {"notifCaptureTitle",{"EShot", "EShot", "EShot", "EShot", "EShot", "EShot", "EShot"}},

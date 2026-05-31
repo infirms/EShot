@@ -25,7 +25,8 @@ public:
         Highlighter,
         Counter,
         Eraser,
-        Line
+        Line,
+        SemiRect
     };
     Q_ENUM(Tool)
 
@@ -40,6 +41,12 @@ public:
 
     void setPenWidth(int width);
     int penWidth() const { return m_penWidth; }
+
+    void setBlurIntensity(int intensity);
+    int blurIntensity() const { return m_blurIntensity; }
+
+    bool canUndo() const { return !m_annotations.isEmpty(); }
+    bool canRedo() const { return !m_redoStack.isEmpty(); }
 
     void setShiftHeld(bool held);
 
@@ -63,6 +70,7 @@ public:
     void moveAnnotation(int index, const QPoint &delta);
     void setSelectedIndex(int index);
     int selectedIndex() const { return m_selectedIndex; }
+    QRect boundingRectOf(int index) const;
 
     void setScreenSnapshot(const QPixmap &snapshot);
     void setSelectionRect(const QRect &rect);
@@ -89,6 +97,7 @@ private:
     Tool m_currentTool;
     QColor m_color;
     int m_penWidth;
+    int m_blurIntensity;
     bool m_shiftHeld;
 
     QVector<Annotation> m_annotations;

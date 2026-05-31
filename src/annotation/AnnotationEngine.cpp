@@ -4,12 +4,16 @@
 #include <QImage>
 #include <QtMath>
 #include <climits>
+#include <QTextDocument>
+#include <QAbstractTextDocumentLayout>
+#include <QTextBlock>
 
 AnnotationEngine::AnnotationEngine(QObject *parent)
     : QObject(parent)
     , m_currentTool(None)
     , m_color(Qt::red)
     , m_penWidth(3)
+    , m_blurIntensity(16)
     , m_shiftHeld(false)
     , m_isDrawing(false)
     , m_counterValue(0)
@@ -22,6 +26,7 @@ AnnotationEngine::~AnnotationEngine() {}
 void AnnotationEngine::setCurrentTool(Tool tool) { m_currentTool = tool; }
 void AnnotationEngine::setColor(const QColor &color) { m_color = color; }
 void AnnotationEngine::setPenWidth(int width) { m_penWidth = qBound(1, width, 20); }
+void AnnotationEngine::setBlurIntensity(int intensity) { m_blurIntensity = qBound(4, intensity, 64); }
 void AnnotationEngine::setShiftHeld(bool held) { m_shiftHeld = held; }
 
 void AnnotationEngine::beginDraw(const QPoint &pos)
@@ -211,18 +216,35 @@ void AnnotationEngine::drawAnnotation(QPainter *painter, const Annotation &ann, 
     }
     case Text: {
         if (ann.text.isEmpty() || ann.points.isEmpty()) break;
-        painter->setPen(ann.color);
         QFont font("Segoe UI", ann.penWidth * 4 + 8);
         font.setBold(true);
-        painter->setFont(font);
-        QFontMetrics fm(font);
         QPoint tp = ann.points.first() + offset;
-        QRect bg(tp.x()-2, tp.y()-fm.ascent()-2, fm.horizontalAdvance(ann.text)+4, fm.height()+4);
+
+        QTextDocument doc;
+        doc.setDefaultFont(font);
+        doc.setPlainText(ann.text);
+        QSizeF docSize = doc.size();
+
+        // Arka plan
+        QRect bg(tp.x() - 4, tp.y() - 4,
+                 static_cast<int>(docSize.width()) + 8,
+                 static_cast<int>(docSize.height()) + 8);
         painter->setPen(Qt::NoPen);
-        painter->setBrush(QColor(0,0,0,120));
+        painter->setBrush(QColor(0, 0, 0, 120));
         painter->drawRoundedRect(bg, 3, 3);
-        painter->setPen(ann.color);
-        painter->drawText(tp, ann.text);
+
+        // Metin
+        painter->save();
+        painter->translate(tp);
+        QAbstractTextDocumentLayout *layout = doc.documentLayout();
+        for (int i = 0; i < doc.blockCount(); ++i) {
+            QTextBlock block = doc.findBlockByNumber(i);
+            QTextLayout *blockLayout = block.layout();
+            QTextLine line = blockLayout->lineAt(0);
+            painter->setPen(ann.color);
+            blockLayout->draw(painter, QPoint(0, 0));
+        }
+        painter->restore();
         break;
     }
     case Counter: {
@@ -239,6 +261,23 @@ void AnnotationEngine::drawAnnotation(QPainter *painter, const Annotation &ann, 
                           Qt::AlignCenter, QString::number(ann.counterValue));
         break;
     }
+    case SemiRect: {
+        if (ann.points.size() < 2) break;
+        QPoint start = ann.points.first() + offset;
+        QPoint end = ann.points.last() + offset;
+        QRect r(start, end);
+        if (ann.shiftConstrained) {
+            int side = qMin(qAbs(r.width()), qAbs(r.height()));
+            r.setWidth(r.width() < 0 ? -side : side);
+            r.setHeight(r.height() < 0 ? -side : side);
+        }
+        QColor fillColor = ann.color;
+        fillColor.setAlpha(80);
+        painter->setPen(QPen(ann.color, ann.penWidth));
+        painter->setBrush(fillColor);
+        painter->drawRect(r.normalized());
+        break;
+    }
     default: break;
     }
 
@@ -248,6 +287,7 @@ void AnnotationEngine::drawAnnotation(QPainter *painter, const Annotation &ann, 
 void AnnotationEngine::clear()
 {
     m_annotations.clear();
+    m_redoStack.clear();
     m_counterValue = 0;
 }
 
@@ -369,6 +409,28 @@ void AnnotationEngine::setSelectedIndex(int index)
     m_selectedIndex = index;
 }
 
+QRect AnnotationEngine::boundingRectOf(int index) const
+{
+    if (index < 0 || index >= m_annotations.size()) return QRect();
+    const Annotation &ann = m_annotations[index];
+    if (ann.points.isEmpty()) return QRect();
+
+    if (ann.tool == Text || ann.tool == Counter) {
+        QRect bounds(ann.points.first(), QSize(100, 40));
+        bounds.moveCenter(ann.points.first());
+        return bounds;
+    } else if (ann.tool == Blur || ann.tool == SemiRect) {
+        return QRect(ann.points.first(), ann.points.last()).normalized();
+    } else {
+        int minX = INT_MAX, minY = INT_MAX, maxX = INT_MIN, maxY = INT_MIN;
+        for (const QPoint &p : ann.points) {
+            minX = qMin(minX, p.x()); minY = qMin(minY, p.y());
+            maxX = qMax(maxX, p.x()); maxY = qMax(maxY, p.y());
+        }
+        return QRect(minX, minY, maxX - minX, maxY - minY);
+    }
+}
+
 void AnnotationEngine::setScreenSnapshot(const QPixmap &snapshot)
 {
     m_screenSnapshot = snapshot;
@@ -396,7 +458,7 @@ void AnnotationEngine::drawBlurEffect(QPainter *painter, const QRect &rect, cons
         if (!clamped.isEmpty()) {
             QPixmap region = dev->copy(clamped);
             if (!region.isNull()) {
-                int ps = 16;
+                int ps = m_blurIntensity;
                 QImage img = region.toImage();
                 QImage scaled = img.scaled(qMax(1, img.width() / ps), qMax(1, img.height() / ps),
                                            Qt::IgnoreAspectRatio, Qt::FastTransformation);
@@ -416,7 +478,7 @@ void AnnotationEngine::drawBlurEffect(QPainter *painter, const QRect &rect, cons
         if (!clamped.isEmpty()) {
             QPixmap region = m_screenSnapshot.copy(clamped);
             if (!region.isNull()) {
-                int ps = 16;
+                int ps = m_blurIntensity;
                 QImage img = region.toImage();
                 QImage scaled = img.scaled(qMax(1, img.width() / ps), qMax(1, img.height() / ps),
                                            Qt::IgnoreAspectRatio, Qt::FastTransformation);
