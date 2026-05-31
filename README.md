@@ -7,6 +7,10 @@ A fast, lightweight screenshot tool for Windows with annotation tools, pin-to-de
 [![Qt](https://img.shields.io/badge/Qt-6.8-green.svg)]()
 [![Version](https://img.shields.io/badge/Version-2.1.1-orange.svg)]()
 
+<p align="center">
+  <img src="preview.png" alt="EShot Preview" width="700">
+</p>
+
 ## Features
 
 ### Capture
