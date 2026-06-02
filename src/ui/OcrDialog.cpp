@@ -8,6 +8,15 @@
 #include <QMessageBox>
 #include <QDebug>
 #include <QSettings>
+#include <QDir>
+#include <QFileInfo>
+#include <QStandardItemModel>
+#include <QStandardItem>
+#include <QColor>
+
+namespace {
+constexpr int LanguageInstalledRole = Qt::UserRole + 1;
+}
 
 OcrDialog::OcrDialog(const QPixmap &pixmap, QWidget *parent)
     : QDialog(parent), m_pixmap(pixmap)
@@ -26,20 +35,20 @@ OcrDialog::OcrDialog(const QPixmap &pixmap, QWidget *parent)
     auto *langRow = new QHBoxLayout();
     QLabel *langLabel = new QLabel(QString("%1:").arg(TranslationManager::language()), this);
     m_langCombo = new QComboBox(this);
-    m_langCombo->addItem("English", "en-US");
-    m_langCombo->addItem(QString::fromUtf8("T\303\274rk\303\247e"), "tr-TR");
-    m_langCombo->addItem(QString::fromUtf8("\320\240\321\203\321\201\321\201\320\272\320\270\320\271"), "ru-RU");
-    m_langCombo->addItem("Deutsch", "de-DE");
-    m_langCombo->addItem(QString::fromUtf8("Fran\303\247ais"), "fr-FR");
-    m_langCombo->addItem(QString::fromUtf8("Espa\303\261ol"), "es-ES");
-    m_langCombo->addItem("Italiano", "it-IT");
+    populateLanguages();
     langRow->addWidget(langLabel);
     langRow->addWidget(m_langCombo);
     langRow->addStretch();
     layout->addLayout(langRow);
 
     int idx = m_langCombo->findData(m_languageTag);
-    if (idx >= 0) m_langCombo->setCurrentIndex(idx);
+    if (idx < 0 || !m_langCombo->itemData(idx, LanguageInstalledRole).toBool()) {
+        idx = firstInstalledLanguageIndex();
+    }
+    if (idx >= 0) {
+        m_langCombo->setCurrentIndex(idx);
+        m_languageTag = m_langCombo->currentData().toString();
+    }
     connect(m_langCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &OcrDialog::onLanguageChanged);
 
@@ -77,12 +86,70 @@ OcrDialog::~OcrDialog() = default;
 void OcrDialog::setLanguageTag(const QString &tag)
 {
     if (tag.isEmpty()) return;
-    m_languageTag = tag;
     if (m_langCombo) {
         const int idx = m_langCombo->findData(tag);
-        if (idx >= 0 && idx != m_langCombo->currentIndex())
+        if (idx >= 0 && m_langCombo->itemData(idx, LanguageInstalledRole).toBool()) {
+            m_languageTag = tag;
             m_langCombo->setCurrentIndex(idx);
+        }
     }
+}
+
+void OcrDialog::populateLanguages()
+{
+    struct LanguageItem {
+        const char *label;
+        const char *tag;
+    };
+
+    const LanguageItem languages[] = {
+        {"English", "en-US"},
+        {"T\303\274rk\303\247e", "tr-TR"},
+        {"\320\240\321\203\321\201\321\201\320\272\320\270\320\271", "ru-RU"},
+        {"Deutsch", "de-DE"},
+        {"Fran\303\247ais", "fr-FR"},
+        {"Espa\303\261ol", "es-ES"},
+        {"Italiano", "it-IT"},
+    };
+
+    const QString missingTip = (TranslationManager::currentLanguage() == TranslationManager::Turkish)
+        ? QStringLiteral("Dil paketi yüklü değil")
+        : QStringLiteral("Language pack is not installed");
+
+    for (const auto &language : languages) {
+        const QString tag = QString::fromLatin1(language.tag);
+        const bool installed = isLanguageInstalled(tag);
+        m_langCombo->addItem(QString::fromUtf8(language.label), tag);
+        const int row = m_langCombo->count() - 1;
+        m_langCombo->setItemData(row, installed, LanguageInstalledRole);
+
+        auto *model = qobject_cast<QStandardItemModel *>(m_langCombo->model());
+        QStandardItem *item = model ? model->item(row) : nullptr;
+        if (!installed && item) {
+            item->setEnabled(false);
+            item->setForeground(QColor(145, 145, 145));
+            item->setToolTip(missingTip);
+        }
+    }
+}
+
+bool OcrDialog::isLanguageInstalled(const QString &tag) const
+{
+    const QString mapped = OcrEngine::mapLanguageTag(tag);
+    if (mapped.isEmpty()) {
+        return false;
+    }
+    return QFileInfo::exists(QDir(OcrEngine::tessdataDir()).filePath(mapped + QStringLiteral(".traineddata")));
+}
+
+int OcrDialog::firstInstalledLanguageIndex() const
+{
+    for (int i = 0; i < m_langCombo->count(); ++i) {
+        if (m_langCombo->itemData(i, LanguageInstalledRole).toBool()) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 void OcrDialog::translateUi()
@@ -111,7 +178,9 @@ void OcrDialog::runOcr()
 
 void OcrDialog::onLanguageChanged(int index)
 {
-    Q_UNUSED(index)
+    if (index < 0 || !m_langCombo->itemData(index, LanguageInstalledRole).toBool()) {
+        return;
+    }
     QString tag = m_langCombo->currentData().toString();
     if (!tag.isEmpty() && tag != m_languageTag) {
         m_languageTag = tag;

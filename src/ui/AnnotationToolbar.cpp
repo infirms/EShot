@@ -9,6 +9,8 @@
 #include <QStyle>
 #include <QSettings>
 #include <QHBoxLayout>
+#include <QFontComboBox>
+#include <QSpinBox>
 
 AnnotationToolbar::AnnotationToolbar(QWidget *parent)
     : QWidget(parent)
@@ -22,6 +24,9 @@ AnnotationToolbar::AnnotationToolbar(QWidget *parent)
     , m_blurIntensitySlider(nullptr)
     , m_blurIntensityLabel(nullptr)
     , m_blurIntensityWidget(nullptr)
+    , m_textOptionsWidget(nullptr)
+    , m_textFontCombo(nullptr)
+    , m_textSizeSpin(nullptr)
     , m_undoButton(nullptr)
     , m_redoButton(nullptr)
     , m_ocrButton(nullptr)
@@ -84,6 +89,12 @@ void AnnotationToolbar::selectTool(int toolId)
         bool showBlur = (toolId == AnnotationEngine::Blur);
         m_blurIntensityWidget->setVisible(showBlur);
     }
+    if (m_textOptionsWidget) {
+        m_textOptionsWidget->setVisible(toolId == AnnotationEngine::Text);
+    }
+    adjustSize();
+    setFixedWidth(sizeHint().width());
+    updateGeometry();
 }
 
 void AnnotationToolbar::setUndoEnabled(bool enabled)
@@ -284,6 +295,30 @@ void AnnotationToolbar::setupUI()
     )");
     connect(slider, &QSlider::valueChanged, this, &AnnotationToolbar::onWidthSliderChanged);
     m_layout->addWidget(slider);
+
+    // Text font controls (hidden by default)
+    m_textOptionsWidget = new QWidget(this);
+    QHBoxLayout *textLayout = new QHBoxLayout(m_textOptionsWidget);
+    textLayout->setContentsMargins(0, 0, 0, 0);
+    textLayout->setSpacing(4);
+    m_textFontCombo = new QFontComboBox(m_textOptionsWidget);
+    m_textFontCombo->setCurrentFont(QFont("Segoe UI"));
+    m_textFontCombo->setFixedWidth(118);
+    m_textFontCombo->setToolTip("Font");
+    m_textSizeSpin = new QSpinBox(m_textOptionsWidget);
+    m_textSizeSpin->setRange(8, 72);
+    m_textSizeSpin->setValue(18);
+    m_textSizeSpin->setFixedWidth(54);
+    m_textSizeSpin->setToolTip("Font size");
+    connect(m_textFontCombo, &QFontComboBox::currentFontChanged, this, [this](const QFont &font) {
+        emit textFontFamilyChanged(font.family());
+    });
+    connect(m_textSizeSpin, qOverload<int>(&QSpinBox::valueChanged),
+            this, &AnnotationToolbar::textFontSizeChanged);
+    textLayout->addWidget(m_textFontCombo);
+    textLayout->addWidget(m_textSizeSpin);
+    m_textOptionsWidget->hide();
+    m_layout->addWidget(m_textOptionsWidget);
 
     // Blur strength widget (hidden by default)
     m_blurIntensityWidget = new QWidget(this);
@@ -533,6 +568,12 @@ void AnnotationToolbar::onToolButtonClicked()
         bool showBlur = (toolId == AnnotationEngine::Blur);
         m_blurIntensityWidget->setVisible(showBlur);
     }
+    if (m_textOptionsWidget) {
+        m_textOptionsWidget->setVisible(toolId == AnnotationEngine::Text);
+    }
+    adjustSize();
+    setFixedWidth(sizeHint().width());
+    updateGeometry();
 
     emit toolSelected(toolId);
 }

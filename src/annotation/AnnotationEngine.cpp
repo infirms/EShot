@@ -7,12 +7,16 @@
 #include <QTextDocument>
 #include <QAbstractTextDocumentLayout>
 #include <QTextBlock>
+#include <QTextCursor>
+#include <QTextCharFormat>
 
 AnnotationEngine::AnnotationEngine(QObject *parent)
     : QObject(parent)
     , m_currentTool(None)
     , m_color(Qt::red)
     , m_penWidth(3)
+    , m_textFontFamily(QStringLiteral("Segoe UI"))
+    , m_textFontSize(18)
     , m_blurIntensity(16)
     , m_shiftHeld(false)
     , m_isDrawing(false)
@@ -26,6 +30,12 @@ AnnotationEngine::~AnnotationEngine() {}
 void AnnotationEngine::setCurrentTool(Tool tool) { m_currentTool = tool; }
 void AnnotationEngine::setColor(const QColor &color) { m_color = color; }
 void AnnotationEngine::setPenWidth(int width) { m_penWidth = qBound(1, width, 20); }
+void AnnotationEngine::setTextFontFamily(const QString &family)
+{
+    if (!family.trimmed().isEmpty())
+        m_textFontFamily = family.trimmed();
+}
+void AnnotationEngine::setTextFontSize(int size) { m_textFontSize = qBound(8, size, 72); }
 void AnnotationEngine::setBlurIntensity(int intensity) { m_blurIntensity = qBound(4, intensity, 64); }
 void AnnotationEngine::setShiftHeld(bool held) { m_shiftHeld = held; }
 
@@ -216,13 +226,19 @@ void AnnotationEngine::drawAnnotation(QPainter *painter, const Annotation &ann, 
     }
     case Text: {
         if (ann.text.isEmpty() || ann.points.isEmpty()) break;
-        QFont font("Segoe UI", ann.penWidth * 4 + 8);
+        QFont font(ann.fontFamily.isEmpty() ? QStringLiteral("Segoe UI") : ann.fontFamily,
+                   qBound(8, ann.fontSize, 72));
         font.setBold(true);
         QPoint tp = ann.points.first() + offset;
 
         QTextDocument doc;
         doc.setDefaultFont(font);
         doc.setPlainText(ann.text);
+        QTextCursor cursor(&doc);
+        cursor.select(QTextCursor::Document);
+        QTextCharFormat fmt;
+        fmt.setForeground(ann.color);
+        cursor.mergeCharFormat(fmt);
         QSizeF docSize = doc.size();
 
         // Background
@@ -236,14 +252,7 @@ void AnnotationEngine::drawAnnotation(QPainter *painter, const Annotation &ann, 
         // Text
         painter->save();
         painter->translate(tp);
-        QAbstractTextDocumentLayout *layout = doc.documentLayout();
-        for (int i = 0; i < doc.blockCount(); ++i) {
-            QTextBlock block = doc.findBlockByNumber(i);
-            QTextLayout *blockLayout = block.layout();
-            QTextLine line = blockLayout->lineAt(0);
-            painter->setPen(ann.color);
-            blockLayout->draw(painter, QPoint(0, 0));
-        }
+        doc.drawContents(painter);
         painter->restore();
         break;
     }
@@ -314,6 +323,8 @@ void AnnotationEngine::addTextAnnotation(const QPoint &pos, const QString &text)
     if (text.isEmpty()) return;
     Annotation a;
     a.tool = Text; a.color = m_color; a.penWidth = m_penWidth;
+    a.fontFamily = m_textFontFamily;
+    a.fontSize = m_textFontSize;
     a.points.append(pos); a.text = text;
     m_redoStack.clear();
     m_annotations.append(a);

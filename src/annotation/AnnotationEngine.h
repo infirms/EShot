@@ -42,6 +42,11 @@ public:
     void setPenWidth(int width);
     int penWidth() const { return m_penWidth; }
 
+    void setTextFontFamily(const QString &family);
+    QString textFontFamily() const { return m_textFontFamily; }
+    void setTextFontSize(int size);
+    int textFontSize() const { return m_textFontSize; }
+
     void setBlurIntensity(int intensity);
     int blurIntensity() const { return m_blurIntensity; }
 
@@ -86,6 +91,8 @@ private:
         int penWidth;
         QVector<QPoint> points;
         QString text;
+        QString fontFamily;
+        int fontSize = 18;
         QRect boundingRect;
         int counterValue = 0;
         bool shiftConstrained = false;
@@ -97,6 +104,8 @@ private:
     Tool m_currentTool;
     QColor m_color;
     int m_penWidth;
+    QString m_textFontFamily;
+    int m_textFontSize;
     int m_blurIntensity;
     bool m_shiftHeld;
 

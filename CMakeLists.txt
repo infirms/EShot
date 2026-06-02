@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(EShot VERSION 2.4.1 LANGUAGES CXX)
+project(EShot VERSION 2.4.2 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -22,6 +22,8 @@ set(SOURCES
     src/core/ImageUploader.cpp
     src/core/ImgurUploader.cpp
     src/core/CatboxUploader.cpp
+    src/core/UguuUploader.cpp
+    src/core/ZeroXZeroUploader.cpp
     src/capture/CaptureOverlay.cpp
     src/capture/PinnedWindow.cpp
     src/capture/PinManager.cpp
@@ -43,6 +45,8 @@ set(HEADERS
     src/core/ImageUploader.h
     src/core/ImgurUploader.h
     src/core/CatboxUploader.h
+    src/core/UguuUploader.h
+    src/core/ZeroXZeroUploader.h
     src/capture/CaptureOverlay.h
     src/capture/PinnedWindow.h
     src/capture/PinManager.h

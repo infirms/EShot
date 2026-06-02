@@ -27,6 +27,10 @@ UploadDialog::UploadDialog(QWidget *parent) : QDialog(parent)
     m_providerCombo = new QComboBox(this);
     m_providerCombo->addItem(QStringLiteral("Catbox.moe"),
                               static_cast<int>(ImageUploader::Provider::Catbox));
+    m_providerCombo->addItem(QStringLiteral("Uguu.se (3 hours)"),
+                              static_cast<int>(ImageUploader::Provider::Uguu));
+    m_providerCombo->addItem(QStringLiteral("0x0.st (temporary)"),
+                              static_cast<int>(ImageUploader::Provider::ZeroXZero));
     m_providerCombo->addItem(QStringLiteral("Imgur"),
                               static_cast<int>(ImageUploader::Provider::Imgur));
     providerRow->addWidget(providerLabel);

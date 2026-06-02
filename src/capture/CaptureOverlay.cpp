@@ -101,6 +101,12 @@ CaptureOverlay::CaptureOverlay(QWidget *parent)
     connect(m_toolbar, &AnnotationToolbar::penWidthChanged, [this](int w) {
         if (m_annotationEngine) m_annotationEngine->setPenWidth(w);
     });
+    connect(m_toolbar, &AnnotationToolbar::textFontFamilyChanged, [this](const QString &family) {
+        if (m_annotationEngine) m_annotationEngine->setTextFontFamily(family);
+    });
+    connect(m_toolbar, &AnnotationToolbar::textFontSizeChanged, [this](int size) {
+        if (m_annotationEngine) m_annotationEngine->setTextFontSize(size);
+    });
     connect(m_toolbar, &AnnotationToolbar::blurIntensityChanged, [this](int i) {
         if (m_annotationEngine) m_annotationEngine->setBlurIntensity(i);
     });
@@ -763,6 +769,18 @@ void CaptureOverlay::mouseReleaseEvent(QMouseEvent *event)
             } else if (m_annotationEngine && m_annotationEngine->currentTool() == AnnotationEngine::Text) {
                 if (selRect.contains(event->pos())) {
                     m_textEditPosition = event->pos();
+                    QFont textFont(m_annotationEngine->textFontFamily(), m_annotationEngine->textFontSize());
+                    textFont.setBold(true);
+                    m_textEdit->setFont(textFont);
+                    m_textEdit->setStyleSheet(QString(R"(
+                        QTextEdit {
+                            background-color: rgba(0, 0, 0, 180);
+                            color: %1;
+                            border: 2px solid #0078D4;
+                            border-radius: 4px;
+                            padding: 4px 8px;
+                        }
+                    )").arg(m_annotationEngine->color().name()));
                     m_textEdit->setGeometry(event->pos().x(), event->pos().y(), 200, 30);
                     m_textEdit->clear();
                     m_textEdit->show();
@@ -888,9 +906,7 @@ bool CaptureOverlay::eventFilter(QObject *obj, QEvent *event)
                 return true;
             }
             // Enter → confirm directly
-            m_textEdit->clearFocus();
-            m_textEdit->hide();
-            m_textEditing = false;
+            commitText();
             return true; // consume event
         }
     }
@@ -1214,6 +1230,8 @@ void CaptureOverlay::onToolSelected(int toolId)
         m_annotationEngine->setSelectedIndex(-1);
     }
     m_isDraggingAnnotation = false;
+    if (m_selectionComplete && m_toolbar && m_toolbar->isVisible())
+        showToolbar();
 }
 
 void CaptureOverlay::onCopyToClipboard()

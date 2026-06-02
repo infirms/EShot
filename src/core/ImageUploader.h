@@ -14,6 +14,8 @@ public:
     enum class Provider {
         Catbox,
         Imgur,
+        Uguu,
+        ZeroXZero,
     };
 
     struct Result {

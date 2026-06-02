@@ -9,6 +9,8 @@
 #include <QStringList>
 #include <QSlider>
 #include <QLabel>
+#include <QFontComboBox>
+#include <QSpinBox>
 
 class AnnotationToolbar : public QWidget {
     Q_OBJECT
@@ -33,6 +35,8 @@ signals:
     void colorChanged(const QColor &color);
     void penWidthChanged(int width);
     void blurIntensityChanged(int intensity);
+    void textFontFamilyChanged(const QString &family);
+    void textFontSizeChanged(int size);
     void eyedropperRequested();
     void lockToggled(bool locked);
     void ocrRequested();
@@ -79,6 +83,11 @@ private:
     QSlider *m_blurIntensitySlider;
     QLabel *m_blurIntensityLabel;
     QWidget *m_blurIntensityWidget;
+
+    // Text options
+    QWidget *m_textOptionsWidget;
+    QFontComboBox *m_textFontCombo;
+    QSpinBox *m_textSizeSpin;
 
     // Undo/Redo button references
     QPushButton *m_undoButton;

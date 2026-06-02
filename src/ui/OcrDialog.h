@@ -31,6 +31,9 @@ private:
     void setBusy(bool busy);
     void translateUi();
     void runOcr();
+    void populateLanguages();
+    bool isLanguageInstalled(const QString &tag) const;
+    int firstInstalledLanguageIndex() const;
 
     QPixmap m_pixmap;
     OcrEngine *m_engine;
