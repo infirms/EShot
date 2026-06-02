@@ -7,6 +7,10 @@ Fast, lightweight screenshot and annotation tool for Windows.
 [![Qt](https://img.shields.io/badge/Qt-6.x-green.svg)](https://www.qt.io/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
+<p align="center">
+  <img src="preview.png" alt="EShot preview" width="760">
+</p>
+
 EShot is built for quick captures, clean annotations, OCR, uploads, pinned screenshots, and GIF recording without turning into a heavy background app.
 
 ## Highlights

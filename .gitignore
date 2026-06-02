@@ -30,6 +30,8 @@ CMakeFiles/
 cmake_install.cmake
 CMakeScripts/
 Testing/
+CMakeUserPresets.json
+compile_commands.json
 build/
 _build/
 Build/
@@ -37,6 +39,12 @@ build_test/
 build_release/
 bin/
 lib/
+
+# Ninja / generated build files
+.ninja_deps
+.ninja_log
+build.ninja
+rules.ninja
 
 # Visual Studio / VS Code
 .vscode/
@@ -59,12 +67,20 @@ Desktop.ini
 
 # EShot specific
 *.log
+*.dmp
+*.crash
+*.tmp
+*.bak
+*.orig
+*.rej
 installer_output/
 EShot_Release/
 EShot_new.exe
 *.new.exe
+gif_test/
+gif_test_output.txt
 test_output.gif
+test_ocr.png
 *.gif.tmp
 
 ROADMAP.md
-
