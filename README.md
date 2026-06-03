@@ -2,7 +2,7 @@
 
 Fast, lightweight screenshot and annotation tool for Windows.
 
-[![Version](https://img.shields.io/badge/version-2.4.7-blue.svg)](https://github.com/Benoks/EShot/releases)
+[![Version](https://img.shields.io/badge/version-2.4.8-blue.svg)](https://github.com/Benoks/EShot/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey.svg)](#)
 [![Qt](https://img.shields.io/badge/Qt-6.x-green.svg)](https://www.qt.io/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
