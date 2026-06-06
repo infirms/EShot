@@ -898,7 +898,12 @@ void CaptureOverlay::updateToolSettingsDrawerPosition()
         return;
 
     QRect selRect = normalizedSelectionRect();
-    QRect monitorRect = monitorRectAt(selRect.center());
+    QRect monitorRect = m_selectionAnchorScreenRect.isValid()
+        ? m_selectionAnchorScreenRect
+        : monitorRectAt(selRect.center());
+    if (monitorRect.isEmpty())
+        monitorRect = rect();
+    monitorRect = monitorRect.intersected(rect());
     if (monitorRect.isEmpty())
         monitorRect = rect();
 
@@ -908,10 +913,12 @@ void CaptureOverlay::updateToolSettingsDrawerPosition()
     int bx = drawerOpen
         ? monitorRect.left() + m_toolSettingsDrawer->width() - 1
         : monitorRect.left();
-    bx = qBound(0, bx, width() - m_toolSettingsButton->width());
+    const int buttonMaxX = qMax(monitorRect.left(), monitorRect.right() + 1 - m_toolSettingsButton->width());
+    const int buttonMaxY = qMax(monitorRect.top() + 32, monitorRect.bottom() - m_toolSettingsButton->height() - 32);
+    bx = qBound(monitorRect.left(), bx, buttonMaxX);
     int by = qBound(monitorRect.top() + 32,
                     selRect.center().y() - m_toolSettingsButton->height() / 2,
-                    monitorRect.bottom() - m_toolSettingsButton->height() - 32);
+                    buttonMaxY);
     m_toolSettingsButton->move(bx, by);
     m_toolSettingsButton->show();
     m_toolSettingsButton->raise();
@@ -924,7 +931,8 @@ void CaptureOverlay::updateToolSettingsDrawerPosition()
 
     int dx = monitorRect.left();
     int dy = m_toolSettingsButton->y() - 26;
-    dy = qBound(5, dy, height() - m_toolSettingsDrawer->height() - 5);
+    const int drawerMaxY = qMax(monitorRect.top() + 5, monitorRect.bottom() + 1 - m_toolSettingsDrawer->height() - 5);
+    dy = qBound(monitorRect.top() + 5, dy, drawerMaxY);
     m_toolSettingsDrawer->move(dx, dy);
     m_toolSettingsDrawer->raise();
     m_toolSettingsButton->raise();
@@ -936,7 +944,12 @@ void CaptureOverlay::setToolSettingsDrawerVisible(bool visible)
         return;
 
     QRect selRect = normalizedSelectionRect();
-    QRect monitorRect = monitorRectAt(selRect.center());
+    QRect monitorRect = m_selectionAnchorScreenRect.isValid()
+        ? m_selectionAnchorScreenRect
+        : monitorRectAt(selRect.center());
+    if (monitorRect.isEmpty())
+        monitorRect = rect();
+    monitorRect = monitorRect.intersected(rect());
     if (monitorRect.isEmpty())
         monitorRect = rect();
 
@@ -945,14 +958,17 @@ void CaptureOverlay::setToolSettingsDrawerVisible(bool visible)
     const int drawerH = m_toolSettingsDrawer->height();
     const int drawerVisibleX = monitorRect.left();
     const int drawerHiddenX = monitorRect.left() - drawerW;
-    const int buttonClosedX = qBound(0, monitorRect.left(), width() - m_toolSettingsButton->width());
-    const int buttonOpenX = qBound(0, monitorRect.left() + drawerW - 1, width() - m_toolSettingsButton->width());
-    const int drawerY = qBound(5,
+    const int buttonMaxX = qMax(monitorRect.left(), monitorRect.right() + 1 - m_toolSettingsButton->width());
+    const int buttonMaxY = qMax(monitorRect.top() + 32, monitorRect.bottom() - m_toolSettingsButton->height() - 32);
+    const int drawerMaxY = qMax(monitorRect.top() + 5, monitorRect.bottom() + 1 - drawerH - 5);
+    const int buttonClosedX = qBound(monitorRect.left(), monitorRect.left(), buttonMaxX);
+    const int buttonOpenX = qBound(monitorRect.left(), monitorRect.left() + drawerW - 1, buttonMaxX);
+    const int drawerY = qBound(monitorRect.top() + 5,
                                m_toolSettingsButton->y() - 26,
-                               height() - drawerH - 5);
+                               drawerMaxY);
     const int buttonY = qBound(monitorRect.top() + 32,
                                m_toolSettingsButton->y(),
-                               monitorRect.bottom() - m_toolSettingsButton->height() - 32);
+                               buttonMaxY);
 
     if (m_toolSettingsAnimation)
         m_toolSettingsAnimation->stop();
@@ -1189,6 +1205,7 @@ void CaptureOverlay::startCapture()
     m_selectionLocked = false;
     m_selectionStart = QPoint();
     m_selectionEnd = QPoint();
+    m_selectionAnchorScreenRect = QRect();
     m_eyedropperActive = false;
 
     if (m_textEdit) m_textEdit->hide();
@@ -1563,6 +1580,7 @@ void CaptureOverlay::mousePressEvent(QMouseEvent *event)
                 m_resizeMode = ResNewSelection;
                 m_selectionStart = event->pos();
                 m_selectionEnd = event->pos();
+                m_selectionAnchorScreenRect = monitorRectAt(event->pos());
                 hideToolbar();
                 if (m_annotationEngine) m_annotationEngine->clear();
                 update();
@@ -1591,6 +1609,7 @@ void CaptureOverlay::mousePressEvent(QMouseEvent *event)
             m_isSelecting = true;
             m_selectionStart = event->pos();
             m_selectionEnd = event->pos();
+            m_selectionAnchorScreenRect = monitorRectAt(event->pos());
             hideToolbar();
             update();
         }
@@ -1607,6 +1626,7 @@ void CaptureOverlay::mousePressEvent(QMouseEvent *event)
             m_isSelecting = false;
             m_selectionLocked = false;
             m_selectionStart = m_selectionEnd = QPoint();
+            m_selectionAnchorScreenRect = QRect();
             if (m_toolbar) m_toolbar->setSelectionLocked(false);
             hideToolbar();
             if (m_annotationEngine) m_annotationEngine->clear();
@@ -1820,6 +1840,7 @@ void CaptureOverlay::keyPressEvent(QKeyEvent *event)
             m_isSelecting = false;
             m_selectionLocked = false;
             m_selectionStart = m_selectionEnd = QPoint();
+            m_selectionAnchorScreenRect = QRect();
             if (m_toolbar) m_toolbar->setSelectionLocked(false);
             hideToolbar();
             if (m_annotationEngine) m_annotationEngine->clear();
@@ -1977,6 +1998,14 @@ void CaptureOverlay::showToolbar()
     if (!m_toolbar) return;
     QRect selRect = normalizedSelectionRect();
     int margin = 12;
+    QRect toolbarBounds = m_selectionAnchorScreenRect.isValid()
+        ? m_selectionAnchorScreenRect
+        : monitorRectAt(selRect.center());
+    if (!toolbarBounds.isValid())
+        toolbarBounds = rect();
+    toolbarBounds = toolbarBounds.intersected(rect()).adjusted(5, 5, -5, -5);
+    if (!toolbarBounds.isValid())
+        toolbarBounds = rect().adjusted(5, 5, -5, -5);
 
     m_toolbar->refreshTools();
 
@@ -1990,17 +2019,25 @@ void CaptureOverlay::showToolbar()
         int tx = selRect.center().x() - toolbarWidth / 2;
         int ty = selRect.bottom() + margin;
 
-        // Check screen bounds
-        if (tx < 5) tx = 5;
-        if (tx + toolbarWidth > width() - 5) tx = width() - toolbarWidth - 5;
-        if (ty + th > height() - 5) {
+        if (toolbarWidth <= toolbarBounds.width()) {
+            if (tx < toolbarBounds.left()) tx = toolbarBounds.left();
+            if (tx + toolbarWidth > toolbarBounds.right() + 1)
+                tx = toolbarBounds.right() + 1 - toolbarWidth;
+        } else {
+            tx = toolbarBounds.left();
+        }
+        if (ty + th > toolbarBounds.bottom() + 1) {
             // If it does not fit below, try above
             ty = selRect.top() - th - margin;
         }
-        if (ty < 5) {
+        if (ty < toolbarBounds.top()) {
             // If it also does not fit above, dock to bottom inside the frame
             ty = selRect.bottom() - th - 2;
         }
+        if (ty + th > toolbarBounds.bottom() + 1)
+            ty = toolbarBounds.bottom() + 1 - th;
+        if (ty < toolbarBounds.top())
+            ty = toolbarBounds.top();
 
         m_toolbar->setFixedWidth(toolbarWidth);
         m_toolbar->move(tx, ty);
@@ -2020,9 +2057,9 @@ void CaptureOverlay::showToolbar()
         int py = selRect.center().y() - ph / 2;
         bool dockedInside = false;
 
-        if (px + pw > width() - 5) {
+        if (px + pw > toolbarBounds.right() + 1) {
             int leftOutside = selRect.left() - margin - pw;
-            if (leftOutside >= 5) {
+            if (leftOutside >= toolbarBounds.left()) {
                 px = leftOutside;
             } else {
                 px = selRect.right() - pw - 2;
@@ -2032,19 +2069,19 @@ void CaptureOverlay::showToolbar()
 
         if (dockedInside && px < selRect.left() + 2)
             px = selRect.left() + 2;
-        if (px + pw > width() - 5)
-            px = width() - pw - 5;
-        if (px < 5)
-            px = 5;
+        if (px + pw > toolbarBounds.right() + 1)
+            px = toolbarBounds.right() + 1 - pw;
+        if (px < toolbarBounds.left())
+            px = toolbarBounds.left();
 
         if (dockedInside && py < selRect.top() + 2)
             py = selRect.top() + 2;
         if (dockedInside && py + ph > selRect.bottom() - 2)
             py = selRect.bottom() - ph - 2;
-        if (py < 5)
-            py = 5;
-        if (py + ph > height() - 5)
-            py = height() - ph - 5;
+        if (py < toolbarBounds.top())
+            py = toolbarBounds.top();
+        if (py + ph > toolbarBounds.bottom() + 1)
+            py = toolbarBounds.bottom() + 1 - ph;
 
         if (toolbarRect.isValid()) {
             auto panelRectAt = [&](int y) {
@@ -2053,7 +2090,7 @@ void CaptureOverlay::showToolbar()
             auto inBounds = [&](int y) {
                 if (dockedInside)
                     return y >= selRect.top() + 2 && y + ph <= selRect.bottom() - 2;
-                return y >= 5 && y + ph <= height() - 5;
+                return y >= toolbarBounds.top() && y + ph <= toolbarBounds.bottom() + 1;
             };
             auto tryY = [&](int candidate, int &outY) {
                 if (!inBounds(candidate))
@@ -2100,6 +2137,7 @@ void CaptureOverlay::finishCapture()
     hide();
     m_selectionComplete = false;
     m_isSelecting = false;
+    m_selectionAnchorScreenRect = QRect();
     hideToolbar();
     cancelTextEdit();
 
@@ -2127,6 +2165,7 @@ void CaptureOverlay::cancelCapture()
     hide();
     m_selectionComplete = false;
     m_isSelecting = false;
+    m_selectionAnchorScreenRect = QRect();
     hideToolbar();
     cancelTextEdit();
     emit captureCancelled();
@@ -2408,6 +2447,7 @@ void CaptureOverlay::selectMonitorAt(const QPoint &pos)
     m_resizeMode = ResNone;
     m_selectionStart = monitorRect.topLeft();
     m_selectionEnd = monitorRect.bottomRight();
+    m_selectionAnchorScreenRect = monitorRect;
 
     if (m_captureMode == ModeRecording) {
         finishCapture();

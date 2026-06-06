@@ -72,6 +72,7 @@ private:
     QPixmap m_screenSnapshot;
     QPoint m_selectionStart;
     QPoint m_selectionEnd;
+    QRect m_selectionAnchorScreenRect;
     bool m_isSelecting;
     bool m_selectionComplete;
     bool m_ignoreNextMouseRelease;
