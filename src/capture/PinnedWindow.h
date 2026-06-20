@@ -41,6 +41,15 @@ private:
 
     void updateWindowSize();
 
+    // Logical (device-independent) size of the source image. The pixmap is
+    // captured at full physical resolution and tagged with the target screen's
+    // devicePixelRatio, so this is the size it should occupy on screen at 100%.
+    QSizeF baseSize() const {
+        qreal dpr = m_pixmap.devicePixelRatio();
+        if (dpr <= 0.0) dpr = 1.0;
+        return QSizeF(m_pixmap.width() / dpr, m_pixmap.height() / dpr);
+    }
+
     // Resizing
     enum ResizeHandle { NoHandle, TopLeft, TopRight, BottomLeft, BottomRight };
     ResizeHandle m_resizeHandle;

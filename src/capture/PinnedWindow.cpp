@@ -10,6 +10,7 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QGuiApplication>
+#include <QScreen>
 #include <QFileDialog>
 #include <QDebug>
 #include "../core/TranslationManager.h"
@@ -34,6 +35,17 @@ PinnedWindow::PinnedWindow(const QPixmap &pixmap, const QPoint &screenPos, QWidg
     setMouseTracking(true);
     setCursor(Qt::SizeAllCursor);
 
+    // The pixmap holds the selection at full physical resolution. Tag it with the
+    // devicePixelRatio of the screen it appears on so it is displayed at the same
+    // size it was captured (otherwise it renders DPR-times too large on HiDPI).
+    qreal dpr = 1.0;
+    if (QScreen *screen = QGuiApplication::screenAt(screenPos))
+        dpr = screen->devicePixelRatio();
+    else if (QScreen *screen = QGuiApplication::primaryScreen())
+        dpr = screen->devicePixelRatio();
+    if (dpr > 0.0)
+        m_pixmap.setDevicePixelRatio(dpr);
+
     updateWindowSize();
     move(screenPos);
     show();
@@ -48,8 +60,9 @@ PinnedWindow::~PinnedWindow()
 
 void PinnedWindow::updateWindowSize()
 {
-    int w = qMax(1, static_cast<int>(m_pixmap.width() * m_scale));
-    int h = qMax(1, static_cast<int>(m_pixmap.height() * m_scale));
+    const QSizeF base = baseSize();
+    int w = qMax(1, static_cast<int>(base.width() * m_scale));
+    int h = qMax(1, static_cast<int>(base.height() * m_scale));
     setFixedSize(w + 2, h + BAR_HEIGHT + 2);
 }
 
@@ -97,8 +110,9 @@ void PinnedWindow::paintEvent(QPaintEvent *event)
     painter.fillRect(rect(), Qt::transparent);
 
     // Draw original image at scaled size
-    int drawW = qMax(1, static_cast<int>(m_pixmap.width() * m_scale));
-    int drawH = qMax(1, static_cast<int>(m_pixmap.height() * m_scale));
+    const QSizeF base = baseSize();
+    int drawW = qMax(1, static_cast<int>(base.width() * m_scale));
+    int drawH = qMax(1, static_cast<int>(base.height() * m_scale));
     painter.drawPixmap(1, BAR_HEIGHT + 1, drawW, drawH, m_pixmap);
 
     // Top bar
@@ -132,7 +146,7 @@ void PinnedWindow::paintEvent(QPaintEvent *event)
 
         // Size info
         QString sizeText = QString("%1x%2 (%3%)")
-            .arg(m_pixmap.width()).arg(m_pixmap.height())
+            .arg(qRound(base.width())).arg(qRound(base.height()))
             .arg(qRound(m_scale * 100));
         painter.setPen(QColor(180, 180, 180));
         QFont f("Segoe UI", 9);
@@ -208,15 +222,16 @@ void PinnedWindow::mouseMoveEvent(QMouseEvent *event)
                 return;
         }
 
-        // Keep aspect ratio
-        double aspect = static_cast<double>(m_pixmap.width()) / m_pixmap.height();
+        // Keep aspect ratio (against the logical base size)
+        const QSizeF base = baseSize();
+        double aspect = base.width() / base.height();
         double avgDim = (newW + newH) / 2.0;
         newW = avgDim;
         newH = avgDim / aspect;
 
         // Scale limits
-        double newScaleW = newW / m_pixmap.width();
-        double newScaleH = newH / m_pixmap.height();
+        double newScaleW = newW / base.width();
+        double newScaleH = newH / base.height();
         m_scale = qBound(MIN_SCALE, qMin(newScaleW, newScaleH), MAX_SCALE);
 
         updateWindowSize();
