@@ -37,6 +37,7 @@
 #include <QEasingCurve>
 #include <QDebug>
 #include <QDir>
+#include <QHash>
 #include <QPointer>
 #include <QRegularExpression>
 #include <QCoreApplication>
@@ -49,6 +50,25 @@
 #include <mmdeviceapi.h>
 #include <functiondiscoverykeys_devpkey.h>
 #include <propsys.h>
+
+namespace {
+// Collect each monitor's true physical bounds (rcMonitor) keyed by device name,
+// which matches QScreen::name() on Windows. Used to bridge Qt logical geometry to
+// physical pixels per monitor (mixed-DPI multi-monitor support).
+BOOL CALLBACK collectMonitorRects(HMONITOR hMon, HDC, LPRECT, LPARAM lparam)
+{
+    auto *map = reinterpret_cast<QHash<QString, QRect> *>(lparam);
+    MONITORINFOEXW info;
+    info.cbSize = sizeof(MONITORINFOEXW);
+    if (GetMonitorInfoW(hMon, &info)) {
+        map->insert(QString::fromWCharArray(info.szDevice),
+                    QRect(info.rcMonitor.left, info.rcMonitor.top,
+                          info.rcMonitor.right - info.rcMonitor.left,
+                          info.rcMonitor.bottom - info.rcMonitor.top));
+    }
+    return TRUE;
+}
+}
 #endif
 
 namespace {
@@ -1271,6 +1291,8 @@ void CaptureOverlay::performCapture()
     // Pass screenshot to annotation engine (for blur effect)
     if (m_annotationEngine) {
         m_annotationEngine->setScreenSnapshot(m_screenSnapshot);
+        // ponytail: blur uses the primary monitor's scale; blur on a
+        // differently-scaled monitor is slightly off. Per-monitor scale here if it matters.
         m_annotationEngine->setSnapshotScale(m_dpr);
     }
 
@@ -1305,9 +1327,28 @@ void CaptureOverlay::captureAllScreens()
     QScreen *primary = QGuiApplication::primaryScreen();
     m_dpr = primary ? primary->devicePixelRatio() : 1.0;
 
+    // Build the per-monitor mapping table. Each monitor's true physical bounds
+    // (rcMonitor) is bridged to its Qt logical geometry via the device name, so
+    // coordinate math is correct even when monitors run different display scales.
+    QHash<QString, QRect> physByName;
+    EnumDisplayMonitors(nullptr, nullptr, collectMonitorRects,
+                        reinterpret_cast<LPARAM>(&physByName));
+    m_monitors.clear();
+    QRect logicalUnion;
+    for (QScreen *s : QGuiApplication::screens()) {
+        MonitorMap m;
+        m.logicalGeo = s->geometry();
+        m.dpr = s->devicePixelRatio();
+        m.physicalGeo = physByName.value(s->name());
+        if (!m.physicalGeo.isValid())
+            m.physicalGeo = QRect(qRound(m.logicalGeo.x() * m.dpr), qRound(m.logicalGeo.y() * m.dpr),
+                                  qRound(m.logicalGeo.width() * m.dpr), qRound(m.logicalGeo.height() * m.dpr));
+        m_monitors.append(m);
+        logicalUnion = logicalUnion.united(m.logicalGeo);
+    }
+
     if (vw <= 0 || vh <= 0) {
         if (primary) {
-            m_dpr = primary->devicePixelRatio();
             m_virtualDesktopRect = primary->geometry();   // logical
             m_physicalVirtualDesktopTopLeft = QPoint(
                 qRound(m_virtualDesktopRect.x() * m_dpr),
@@ -1318,12 +1359,11 @@ void CaptureOverlay::captureAllScreens()
         return;
     }
 
-    // GetSystemMetrics returns physical pixels (the process is per-monitor DPI
-    // aware), but the overlay window and all selection math run in logical
-    // pixels. Keep the snapshot at full physical resolution and store the
-    // virtual desktop in logical coordinates, bridged by m_dpr.
-    m_virtualDesktopRect = QRect(qRound(vx / m_dpr), qRound(vy / m_dpr),
-                                 qRound(vw / m_dpr), qRound(vh / m_dpr));
+    // The overlay window and all selection math run in Qt logical pixels; use the
+    // true logical union of the screens (not vw/m_dpr, which is wrong in mixed DPI).
+    m_virtualDesktopRect = logicalUnion.isValid()
+        ? logicalUnion
+        : QRect(qRound(vx / m_dpr), qRound(vy / m_dpr), qRound(vw / m_dpr), qRound(vh / m_dpr));
 
     HDC hScreen = GetDC(nullptr);
     if (!hScreen) return;
@@ -1356,13 +1396,19 @@ void CaptureOverlay::captureAllScreens()
     ReleaseDC(nullptr, hScreen);
 #else
     QRect vr;
+    QRect logicalUnion;
     auto screens = QGuiApplication::screens();
+    m_monitors.clear();
+    m_dpr = QGuiApplication::primaryScreen() ? QGuiApplication::primaryScreen()->devicePixelRatio() : 1.0;
     for (auto *s : screens) {
         auto g = s->geometry();
         qreal d = s->devicePixelRatio();
-        vr = vr.united(QRect(g.x()*d, g.y()*d, g.width()*d, g.height()*d));
+        const QRect phys(g.x()*d, g.y()*d, g.width()*d, g.height()*d);
+        vr = vr.united(phys);
+        logicalUnion = logicalUnion.united(g);
+        m_monitors.append({g, phys, d});
     }
-    m_virtualDesktopRect = vr;
+    m_virtualDesktopRect = logicalUnion;
     m_physicalVirtualDesktopTopLeft = vr.topLeft();
     m_screenSnapshot = QPixmap(vr.size());
     m_screenSnapshot.setDevicePixelRatio(1.0);
@@ -1378,13 +1424,66 @@ void CaptureOverlay::captureAllScreens()
 #endif
 }
 
+const CaptureOverlay::MonitorMap *CaptureOverlay::monitorForGlobalLogical(const QPoint &g) const
+{
+    const MonitorMap *best = nullptr;
+    qint64 bestDist = 0;
+    for (const MonitorMap &m : m_monitors) {
+        if (m.logicalGeo.contains(g))
+            return &m;
+        const QPoint c = m.logicalGeo.center();
+        const qint64 d = qint64(c.x() - g.x()) * (c.x() - g.x())
+                       + qint64(c.y() - g.y()) * (c.y() - g.y());
+        if (!best || d < bestDist) { best = &m; bestDist = d; }
+    }
+    return best;
+}
+
+QPoint CaptureOverlay::logicalGlobalToPhysical(const QPoint &g) const
+{
+    if (const MonitorMap *m = monitorForGlobalLogical(g)) {
+        return QPoint(m->physicalGeo.x() + qRound((g.x() - m->logicalGeo.x()) * m->dpr),
+                      m->physicalGeo.y() + qRound((g.y() - m->logicalGeo.y()) * m->dpr));
+    }
+    // Fallback (no monitors enumerated): primary scale around the desktop origin.
+    return QPoint(m_physicalVirtualDesktopTopLeft.x() + qRound((g.x() - m_virtualDesktopRect.x()) * m_dpr),
+                  m_physicalVirtualDesktopTopLeft.y() + qRound((g.y() - m_virtualDesktopRect.y()) * m_dpr));
+}
+
+QRect CaptureOverlay::logicalToSnapshot(const QRect &r) const
+{
+    // Scale the whole rect by the monitor of its top-left so a within-monitor
+    // selection keeps one consistent scale (no drift at shared monitor edges).
+    const QPoint g = r.topLeft() + m_virtualDesktopRect.topLeft();
+    qreal dpr = m_dpr;
+    if (const MonitorMap *m = monitorForGlobalLogical(g))
+        dpr = m->dpr;
+    const QPoint tl = logicalGlobalToPhysical(g) - m_physicalVirtualDesktopTopLeft;
+    return QRect(tl, QSize(qMax(0, qRound(r.width() * dpr)), qMax(0, qRound(r.height() * dpr))));
+}
+
+QPoint CaptureOverlay::logicalToSnapshot(const QPoint &p) const
+{
+    return logicalGlobalToPhysical(p + m_virtualDesktopRect.topLeft()) - m_physicalVirtualDesktopTopLeft;
+}
+
 void CaptureOverlay::paintEvent(QPaintEvent *event)
 {
     Q_UNUSED(event);
     QPainter painter(this);
     painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
 
-    painter.drawPixmap(0, 0, width(), height(), m_screenSnapshot);
+    // Draw each monitor's physical snapshot region into its logical sub-rect, so
+    // the aspect/scale is correct on mixed-DPI multi-monitor setups.
+    if (m_monitors.isEmpty()) {
+        painter.drawPixmap(0, 0, width(), height(), m_screenSnapshot);
+    } else {
+        for (const MonitorMap &m : m_monitors) {
+            const QRect dest = m.logicalGeo.translated(-m_virtualDesktopRect.topLeft());
+            const QRect src = m.physicalGeo.translated(-m_physicalVirtualDesktopTopLeft);
+            painter.drawPixmap(dest, m_screenSnapshot, src);
+        }
+    }
     painter.fillRect(rect(), QColor(0, 0, 0, m_overlayOpacity));
 
     QRect selRect = normalizedSelectionRect();
@@ -1966,8 +2065,11 @@ QPixmap CaptureOverlay::getSelectedPixmap()
         QPainter p(&result);
         p.setRenderHint(QPainter::Antialiasing, true);
         // Annotations are authored in logical coordinates; scale them up to the
-        // physical-resolution result.
-        p.scale(m_dpr, m_dpr);
+        // physical-resolution result using the selection monitor's scale.
+        qreal dpr = m_dpr;
+        if (const MonitorMap *m = monitorForGlobalLogical(selRect.topLeft() + m_virtualDesktopRect.topLeft()))
+            dpr = m->dpr;
+        p.scale(dpr, dpr);
         m_annotationEngine->render(&p, QPoint(0,0));
         p.end();
     }
@@ -2416,8 +2518,16 @@ QRect CaptureOverlay::normalizedSelectionRect() const
 
 QRect CaptureOverlay::selectedCaptureRect() const
 {
-    QRect captureRect = logicalToSnapshot(normalizedSelectionRect());
-    return captureRect.translated(m_physicalVirtualDesktopTopLeft);
+    // Absolute physical-pixel rect of the selection, scaled by its monitor's DPI.
+    // This is what the recorders BitBlt; it matches the screenshot crop exactly
+    // (logicalToSnapshot is the same rect minus the virtual-desktop physical origin).
+    const QRect sel = normalizedSelectionRect();
+    const QPoint g = sel.topLeft() + m_virtualDesktopRect.topLeft();
+    qreal dpr = m_dpr;
+    if (const MonitorMap *m = monitorForGlobalLogical(g))
+        dpr = m->dpr;
+    return QRect(logicalGlobalToPhysical(g),
+                 QSize(qMax(0, qRound(sel.width() * dpr)), qMax(0, qRound(sel.height() * dpr))));
 }
 
 QRect CaptureOverlay::selectedDisplayRect() const
@@ -2427,41 +2537,14 @@ QRect CaptureOverlay::selectedDisplayRect() const
 
 QRect CaptureOverlay::monitorRectAt(const QPoint &pos) const
 {
-#ifdef Q_OS_WIN
-    // pos is logical (widget-local); Win32 monitor APIs work in physical pixels.
-    POINT nativePoint = {
-        (LONG)qRound((pos.x() + m_virtualDesktopRect.x()) * m_dpr),
-        (LONG)qRound((pos.y() + m_virtualDesktopRect.y()) * m_dpr)
-    };
-    HMONITOR monitor = MonitorFromPoint(nativePoint, MONITOR_DEFAULTTONULL);
-    if (!monitor) return QRect();
-
-    MONITORINFO info = {};
-    info.cbSize = sizeof(info);
-    if (!GetMonitorInfoW(monitor, &info)) return QRect();
-
-    // rcMonitor is physical; return a logical, widget-local rect.
-    return QRect(
-        qRound(info.rcMonitor.left / m_dpr) - m_virtualDesktopRect.x(),
-        qRound(info.rcMonitor.top / m_dpr) - m_virtualDesktopRect.y(),
-        qRound((info.rcMonitor.right - info.rcMonitor.left) / m_dpr),
-        qRound((info.rcMonitor.bottom - info.rcMonitor.top) / m_dpr)
-    ).intersected(rect());
-#else
-    for (QScreen *screen : QGuiApplication::screens()) {
-        QRect geometry = screen->geometry();
-        qreal dpr = screen->devicePixelRatio();
-        QRect localRect(
-            qRound(geometry.x() * dpr) - m_virtualDesktopRect.x(),
-            qRound(geometry.y() * dpr) - m_virtualDesktopRect.y(),
-            qRound(geometry.width() * dpr),
-            qRound(geometry.height() * dpr)
-        );
-        if (localRect.contains(pos))
-            return localRect.intersected(rect());
+    // pos is overlay-local logical; map to global logical and return the containing
+    // monitor's logical geometry back in overlay-local coords.
+    const QPoint g = pos + m_virtualDesktopRect.topLeft();
+    for (const MonitorMap &m : m_monitors) {
+        if (m.logicalGeo.contains(g))
+            return m.logicalGeo.translated(-m_virtualDesktopRect.topLeft()).intersected(rect());
     }
     return QRect();
-#endif
 }
 
 void CaptureOverlay::selectMonitorAt(const QPoint &pos)
