@@ -7,7 +7,6 @@
 #include <QRect>
 #include <QTimer>
 #include <QList>
-#include <QVector>
 #include <QTextEdit>
 #include <QPointer>
 
@@ -84,28 +83,23 @@ private:
 
     QRect m_virtualDesktopRect;
     QPoint m_physicalVirtualDesktopTopLeft;
-    // Device-pixel ratio of the primary monitor. Only used for primary-relative
-    // fallbacks and the annotation blur scale; per-monitor mapping uses m_monitors.
+    // Device-pixel ratio bridging the overlay's logical coordinate system
+    // (window geometry, mouse, selection) to the physical-pixel m_screenSnapshot.
     qreal m_dpr = 1.0;
-
-    // Per-monitor mapping so coordinates work on mixed-DPI multi-monitor setups
-    // (a single global scale is wrong when monitors run different display scales).
-    struct MonitorMap {
-        QRect logicalGeo;   // Qt logical geometry (QScreen::geometry)
-        QRect physicalGeo;  // absolute physical pixels (Win32 rcMonitor)
-        qreal dpr = 1.0;
-    };
-    QVector<MonitorMap> m_monitors;
-
-    // Monitor whose logical geometry contains g, else the nearest (for off-desktop
-    // points and exclusive bottom-right corners). Null only if m_monitors is empty.
-    const MonitorMap *monitorForGlobalLogical(const QPoint &g) const;
-    // Map a global Qt-logical point to an absolute physical-pixel point, using the
-    // scale of the monitor that contains it.
-    QPoint logicalGlobalToPhysical(const QPoint &g) const;
-    // Overlay-local logical -> physical-pixel offset inside m_screenSnapshot.
-    QRect logicalToSnapshot(const QRect &r) const;
-    QPoint logicalToSnapshot(const QPoint &p) const;
+    QRect logicalToSnapshot(const QRect &r) const {
+        const qreal sx = width() > 0 ? (m_screenSnapshot.width() / static_cast<qreal>(width())) : m_dpr;
+        const qreal sy = height() > 0 ? (m_screenSnapshot.height() / static_cast<qreal>(height())) : m_dpr;
+        const int x1 = qRound(r.x() * sx);
+        const int y1 = qRound(r.y() * sy);
+        const int x2 = qRound((r.x() + r.width()) * sx);
+        const int y2 = qRound((r.y() + r.height()) * sy);
+        return QRect(x1, y1, qMax(0, x2 - x1), qMax(0, y2 - y1));
+    }
+    QPoint logicalToSnapshot(const QPoint &p) const {
+        const qreal sx = width() > 0 ? (m_screenSnapshot.width() / static_cast<qreal>(width())) : m_dpr;
+        const qreal sy = height() > 0 ? (m_screenSnapshot.height() / static_cast<qreal>(height())) : m_dpr;
+        return QPoint(qRound(p.x() * sx), qRound(p.y() * sy));
+    }
 
     AnnotationToolbar *m_toolbar;
     QWidget *m_actionPanel;
