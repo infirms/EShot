@@ -23,12 +23,12 @@ public:
     ~ScreenRecorder();
 
     bool isRecording() const { return m_recording; }
-    QRect captureRect() const { return m_captureRect; }
+    QRect captureRect() const { return m_displayRect.isValid() ? m_displayRect : m_captureRect; }
     int frameCount() const { return m_frameCount; }
     int maxSeconds() const { return m_maxSeconds; }
 
     void start(const QRect &captureRect, int fps, int maxSeconds, int loopCount,
-               const QString &outputPath);
+               const QString &outputPath, const QRect &displayRect = QRect());
     void stop();
     void cancel();
 
@@ -57,6 +57,7 @@ private:
     QTimer *m_frameTimer = nullptr;
     QTimer *m_countdownTimer = nullptr;
     QRect m_captureRect;
+    QRect m_displayRect;
     QSize m_outputSize;
     int m_fps = 10;
     int m_maxSeconds = 0;

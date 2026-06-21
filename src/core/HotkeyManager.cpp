@@ -41,6 +41,16 @@ HotkeyManager::HotkeyManager(QObject *parent) : QObject(parent)
     registerHotkey(HOTKEY_RECORDING_PAUSE, m_recordingPauseModifiers, m_recordingPauseVirtualKey);
     registerHotkey(HOTKEY_RECORDING_STOP, m_recordingStopModifiers, m_recordingStopVirtualKey);
     registerHotkey(HOTKEY_RECORDING_CANCEL, m_recordingCancelModifiers, m_recordingCancelVirtualKey);
+
+    m_instantCaptureModifiers = static_cast<UINT>(s.value("instantCaptureHotkeyModifiers", 0).toUInt());
+    m_instantCaptureVirtualKey = static_cast<UINT>(s.value("instantCaptureHotkeyVKey", 0).toUInt());
+    m_gifCaptureModifiers = static_cast<UINT>(s.value("gifCaptureHotkeyModifiers", 0).toUInt());
+    m_gifCaptureVirtualKey = static_cast<UINT>(s.value("gifCaptureHotkeyVKey", 0).toUInt());
+    m_videoCaptureModifiers = static_cast<UINT>(s.value("videoCaptureHotkeyModifiers", 0).toUInt());
+    m_videoCaptureVirtualKey = static_cast<UINT>(s.value("videoCaptureHotkeyVKey", 0).toUInt());
+    registerHotkey(HOTKEY_INSTANT_CAPTURE, m_instantCaptureModifiers, m_instantCaptureVirtualKey);
+    registerHotkey(HOTKEY_GIF_CAPTURE, m_gifCaptureModifiers, m_gifCaptureVirtualKey);
+    registerHotkey(HOTKEY_VIDEO_CAPTURE, m_videoCaptureModifiers, m_videoCaptureVirtualKey);
 }
 
 HotkeyManager::~HotkeyManager()
@@ -51,8 +61,11 @@ HotkeyManager::~HotkeyManager()
 
 bool HotkeyManager::registerHotkey(int id, UINT modifiers, UINT virtualKey)
 {
+    if (virtualKey == 0)
+        return true;
     if (RegisterHotKey(nullptr, id, modifiers, virtualKey)) {
-        m_registeredHotkeys.append(id);
+        if (!m_registeredHotkeys.contains(id))
+            m_registeredHotkeys.append(id);
         return true;
     }
     return false;
@@ -178,6 +191,44 @@ bool HotkeyManager::reRegisterRecordingHotkeys(UINT pauseModifiers, UINT pauseVi
     return ok;
 }
 
+bool HotkeyManager::reRegisterActionHotkeys(UINT instantModifiers, UINT instantVirtualKey,
+                                            UINT gifModifiers, UINT gifVirtualKey,
+                                            UINT videoModifiers, UINT videoVirtualKey)
+{
+    const UINT oldInstantModifiers = m_instantCaptureModifiers;
+    const UINT oldInstantVirtualKey = m_instantCaptureVirtualKey;
+    const UINT oldGifModifiers = m_gifCaptureModifiers;
+    const UINT oldGifVirtualKey = m_gifCaptureVirtualKey;
+    const UINT oldVideoModifiers = m_videoCaptureModifiers;
+    const UINT oldVideoVirtualKey = m_videoCaptureVirtualKey;
+
+    unregisterHotkey(HOTKEY_INSTANT_CAPTURE);
+    unregisterHotkey(HOTKEY_GIF_CAPTURE);
+    unregisterHotkey(HOTKEY_VIDEO_CAPTURE);
+
+    bool ok = true;
+    ok = registerHotkey(HOTKEY_INSTANT_CAPTURE, instantModifiers, instantVirtualKey) && ok;
+    ok = registerHotkey(HOTKEY_GIF_CAPTURE, gifModifiers, gifVirtualKey) && ok;
+    ok = registerHotkey(HOTKEY_VIDEO_CAPTURE, videoModifiers, videoVirtualKey) && ok;
+
+    if (ok) {
+        m_instantCaptureModifiers = instantModifiers;
+        m_instantCaptureVirtualKey = instantVirtualKey;
+        m_gifCaptureModifiers = gifModifiers;
+        m_gifCaptureVirtualKey = gifVirtualKey;
+        m_videoCaptureModifiers = videoModifiers;
+        m_videoCaptureVirtualKey = videoVirtualKey;
+    } else {
+        unregisterHotkey(HOTKEY_INSTANT_CAPTURE);
+        unregisterHotkey(HOTKEY_GIF_CAPTURE);
+        unregisterHotkey(HOTKEY_VIDEO_CAPTURE);
+        registerHotkey(HOTKEY_INSTANT_CAPTURE, oldInstantModifiers, oldInstantVirtualKey);
+        registerHotkey(HOTKEY_GIF_CAPTURE, oldGifModifiers, oldGifVirtualKey);
+        registerHotkey(HOTKEY_VIDEO_CAPTURE, oldVideoModifiers, oldVideoVirtualKey);
+    }
+    return ok;
+}
+
 bool HotkeyManager::nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result)
 {
     Q_UNUSED(result);
@@ -190,6 +241,9 @@ bool HotkeyManager::nativeEventFilter(const QByteArray &eventType, void *message
             else if (id == HOTKEY_RECORDING_PAUSE) emit recordingPauseRequested();
             else if (id == HOTKEY_RECORDING_STOP) emit recordingStopRequested();
             else if (id == HOTKEY_RECORDING_CANCEL) emit recordingCancelRequested();
+            else if (id == HOTKEY_INSTANT_CAPTURE) emit instantCaptureRequested();
+            else if (id == HOTKEY_GIF_CAPTURE) emit gifCaptureRequested();
+            else if (id == HOTKEY_VIDEO_CAPTURE) emit videoCaptureRequested();
             return true;
         }
     }

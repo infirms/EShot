@@ -249,6 +249,7 @@ CaptureOverlay::CaptureOverlay(QWidget *parent)
     , m_crosshairStyle("dash")
     , m_copyAfterCapture(false)
     , m_closeAfterCopy(false)
+    , m_instantCopyAfterSelection(false)
     , m_resizeMode(ResNone)
     , m_foregroundHwnd(nullptr)
     , m_isDraggingAnnotation(false)
@@ -1233,6 +1234,7 @@ void CaptureOverlay::startCapture()
     m_crosshairStyle = s.value("crosshairStyle", "dash").toString();
     m_copyAfterCapture = s.value("copyAfterCapture", true).toBool();
     m_closeAfterCopy = s.value("closeAfterCopy", true).toBool();
+    m_instantCopyAfterSelection = s.value("instantCopyAfterSelection", false).toBool();
 
     // Load blur strength setting
     int blurIntensity = s.value("blurIntensity", 16).toInt();
@@ -1247,6 +1249,12 @@ void CaptureOverlay::startCapture()
         m_captureDelayTimer->start(delayMs);
     else
         performCapture();
+}
+
+void CaptureOverlay::startInstantCapture()
+{
+    startCapture();
+    m_instantCopyAfterSelection = true;
 }
 
 void CaptureOverlay::startCaptureForRecording()
@@ -1292,6 +1300,7 @@ void CaptureOverlay::captureAllScreens()
     int vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
     int vw = GetSystemMetrics(SM_CXVIRTUALSCREEN);
     int vh = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+    m_physicalVirtualDesktopTopLeft = QPoint(vx, vy);
 
     QScreen *primary = QGuiApplication::primaryScreen();
     m_dpr = primary ? primary->devicePixelRatio() : 1.0;
@@ -1300,6 +1309,9 @@ void CaptureOverlay::captureAllScreens()
         if (primary) {
             m_dpr = primary->devicePixelRatio();
             m_virtualDesktopRect = primary->geometry();   // logical
+            m_physicalVirtualDesktopTopLeft = QPoint(
+                qRound(m_virtualDesktopRect.x() * m_dpr),
+                qRound(m_virtualDesktopRect.y() * m_dpr));
             m_screenSnapshot = primary->grabWindow(0);     // physical pixels
             m_screenSnapshot.setDevicePixelRatio(1.0);
         }
@@ -1351,6 +1363,7 @@ void CaptureOverlay::captureAllScreens()
         vr = vr.united(QRect(g.x()*d, g.y()*d, g.width()*d, g.height()*d));
     }
     m_virtualDesktopRect = vr;
+    m_physicalVirtualDesktopTopLeft = vr.topLeft();
     m_screenSnapshot = QPixmap(vr.size());
     m_screenSnapshot.setDevicePixelRatio(1.0);
     m_screenSnapshot.fill(Qt::black);
@@ -1780,6 +1793,13 @@ void CaptureOverlay::mouseReleaseEvent(QMouseEvent *event)
                     return;
                 }
 
+                if (m_instantCopyAfterSelection) {
+                    onCopyToClipboard();
+                    if (isVisible())
+                        finishCapture();
+                    return;
+                }
+
                 showToolbar();
                 updateUndoRedoState();
             }
@@ -2140,7 +2160,8 @@ void CaptureOverlay::finishCapture()
 
     if (m_captureMode == ModeRecording) {
         m_captureMode = ModeNormal;
-        if (!selRect.isEmpty()) emit regionSelected(selRect);
+        if (!selRect.isEmpty())
+            emit regionSelected(selectedCaptureRect(), selectedDisplayRect());
         return;
     }
 
@@ -2365,30 +2386,43 @@ void CaptureOverlay::onGifRequested()
 {
     QRect selRect = normalizedSelectionRect();
     if (selRect.isEmpty()) return;
-    QRect screenRect = selRect.translated(m_virtualDesktopRect.topLeft());
+    QRect captureRect = selectedCaptureRect();
+    QRect displayRect = selectedDisplayRect();
     hide();
     m_selectionComplete = false;
     m_isSelecting = false;
     if (m_toolbar) m_toolbar->hide();
     if (m_actionPanel) m_actionPanel->hide();
-    emit gifCaptureRequested(screenRect);
+    emit gifCaptureRequested(captureRect, displayRect);
 }
 
 void CaptureOverlay::onVideoRequested()
 {
     QRect selRect = normalizedSelectionRect();
     if (selRect.isEmpty()) return;
-    QRect screenRect = selRect.translated(m_virtualDesktopRect.topLeft());
+    QRect captureRect = selectedCaptureRect();
+    QRect displayRect = selectedDisplayRect();
     hide();
     m_selectionComplete = false;
     m_isSelecting = false;
     hideToolbar();
-    emit videoCaptureRequested(screenRect);
+    emit videoCaptureRequested(captureRect, displayRect);
 }
 
 QRect CaptureOverlay::normalizedSelectionRect() const
 {
     return QRect(m_selectionStart, m_selectionEnd).normalized();
+}
+
+QRect CaptureOverlay::selectedCaptureRect() const
+{
+    QRect captureRect = logicalToSnapshot(normalizedSelectionRect());
+    return captureRect.translated(m_physicalVirtualDesktopTopLeft);
+}
+
+QRect CaptureOverlay::selectedDisplayRect() const
+{
+    return normalizedSelectionRect().translated(m_virtualDesktopRect.topLeft());
 }
 
 QRect CaptureOverlay::monitorRectAt(const QPoint &pos) const
@@ -2489,7 +2523,11 @@ void CaptureOverlay::onSave()
     QSettings s("EShot", "EShot");
     QString cliFullPath = s.value("cliSaveFullPath").toString();
     s.remove("cliSaveFullPath");
-    QString path = s.value("savePath", defaultSaveDirectory()).toString();
+    QString path = s.contains("screenshotSavePath")
+        ? s.value("screenshotSavePath").toString().trimmed()
+        : QDir(defaultSaveDirectory()).filePath(QStringLiteral("Screenshots"));
+    if (path.isEmpty())
+        path = s.value("savePath", defaultSaveDirectory()).toString();
     if (path.trimmed().isEmpty())
         path = defaultSaveDirectory();
     QString format = s.value("imageFormat", "PNG").toString();

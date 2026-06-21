@@ -60,6 +60,9 @@ private:
 
     // General
     QLineEdit *m_savePathEdit = nullptr;
+    QLineEdit *m_screenshotPathEdit = nullptr;
+    QLineEdit *m_gifPathEdit = nullptr;
+    QLineEdit *m_videoPathEdit = nullptr;
     QLineEdit *m_filenamePatternEdit = nullptr;
     QLabel *m_patternPreviewLabel = nullptr;
     QCheckBox *m_autoStartCheck = nullptr;
@@ -80,6 +83,7 @@ private:
     QSpinBox *m_delaySpin = nullptr;
     QCheckBox *m_copyAfterCaptureCheck = nullptr;
     QCheckBox *m_closeAfterCopyCheck = nullptr;
+    QCheckBox *m_instantCopyAfterSelectionCheck = nullptr;
 
     // Appearance
     QCheckBox *m_darkModeCheck = nullptr;
@@ -99,6 +103,9 @@ private:
     QKeySequenceEdit *m_recordingPauseHotkeyEdit = nullptr;
     QKeySequenceEdit *m_recordingStopHotkeyEdit = nullptr;
     QKeySequenceEdit *m_recordingCancelHotkeyEdit = nullptr;
+    QKeySequenceEdit *m_instantCaptureHotkeyEdit = nullptr;
+    QKeySequenceEdit *m_gifCaptureHotkeyEdit = nullptr;
+    QKeySequenceEdit *m_videoCaptureHotkeyEdit = nullptr;
     QMap<QString, QKeySequenceEdit*> m_overlayHotkeyEdits;
     QLabel *m_hotkeyStatusLabel = nullptr;
     QLabel *m_printScreenConflictLabel = nullptr;
@@ -108,6 +115,8 @@ private:
     QSpinBox *m_recordingFpsSpin = nullptr;
     QSpinBox *m_recordingMaxSecSpin = nullptr;
     QComboBox *m_recordingLoopCombo = nullptr;
+    QComboBox *m_gifSizePresetCombo = nullptr;
+    QSpinBox *m_recordingStartDelaySpin = nullptr;
     QSpinBox *m_videoFpsSpin = nullptr;
     QSpinBox *m_videoMaxSecSpin = nullptr;
     QSpinBox *m_videoCrfSpin = nullptr;

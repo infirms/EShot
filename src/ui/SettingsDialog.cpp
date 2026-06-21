@@ -275,6 +275,10 @@ bool SettingsDialog::keySequenceToWin32(const QKeySequence &seq, UINT &modifiers
 
 static QKeySequence win32ToKeySequence(UINT modifiers, UINT vkey)
 {
+    if (vkey == 0) {
+        Q_UNUSED(modifiers);
+        return QKeySequence();
+    }
     Qt::KeyboardModifiers qtMod = Qt::NoModifier;
 #ifdef Q_OS_WIN
     if (modifiers & MOD_SHIFT)   qtMod |= Qt::ShiftModifier;
@@ -458,7 +462,13 @@ void SettingsDialog::setupUI()
 QWidget* SettingsDialog::createGeneralTab()
 {
     QWidget *tab = new QWidget();
-    QVBoxLayout *layout = new QVBoxLayout(tab);
+    QVBoxLayout *outerLayout = new QVBoxLayout(tab);
+    outerLayout->setContentsMargins(0, 0, 0, 0);
+    QScrollArea *scroll = new QScrollArea(tab);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    QWidget *content = new QWidget(scroll);
+    QVBoxLayout *layout = new QVBoxLayout(content);
 
     // Language selection
     QGroupBox *langGroup = new QGroupBox(TranslationManager::language());
@@ -488,6 +498,37 @@ QWidget* SettingsDialog::createGeneralTab()
     pathLayout->addWidget(m_savePathEdit);
     pathLayout->addWidget(browseBtn);
     layout->addWidget(pathGroup);
+
+    QGroupBox *mediaPathGroup = new QGroupBox(uiLabel("Medya klasorleri", "Media folders"));
+    QFormLayout *mediaPathLayout = new QFormLayout(mediaPathGroup);
+    auto makePathRow = [this, mediaPathGroup](QLineEdit **editPtr, const QString &placeholder) {
+        QWidget *row = new QWidget(mediaPathGroup);
+        QHBoxLayout *rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(0, 0, 0, 0);
+        rowLayout->setSpacing(6);
+        *editPtr = new QLineEdit(row);
+        (*editPtr)->setPlaceholderText(placeholder);
+        QPushButton *browse = new QPushButton(TranslationManager::browse(), row);
+        browse->setFixedWidth(82);
+        connect(browse, &QPushButton::clicked, this, [this, editPtr]() {
+            QString start = (*editPtr)->text().trimmed();
+            if (start.isEmpty() && m_savePathEdit)
+                start = m_savePathEdit->text().trimmed();
+            QString dir = QFileDialog::getExistingDirectory(this, TranslationManager::saveDir(), start);
+            if (!dir.isEmpty())
+                (*editPtr)->setText(dir);
+        });
+        rowLayout->addWidget(*editPtr);
+        rowLayout->addWidget(browse);
+        return row;
+    };
+    mediaPathLayout->addRow(uiLabel("Ekran goruntuleri:", "Screenshots:"),
+                            makePathRow(&m_screenshotPathEdit, uiLabel("Bos birakilirsa varsayilan klasor kullanilir", "Leave empty to use the default folder")));
+    mediaPathLayout->addRow(QStringLiteral("GIF:"),
+                            makePathRow(&m_gifPathEdit, uiLabel("Bos birakilirsa varsayilan klasor kullanilir", "Leave empty to use the default folder")));
+    mediaPathLayout->addRow(uiLabel("Videolar:", "Videos:"),
+                            makePathRow(&m_videoPathEdit, uiLabel("Bos birakilirsa varsayilan klasor kullanilir", "Leave empty to use the default folder")));
+    layout->addWidget(mediaPathGroup);
 
     // Filename template
     QGroupBox *fnGroup = new QGroupBox(TranslationManager::filenamePattern());
@@ -572,6 +613,8 @@ QWidget* SettingsDialog::createGeneralTab()
     layout->addWidget(impExpGroup);
 
     layout->addStretch();
+    scroll->setWidget(content);
+    outerLayout->addWidget(scroll);
     return tab;
 }
 
@@ -624,7 +667,10 @@ QWidget* SettingsDialog::createCaptureTab()
     m_copyAfterCaptureCheck->hide();
     m_closeAfterCopyCheck = new QCheckBox(TranslationManager::closeAfterCopy());
     m_closeAfterCopyCheck->setToolTip(uiLabel("Kopyala komutundan sonra secim ekranini otomatik kapatir.", "Automatically closes the capture overlay after copying."));
+    m_instantCopyAfterSelectionCheck = new QCheckBox(uiLabel("Alan secimi bitince hemen kopyala", "Copy immediately after selecting a region"));
+    m_instantCopyAfterSelectionCheck->setToolTip(uiLabel("Varsayilan kapali. Aciksa alan secimini bitirdigin anda goruntu panoya kopyalanir.", "Off by default. When enabled, the image is copied as soon as you finish selecting a region."));
     capLayout->addRow(m_closeAfterCopyCheck);
+    capLayout->addRow(m_instantCopyAfterSelectionCheck);
     layout->addWidget(capGroup);
 
     layout->addStretch();
@@ -704,6 +750,20 @@ QWidget* SettingsDialog::createRecordingTab()
     m_recordingLoopCombo->addItem(QStringLiteral("10"), 10);
     m_recordingLoopCombo->setToolTip(uiLabel("GIF dosyasinin kac kez donguye girecegi.", "How many times the GIF should loop."));
     recForm->addRow(TranslationManager::recordingLoop(), m_recordingLoopCombo);
+
+    m_gifSizePresetCombo = new QComboBox();
+    m_gifSizePresetCombo->addItem(uiLabel("En dusuk boyut", "Smallest size"), 720);
+    m_gifSizePresetCombo->addItem(uiLabel("Dengeli", "Balanced"), 1280);
+    m_gifSizePresetCombo->addItem(uiLabel("En iyi kalite", "Best quality"), 1920);
+    m_gifSizePresetCombo->setToolTip(uiLabel("GIF'in uzun kenar sinirini belirler. Dusuk deger dosya boyutunu ciddi azaltir.", "Controls the GIF max side length. Lower values can greatly reduce file size."));
+    recForm->addRow(uiLabel("GIF boyut preset'i:", "GIF size preset:"), m_gifSizePresetCombo);
+
+    m_recordingStartDelaySpin = new QSpinBox();
+    m_recordingStartDelaySpin->setRange(0, 10);
+    m_recordingStartDelaySpin->setSuffix(QStringLiteral(" s"));
+    m_recordingStartDelaySpin->setSpecialValueText(TranslationManager::noDelay());
+    m_recordingStartDelaySpin->setToolTip(uiLabel("Alan secildikten sonra GIF/video kaydinin baslamadan once bekleyecegi sure.", "Delay after selecting the area before GIF/video recording starts."));
+    recForm->addRow(uiLabel("Baslangic gecikmesi:", "Start delay:"), m_recordingStartDelaySpin);
 
     layout->addWidget(recGroup);
 
@@ -1001,8 +1061,8 @@ QWidget* SettingsDialog::createHotkeyTab()
     });
     gl->addWidget(resetHkBtn);
 
-    QGroupBox *recordingGroup = new QGroupBox(TranslationManager::videoRecordingTitle());
-    QFormLayout *recordingHotkeyLayout = new QFormLayout(recordingGroup);
+    QGroupBox *actionGroup = new QGroupBox(uiLabel("Direkt yakalama kisayollari", "Direct capture hotkeys"));
+    QFormLayout *actionHotkeyLayout = new QFormLayout(actionGroup);
     auto makeRecordingHotkeyEdit = []() {
         auto *edit = new QKeySequenceEdit();
         edit->setMinimumHeight(32);
@@ -1018,6 +1078,19 @@ QWidget* SettingsDialog::createHotkeyTab()
         )");
         return edit;
     };
+    m_instantCaptureHotkeyEdit = makeRecordingHotkeyEdit();
+    m_gifCaptureHotkeyEdit = makeRecordingHotkeyEdit();
+    m_videoCaptureHotkeyEdit = makeRecordingHotkeyEdit();
+    m_instantCaptureHotkeyEdit->setToolTip(uiLabel("Bos birakilirsa kapali kalir. Alan secimi bitince otomatik kopyalar.", "Leave empty to disable. Copies automatically when region selection finishes."));
+    m_gifCaptureHotkeyEdit->setToolTip(uiLabel("Bos birakilirsa kapali kalir. Dogrudan GIF alan secimini acar.", "Leave empty to disable. Opens GIF area selection directly."));
+    m_videoCaptureHotkeyEdit->setToolTip(uiLabel("Bos birakilirsa kapali kalir. Dogrudan video alan secimini acar.", "Leave empty to disable. Opens video area selection directly."));
+    actionHotkeyLayout->addRow(uiLabel("Instant bolge:", "Instant region:"), m_instantCaptureHotkeyEdit);
+    actionHotkeyLayout->addRow(QStringLiteral("GIF:"), m_gifCaptureHotkeyEdit);
+    actionHotkeyLayout->addRow(uiLabel("Video:", "Video:"), m_videoCaptureHotkeyEdit);
+    gl->addWidget(actionGroup);
+
+    QGroupBox *recordingGroup = new QGroupBox(TranslationManager::videoRecordingTitle());
+    QFormLayout *recordingHotkeyLayout = new QFormLayout(recordingGroup);
     m_recordingPauseHotkeyEdit = makeRecordingHotkeyEdit();
     m_recordingStopHotkeyEdit = makeRecordingHotkeyEdit();
     m_recordingCancelHotkeyEdit = makeRecordingHotkeyEdit();
@@ -1065,6 +1138,18 @@ void SettingsDialog::loadSettings()
     QString defPath = defaultSaveDirectory();
 
     m_savePathEdit->setText(m_settings->value("savePath", defPath).toString());
+    if (m_screenshotPathEdit)
+        m_screenshotPathEdit->setText(m_settings->contains("screenshotSavePath")
+            ? m_settings->value("screenshotSavePath").toString()
+            : QDir(defPath).filePath(QStringLiteral("Screenshots")));
+    if (m_gifPathEdit)
+        m_gifPathEdit->setText(m_settings->contains("gifSavePath")
+            ? m_settings->value("gifSavePath").toString()
+            : QDir(defPath).filePath(QStringLiteral("GIFs")));
+    if (m_videoPathEdit)
+        m_videoPathEdit->setText(m_settings->contains("videoSavePath")
+            ? m_settings->value("videoSavePath").toString()
+            : QDir(defPath).filePath(QStringLiteral("Videos")));
     m_filenamePatternEdit->setText(m_settings->value("filenamePattern", "Screenshot_%Y-%M-%D_%h-%m-%s").toString());
     onFilenamePatternChanged(m_filenamePatternEdit->text());
 
@@ -1100,6 +1185,8 @@ void SettingsDialog::loadSettings()
     m_delaySpin->setValue(m_settings->value("captureDelay", 0).toInt());
     m_copyAfterCaptureCheck->setChecked(false);
     m_closeAfterCopyCheck->setChecked(m_settings->value("closeAfterCopy", true).toBool());
+    if (m_instantCopyAfterSelectionCheck)
+        m_instantCopyAfterSelectionCheck->setChecked(m_settings->value("instantCopyAfterSelection", false).toBool());
 
     if (m_recordingFpsSpin)
         m_recordingFpsSpin->setValue(m_settings->value("recordingFps", 10).toInt());
@@ -1111,6 +1198,14 @@ void SettingsDialog::loadSettings()
         if (idx < 0) idx = 0;
         m_recordingLoopCombo->setCurrentIndex(idx);
     }
+    if (m_gifSizePresetCombo) {
+        int idx = m_gifSizePresetCombo->findData(m_settings->value("recordingMaxSide", 1280).toInt());
+        if (idx < 0) idx = m_gifSizePresetCombo->findData(1280);
+        if (idx < 0) idx = 0;
+        m_gifSizePresetCombo->setCurrentIndex(idx);
+    }
+    if (m_recordingStartDelaySpin)
+        m_recordingStartDelaySpin->setValue(m_settings->value("recordingStartDelaySeconds", 0).toInt());
     if (m_videoFpsSpin)
         m_videoFpsSpin->setValue(m_settings->value("videoRecordingFps", 30).toInt());
     if (m_videoMaxSecSpin)
@@ -1197,6 +1292,18 @@ void SettingsDialog::loadSettings()
         m_recordingCancelHotkeyEdit->setKeySequence(win32ToKeySequence(
             static_cast<UINT>(m_settings->value("recordingCancelHotkeyModifiers", MOD_CONTROL | MOD_ALT).toUInt()),
             static_cast<UINT>(m_settings->value("recordingCancelHotkeyVKey", 'X').toUInt())));
+    if (m_instantCaptureHotkeyEdit)
+        m_instantCaptureHotkeyEdit->setKeySequence(win32ToKeySequence(
+            static_cast<UINT>(m_settings->value("instantCaptureHotkeyModifiers", 0).toUInt()),
+            static_cast<UINT>(m_settings->value("instantCaptureHotkeyVKey", 0).toUInt())));
+    if (m_gifCaptureHotkeyEdit)
+        m_gifCaptureHotkeyEdit->setKeySequence(win32ToKeySequence(
+            static_cast<UINT>(m_settings->value("gifCaptureHotkeyModifiers", 0).toUInt()),
+            static_cast<UINT>(m_settings->value("gifCaptureHotkeyVKey", 0).toUInt())));
+    if (m_videoCaptureHotkeyEdit)
+        m_videoCaptureHotkeyEdit->setKeySequence(win32ToKeySequence(
+            static_cast<UINT>(m_settings->value("videoCaptureHotkeyModifiers", 0).toUInt()),
+            static_cast<UINT>(m_settings->value("videoCaptureHotkeyVKey", 0).toUInt())));
     for (const auto &def : overlayShortcutDefaults()) {
         if (QKeySequenceEdit *edit = m_overlayHotkeyEdits.value(def.key, nullptr)) {
             edit->setKeySequence(QKeySequence(m_settings->value(QStringLiteral("overlayShortcut/%1").arg(def.key),
@@ -1309,6 +1416,28 @@ void SettingsDialog::onSave()
             return;
         }
     }
+    auto validatedOptionalPath = [this](QLineEdit *edit) -> QString {
+        if (!edit)
+            return QString();
+        const QString path = edit->text().trimmed();
+        if (path.isEmpty())
+            return QString();
+        QDir dir(path);
+        if (!dir.exists() && !dir.mkpath(QStringLiteral("."))) {
+            QMessageBox::warning(this, TranslationManager::errTitle(), TranslationManager::errSaveDir() + path);
+            return QStringLiteral("__invalid__");
+        }
+        return path;
+    };
+    const QString screenshotPath = validatedOptionalPath(m_screenshotPathEdit);
+    if (screenshotPath == QStringLiteral("__invalid__"))
+        return;
+    const QString gifPath = validatedOptionalPath(m_gifPathEdit);
+    if (gifPath == QStringLiteral("__invalid__"))
+        return;
+    const QString videoPath = validatedOptionalPath(m_videoPathEdit);
+    if (videoPath == QStringLiteral("__invalid__"))
+        return;
 
     QKeySequence seq = m_hotkeyEdit->keySequence();
     UINT newMod = 0, newVKey = 0;
@@ -1350,6 +1479,30 @@ void SettingsDialog::onSave()
         return;
     }
 
+    auto optionalHotkey = [](QKeySequenceEdit *edit, UINT &mod, UINT &vkey) {
+        mod = 0;
+        vkey = 0;
+        if (!edit || edit->keySequence().isEmpty())
+            return true;
+        return keySequenceToWin32(edit->keySequence(), mod, vkey);
+    };
+    UINT instantMod = 0, instantVKey = 0;
+    UINT gifMod = 0, gifVKey = 0;
+    UINT videoMod = 0, videoVKey = 0;
+    if (!optionalHotkey(m_instantCaptureHotkeyEdit, instantMod, instantVKey) ||
+        !optionalHotkey(m_gifCaptureHotkeyEdit, gifMod, gifVKey) ||
+        !optionalHotkey(m_videoCaptureHotkeyEdit, videoMod, videoVKey)) {
+        QMessageBox::warning(this, TranslationManager::errInvalidHotkeyTitle(), TranslationManager::errInvalidHotkey());
+        return;
+    }
+    if (!HotkeyManager::instance().reRegisterActionHotkeys(instantMod, instantVKey, gifMod, gifVKey, videoMod, videoVKey)) {
+        QMessageBox::warning(
+            this,
+            TranslationManager::errInvalidHotkeyTitle(),
+            TranslationManager::errInvalidHotkey() + QStringLiteral("\n\nOne of the direct capture hotkeys may already be used by another app."));
+        return;
+    }
+
     // Save language
     QString newLang = m_langCombo->currentData().toString();
     TranslationManager::Language lang = TranslationManager::English;
@@ -1364,6 +1517,9 @@ void SettingsDialog::onSave()
 
     m_settings->setValue("language",          static_cast<int>(lang));
     m_settings->setValue("savePath",          savePath);
+    m_settings->setValue("screenshotSavePath", screenshotPath);
+    m_settings->setValue("gifSavePath",        gifPath);
+    m_settings->setValue("videoSavePath",      videoPath);
     m_settings->setValue("filenamePattern",    m_filenamePatternEdit->text());
     m_settings->setValue("autoStart",          m_autoStartCheck->isChecked());
     m_settings->setValue("showNotifications",  m_showNotificationsCheck->isChecked());
@@ -1379,6 +1535,8 @@ void SettingsDialog::onSave()
     m_settings->setValue("captureDelay",       m_delaySpin->value());
     m_settings->setValue("copyAfterCapture",   false);
     m_settings->setValue("closeAfterCopy",     m_closeAfterCopyCheck->isChecked());
+    m_settings->setValue("instantCopyAfterSelection",
+                         m_instantCopyAfterSelectionCheck ? m_instantCopyAfterSelectionCheck->isChecked() : false);
 
     m_settings->setValue("darkMode",           m_darkModeCheck->isChecked());
     m_settings->setValue("overlayOpacity",     m_opacitySlider->value());
@@ -1411,6 +1569,12 @@ void SettingsDialog::onSave()
     m_settings->setValue("recordingStopHotkeyVKey",       stopVKey);
     m_settings->setValue("recordingCancelHotkeyModifiers", cancelMod);
     m_settings->setValue("recordingCancelHotkeyVKey",      cancelVKey);
+    m_settings->setValue("instantCaptureHotkeyModifiers", instantMod);
+    m_settings->setValue("instantCaptureHotkeyVKey",      instantVKey);
+    m_settings->setValue("gifCaptureHotkeyModifiers",     gifMod);
+    m_settings->setValue("gifCaptureHotkeyVKey",          gifVKey);
+    m_settings->setValue("videoCaptureHotkeyModifiers",   videoMod);
+    m_settings->setValue("videoCaptureHotkeyVKey",        videoVKey);
     for (auto it = m_overlayHotkeyEdits.constBegin(); it != m_overlayHotkeyEdits.constEnd(); ++it) {
         if (it.value())
             m_settings->setValue(QStringLiteral("overlayShortcut/%1").arg(it.key()),
@@ -1423,6 +1587,10 @@ void SettingsDialog::onSave()
         m_settings->setValue("recordingMaxSeconds", m_recordingMaxSecSpin->value());
     if (m_recordingLoopCombo)
         m_settings->setValue("recordingLoop", m_recordingLoopCombo->currentData().toInt());
+    if (m_gifSizePresetCombo)
+        m_settings->setValue("recordingMaxSide", m_gifSizePresetCombo->currentData().toInt());
+    if (m_recordingStartDelaySpin)
+        m_settings->setValue("recordingStartDelaySeconds", m_recordingStartDelaySpin->value());
     if (m_videoFpsSpin)
         m_settings->setValue("videoRecordingFps", m_videoFpsSpin->value());
     if (m_videoMaxSecSpin)
@@ -1475,6 +1643,9 @@ void SettingsDialog::onExportSettings()
     QJsonObject obj;
     obj["language"] = m_langCombo->currentData().toString();
     obj["savePath"] = m_savePathEdit->text();
+    obj["screenshotSavePath"] = m_screenshotPathEdit ? m_screenshotPathEdit->text() : QString();
+    obj["gifSavePath"] = m_gifPathEdit ? m_gifPathEdit->text() : QString();
+    obj["videoSavePath"] = m_videoPathEdit ? m_videoPathEdit->text() : QString();
     obj["filenamePattern"] = m_filenamePatternEdit->text();
     obj["autoStart"] = m_autoStartCheck->isChecked();
     obj["showNotifications"] = m_showNotificationsCheck->isChecked();
@@ -1489,6 +1660,7 @@ void SettingsDialog::onExportSettings()
     obj["captureDelay"] = m_delaySpin->value();
     obj["copyAfterCapture"] = false;
     obj["closeAfterCopy"] = m_closeAfterCopyCheck->isChecked();
+    obj["instantCopyAfterSelection"] = m_instantCopyAfterSelectionCheck ? m_instantCopyAfterSelectionCheck->isChecked() : false;
     obj["darkMode"] = m_darkModeCheck->isChecked();
     obj["overlayOpacity"] = m_opacitySlider->value();
     obj["crosshairStyle"] = m_crosshairStyleCombo->currentData().toString();
@@ -1526,6 +1698,9 @@ void SettingsDialog::onExportSettings()
     appendHotkey("recordingPauseHotkeyModifiers", "recordingPauseHotkeyVKey", m_recordingPauseHotkeyEdit);
     appendHotkey("recordingStopHotkeyModifiers", "recordingStopHotkeyVKey", m_recordingStopHotkeyEdit);
     appendHotkey("recordingCancelHotkeyModifiers", "recordingCancelHotkeyVKey", m_recordingCancelHotkeyEdit);
+    appendHotkey("instantCaptureHotkeyModifiers", "instantCaptureHotkeyVKey", m_instantCaptureHotkeyEdit);
+    appendHotkey("gifCaptureHotkeyModifiers", "gifCaptureHotkeyVKey", m_gifCaptureHotkeyEdit);
+    appendHotkey("videoCaptureHotkeyModifiers", "videoCaptureHotkeyVKey", m_videoCaptureHotkeyEdit);
     QJsonObject overlayShortcuts;
     for (auto it = m_overlayHotkeyEdits.constBegin(); it != m_overlayHotkeyEdits.constEnd(); ++it) {
         if (it.value())
@@ -1539,6 +1714,10 @@ void SettingsDialog::onExportSettings()
         obj["recordingMaxSeconds"] = m_recordingMaxSecSpin->value();
     if (m_recordingLoopCombo)
         obj["recordingLoop"] = m_recordingLoopCombo->currentData().toInt();
+    if (m_gifSizePresetCombo)
+        obj["recordingMaxSide"] = m_gifSizePresetCombo->currentData().toInt();
+    if (m_recordingStartDelaySpin)
+        obj["recordingStartDelaySeconds"] = m_recordingStartDelaySpin->value();
     if (m_videoFpsSpin)
         obj["videoRecordingFps"] = m_videoFpsSpin->value();
     if (m_videoMaxSecSpin)
@@ -1593,6 +1772,9 @@ void SettingsDialog::onImportSettings()
         if (li >= 0) m_langCombo->setCurrentIndex(li);
     }
     if (obj.contains("savePath")) m_savePathEdit->setText(obj["savePath"].toString());
+    if (m_screenshotPathEdit && obj.contains("screenshotSavePath")) m_screenshotPathEdit->setText(obj["screenshotSavePath"].toString());
+    if (m_gifPathEdit && obj.contains("gifSavePath")) m_gifPathEdit->setText(obj["gifSavePath"].toString());
+    if (m_videoPathEdit && obj.contains("videoSavePath")) m_videoPathEdit->setText(obj["videoSavePath"].toString());
     if (obj.contains("filenamePattern")) m_filenamePatternEdit->setText(obj["filenamePattern"].toString());
     if (obj.contains("autoStart")) m_autoStartCheck->setChecked(obj["autoStart"].toBool());
     if (obj.contains("showNotifications")) m_showNotificationsCheck->setChecked(obj["showNotifications"].toBool());
@@ -1614,6 +1796,8 @@ void SettingsDialog::onImportSettings()
     if (obj.contains("captureDelay")) m_delaySpin->setValue(obj["captureDelay"].toInt());
     if (obj.contains("copyAfterCapture")) m_copyAfterCaptureCheck->setChecked(false);
     if (obj.contains("closeAfterCopy")) m_closeAfterCopyCheck->setChecked(obj["closeAfterCopy"].toBool());
+    if (m_instantCopyAfterSelectionCheck && obj.contains("instantCopyAfterSelection"))
+        m_instantCopyAfterSelectionCheck->setChecked(obj["instantCopyAfterSelection"].toBool());
     if (obj.contains("darkMode")) m_darkModeCheck->setChecked(obj["darkMode"].toBool());
     if (obj.contains("overlayOpacity")) m_opacitySlider->setValue(obj["overlayOpacity"].toInt());
     if (obj.contains("crosshairStyle")) {
@@ -1658,6 +1842,9 @@ void SettingsDialog::onImportSettings()
     importHotkey("recordingPauseHotkeyModifiers", "recordingPauseHotkeyVKey", m_recordingPauseHotkeyEdit);
     importHotkey("recordingStopHotkeyModifiers", "recordingStopHotkeyVKey", m_recordingStopHotkeyEdit);
     importHotkey("recordingCancelHotkeyModifiers", "recordingCancelHotkeyVKey", m_recordingCancelHotkeyEdit);
+    importHotkey("instantCaptureHotkeyModifiers", "instantCaptureHotkeyVKey", m_instantCaptureHotkeyEdit);
+    importHotkey("gifCaptureHotkeyModifiers", "gifCaptureHotkeyVKey", m_gifCaptureHotkeyEdit);
+    importHotkey("videoCaptureHotkeyModifiers", "videoCaptureHotkeyVKey", m_videoCaptureHotkeyEdit);
     if (obj.contains("overlayShortcuts") && obj["overlayShortcuts"].isObject()) {
         const QJsonObject shortcuts = obj["overlayShortcuts"].toObject();
         for (auto it = m_overlayHotkeyEdits.begin(); it != m_overlayHotkeyEdits.end(); ++it) {
@@ -1674,6 +1861,14 @@ void SettingsDialog::onImportSettings()
         if (idx < 0) idx = 0;
         m_recordingLoopCombo->setCurrentIndex(idx);
     }
+    if (m_gifSizePresetCombo && obj.contains("recordingMaxSide")) {
+        int idx = m_gifSizePresetCombo->findData(obj["recordingMaxSide"].toInt());
+        if (idx < 0) idx = m_gifSizePresetCombo->findData(1280);
+        if (idx < 0) idx = 0;
+        m_gifSizePresetCombo->setCurrentIndex(idx);
+    }
+    if (m_recordingStartDelaySpin && obj.contains("recordingStartDelaySeconds"))
+        m_recordingStartDelaySpin->setValue(obj["recordingStartDelaySeconds"].toInt());
     if (m_videoFpsSpin && obj.contains("videoRecordingFps"))
         m_videoFpsSpin->setValue(obj["videoRecordingFps"].toInt());
     if (m_videoMaxSecSpin && obj.contains("videoRecordingMaxSeconds"))

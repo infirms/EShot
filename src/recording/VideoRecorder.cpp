@@ -187,7 +187,8 @@ void VideoRecorder::start(const QRect &captureRect, int fps, int maxSeconds, int
                           const QString &desktopAudioDevice,
                           bool microphoneEnabled, int microphoneVolume,
                           const QString &microphoneDevice,
-                          const QString &outputPath)
+                          const QString &outputPath,
+                          const QRect &displayRect)
 {
     if (m_recording) {
         emit recordingFailed(QStringLiteral("already recording"));
@@ -206,6 +207,7 @@ void VideoRecorder::start(const QRect &captureRect, int fps, int maxSeconds, int
     const QStringList audioDevices = dshowAudioDevices(m_ffmpegPath);
 
     m_captureRect = captureRect;
+    m_displayRect = displayRect;
     m_fps = qBound(1, fps, 60);
     m_maxSeconds = qMax(0, maxSeconds);
     m_crf = qBound(18, crf, 32);
@@ -252,30 +254,26 @@ void VideoRecorder::start(const QRect &captureRect, int fps, int maxSeconds, int
 #endif
     }
 
-    // captureRect is logical (device-independent) so the on-screen recording
-    // indicator, a Qt widget, lines up with the selection. ffmpeg's gdigrab
-    // works in physical pixels, so scale the offset/size by the device pixel
-    // ratio. Map corners rather than scaling x/width separately to avoid
-    // rounding drift on the far edge.
-    qreal dpr = 1.0;
-    if (QScreen *screen = QGuiApplication::primaryScreen())
-        dpr = screen->devicePixelRatio();
-    const int physX = qRound(captureRect.x() * dpr);
-    const int physY = qRound(captureRect.y() * dpr);
-    const int physW = qRound((captureRect.x() + captureRect.width()) * dpr) - physX;
-    const int physH = qRound((captureRect.y() + captureRect.height()) * dpr) - physY;
+    if (!initCaptureResources()) {
+        stopSystemAudioCapture();
+        emit recordingFailed(QStringLiteral("cannot initialize screen capture"));
+        return;
+    }
+
+    const int physX = captureRect.x();
+    const int physY = captureRect.y();
+    const int physW = captureRect.width();
+    const int physH = captureRect.height();
 
     QStringList args;
     args << QStringLiteral("-y")
          << QStringLiteral("-hide_banner")
          << QStringLiteral("-loglevel") << QStringLiteral("error")
-         << QStringLiteral("-f") << QStringLiteral("gdigrab")
-         << QStringLiteral("-draw_mouse") << QStringLiteral("1")
-         << QStringLiteral("-framerate") << QString::number(m_fps)
-         << QStringLiteral("-offset_x") << QString::number(physX)
-         << QStringLiteral("-offset_y") << QString::number(physY)
+         << QStringLiteral("-f") << QStringLiteral("rawvideo")
+         << QStringLiteral("-pix_fmt") << QStringLiteral("bgra")
          << QStringLiteral("-video_size") << QStringLiteral("%1x%2").arg(physW).arg(physH)
-         << QStringLiteral("-i") << QStringLiteral("desktop");
+         << QStringLiteral("-framerate") << QString::number(m_fps)
+         << QStringLiteral("-i") << QStringLiteral("pipe:0");
 
     struct AudioInput {
         int inputIndex;
@@ -380,6 +378,13 @@ void VideoRecorder::start(const QRect &captureRect, int fps, int maxSeconds, int
         }
     });
     m_countdownTimer->start();
+
+    m_frameTimer = new QTimer(this);
+    m_frameTimer->setTimerType(Qt::PreciseTimer);
+    m_frameTimer->setInterval(qMax(1, 1000 / m_fps));
+    connect(m_frameTimer, &QTimer::timeout, this, &VideoRecorder::captureFrame);
+    m_frameTimer->start();
+    captureFrame();
 }
 
 void VideoRecorder::stop()
@@ -389,7 +394,9 @@ void VideoRecorder::stop()
     if (m_paused)
         resume();
     m_stopping = true;
-    m_process->write("q\n");
+    if (m_frameTimer)
+        m_frameTimer->stop();
+    m_process->closeWriteChannel();
     QTimer::singleShot(2500, this, [this]() {
         if (m_process && m_recording)
             m_process->terminate();
@@ -421,6 +428,8 @@ void VideoRecorder::pause()
         return;
     m_pauseStartedMs = m_elapsed.elapsed();
     if (setProcessSuspended(true)) {
+        if (m_frameTimer)
+            m_frameTimer->stop();
         m_paused = true;
         emit pausedChanged(true);
     }
@@ -434,8 +443,46 @@ void VideoRecorder::resume()
         m_pausedMs += qMax<qint64>(0, m_elapsed.elapsed() - m_pauseStartedMs);
         m_pauseStartedMs = 0;
         m_paused = false;
+        if (m_frameTimer)
+            m_frameTimer->start();
         emit pausedChanged(false);
     }
+}
+
+void VideoRecorder::captureFrame()
+{
+    if (!m_recording || m_paused || !m_process)
+        return;
+#ifdef Q_OS_WIN
+    if (!m_screenDC || !m_memDC || !m_bitmap || !m_bits)
+        return;
+    const int sw = m_captureRect.width();
+    const int sh = m_captureRect.height();
+    if (sw <= 0 || sh <= 0)
+        return;
+
+    if (!BitBlt(m_memDC, 0, 0, sw, sh, m_screenDC, m_captureRect.x(), m_captureRect.y(), SRCCOPY | CAPTUREBLT))
+        return;
+
+    CURSORINFO cursorInfo = {};
+    cursorInfo.cbSize = sizeof(cursorInfo);
+    if (GetCursorInfo(&cursorInfo) && cursorInfo.flags == CURSOR_SHOWING) {
+        ICONINFO iconInfo = {};
+        if (GetIconInfo(cursorInfo.hCursor, &iconInfo)) {
+            const int cursorX = cursorInfo.ptScreenPos.x - m_captureRect.x() - static_cast<int>(iconInfo.xHotspot);
+            const int cursorY = cursorInfo.ptScreenPos.y - m_captureRect.y() - static_cast<int>(iconInfo.yHotspot);
+            DrawIconEx(m_memDC, cursorX, cursorY, cursorInfo.hCursor, 0, 0, 0, nullptr, DI_NORMAL);
+            if (iconInfo.hbmColor)
+                DeleteObject(iconInfo.hbmColor);
+            if (iconInfo.hbmMask)
+                DeleteObject(iconInfo.hbmMask);
+        }
+    }
+
+    const qint64 bytes = static_cast<qint64>(sw) * sh * 4;
+    if (m_process->bytesToWrite() < bytes * 3)
+        m_process->write(static_cast<const char *>(m_bits), bytes);
+#endif
 }
 
 void VideoRecorder::onProcessFinished(int exitCode, QProcess::ExitStatus status)
@@ -570,7 +617,11 @@ QString VideoRecorder::makeDefaultOutputPath() const
 {
     QSettings s("EShot", "EShot");
     QStringList candidates;
-    const QString configuredDir = s.value("savePath").toString().trimmed();
+    QString configuredDir = s.contains("videoSavePath")
+        ? s.value("videoSavePath").toString().trimmed()
+        : QDir(defaultSaveDirectory()).filePath(QStringLiteral("Videos"));
+    if (configuredDir.isEmpty())
+        configuredDir = s.value("savePath").toString().trimmed();
     candidates << (configuredDir.isEmpty() ? defaultSaveDirectory() : configuredDir)
                << QStandardPaths::writableLocation(QStandardPaths::MoviesLocation)
                << QStandardPaths::writableLocation(QStandardPaths::PicturesLocation)
@@ -605,6 +656,66 @@ qint64 VideoRecorder::activeElapsedMs() const
     if (m_paused)
         paused += qMax<qint64>(0, m_elapsed.elapsed() - m_pauseStartedMs);
     return qMax<qint64>(0, m_elapsed.elapsed() - paused);
+}
+
+bool VideoRecorder::initCaptureResources()
+{
+#ifdef Q_OS_WIN
+    releaseCaptureResources();
+    if (m_captureRect.width() <= 0 || m_captureRect.height() <= 0)
+        return false;
+
+    m_screenDC = GetDC(nullptr);
+    if (!m_screenDC)
+        return false;
+    m_memDC = CreateCompatibleDC(m_screenDC);
+    if (!m_memDC) {
+        releaseCaptureResources();
+        return false;
+    }
+
+    BITMAPINFO bi = {};
+    bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bi.bmiHeader.biWidth = m_captureRect.width();
+    bi.bmiHeader.biHeight = -m_captureRect.height();
+    bi.bmiHeader.biPlanes = 1;
+    bi.bmiHeader.biBitCount = 32;
+    bi.bmiHeader.biCompression = BI_RGB;
+
+    m_bits = nullptr;
+    m_bitmap = CreateDIBSection(m_screenDC, &bi, DIB_RGB_COLORS, &m_bits, nullptr, 0);
+    if (!m_bitmap) {
+        releaseCaptureResources();
+        return false;
+    }
+    m_oldBitmap = SelectObject(m_memDC, m_bitmap);
+    return m_oldBitmap != nullptr;
+#else
+    return false;
+#endif
+}
+
+void VideoRecorder::releaseCaptureResources()
+{
+#ifdef Q_OS_WIN
+    if (m_memDC && m_oldBitmap) {
+        SelectObject(m_memDC, m_oldBitmap);
+        m_oldBitmap = nullptr;
+    }
+    if (m_bitmap) {
+        DeleteObject(m_bitmap);
+        m_bitmap = nullptr;
+    }
+    m_bits = nullptr;
+    if (m_memDC) {
+        DeleteDC(m_memDC);
+        m_memDC = nullptr;
+    }
+    if (m_screenDC) {
+        ReleaseDC(nullptr, m_screenDC);
+        m_screenDC = nullptr;
+    }
+#endif
 }
 
 bool VideoRecorder::setProcessSuspended(bool suspended)
@@ -654,6 +765,12 @@ void VideoRecorder::cleanupProcess()
         m_countdownTimer->deleteLater();
         m_countdownTimer = nullptr;
     }
+    if (m_frameTimer) {
+        m_frameTimer->stop();
+        m_frameTimer->deleteLater();
+        m_frameTimer = nullptr;
+    }
+    releaseCaptureResources();
     if (m_process) {
         m_process->deleteLater();
         m_process = nullptr;

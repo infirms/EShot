@@ -133,10 +133,12 @@ public slots:
 
     void onCaptureCancelled() {}
 
-    void onRegionSelected(QRect rect)
+    void onRegionSelected(QRect captureRect, QRect displayRect)
     {
         if (m_pendingMode == 2) {
-            onRecordGifSelected(rect);
+            onRecordGifSelected(captureRect, displayRect);
+        } else if (m_pendingMode == 3) {
+            onRecordVideoSelected(captureRect, displayRect);
         }
         m_pendingMode = 0;
     }
@@ -262,7 +264,30 @@ public slots:
         m_overlay->startCaptureForRecording();
     }
 
-    void onRecordVideoSelected(QRect rect)
+    void onRecordVideoRequested()
+    {
+        if (m_videoRecorder && m_videoRecorder->isRecording()) {
+            m_videoRecorder->stop();
+            return;
+        }
+        if (m_overlay && m_overlay->isVisible()) return;
+        m_pendingMode = 3;
+        ensureOverlay();
+        m_overlay->startCaptureForRecording();
+    }
+
+    void onInstantCaptureRequested()
+    {
+        if (closeBlockingDialogs()) {
+            QTimer::singleShot(80, this, &EShotApp::onInstantCaptureRequested);
+            return;
+        }
+        if (m_overlay && m_overlay->isVisible()) return;
+        ensureOverlay();
+        m_overlay->startInstantCapture();
+    }
+
+    void onRecordVideoSelected(QRect rect, QRect displayRect = QRect())
     {
         if (rect.isEmpty()) return;
         if (m_videoRecorder && m_videoRecorder->isRecording()) {
@@ -296,13 +321,26 @@ public slots:
         const bool microphoneAudio = s.value("videoMicrophoneEnabled", false).toBool();
         const int microphoneVolume = s.value("videoMicrophoneVolume", 80).toInt();
         const QString microphoneDevice = s.value("videoMicrophoneDevice", "default").toString();
-        m_videoRecorder->start(rect, fps, maxSec, crf,
-                               desktopAudio, desktopVolume, desktopDevice,
-                               microphoneAudio, microphoneVolume,
-                               microphoneDevice);
+        const int startDelayMs = qBound(0, s.value("recordingStartDelaySeconds", 0).toInt(), 10) * 1000;
+        auto startVideo = [rec = QPointer<VideoRecorder>(m_videoRecorder), rect, fps, maxSec, crf,
+                           desktopAudio, desktopVolume, desktopDevice,
+                           microphoneAudio, microphoneVolume, microphoneDevice, displayRect]() {
+            if (!rec)
+                return;
+            rec->start(rect, fps, maxSec, crf,
+                       desktopAudio, desktopVolume, desktopDevice,
+                       microphoneAudio, microphoneVolume,
+                       microphoneDevice,
+                       QString(),
+                       displayRect);
+        };
+        if (startDelayMs > 0)
+            QTimer::singleShot(startDelayMs, this, startVideo);
+        else
+            startVideo();
     }
 
-    void onRecordGifSelected(QRect rect)
+    void onRecordGifSelected(QRect rect, QRect displayRect = QRect())
     {
         if (rect.isEmpty()) return;
         if (m_screenRecorder) { m_screenRecorder->stop(); m_screenRecorder->deleteLater(); m_screenRecorder = nullptr; }
@@ -322,7 +360,15 @@ public slots:
         int fps = s.value("recordingFps", 10).toInt();
         int maxSec = s.value("recordingMaxSeconds", 30).toInt();
         int loop = s.value("recordingLoop", 0).toInt();
-        m_screenRecorder->start(rect, fps, maxSec, loop, QString());
+        const int startDelayMs = qBound(0, s.value("recordingStartDelaySeconds", 0).toInt(), 10) * 1000;
+        auto startGif = [rec = QPointer<ScreenRecorder>(m_screenRecorder), rect, fps, maxSec, loop, displayRect]() {
+            if (rec)
+                rec->start(rect, fps, maxSec, loop, QString(), displayRect);
+        };
+        if (startDelayMs > 0)
+            QTimer::singleShot(startDelayMs, this, startGif);
+        else
+            startGif();
     }
 
     void onRecordingStarted()
@@ -522,6 +568,12 @@ private:
     {
         connect(&HotkeyManager::instance(), &HotkeyManager::captureRequested,
                 this, &EShotApp::onCaptureRequested);
+        connect(&HotkeyManager::instance(), &HotkeyManager::instantCaptureRequested,
+                this, &EShotApp::onInstantCaptureRequested);
+        connect(&HotkeyManager::instance(), &HotkeyManager::gifCaptureRequested,
+                this, &EShotApp::onRecordGifRequested);
+        connect(&HotkeyManager::instance(), &HotkeyManager::videoCaptureRequested,
+                this, &EShotApp::onRecordVideoRequested);
         connect(&HotkeyManager::instance(), &HotkeyManager::recordingPauseRequested, this, [this]() {
             if (m_videoRecorder && m_videoRecorder->isRecording()) {
                 if (m_videoRecorder->isPaused()) m_videoRecorder->resume();

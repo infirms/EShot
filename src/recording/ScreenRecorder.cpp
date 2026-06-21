@@ -37,7 +37,7 @@ ScreenRecorder::~ScreenRecorder()
 }
 
 void ScreenRecorder::start(const QRect &captureRect, int fps, int maxSeconds, int loopCount,
-                           const QString &outputPath)
+                           const QString &outputPath, const QRect &displayRect)
 {
     if (m_recording) {
         emit recordingFailed(QStringLiteral("already recording"));
@@ -52,6 +52,7 @@ void ScreenRecorder::start(const QRect &captureRect, int fps, int maxSeconds, in
     if (maxSeconds < 0) maxSeconds = 0;
 
     m_captureRect = captureRect;
+    m_displayRect = displayRect;
     m_outputSize = boundedOutputSize(captureRect.size());
     m_fps = fps;
     m_maxSeconds = maxSeconds;
@@ -114,7 +115,11 @@ QString ScreenRecorder::makeDefaultOutputPath() const
 {
     QSettings s("EShot", "EShot");
     QStringList candidates;
-    const QString configuredDir = s.value("savePath").toString().trimmed();
+    QString configuredDir = s.contains("gifSavePath")
+        ? s.value("gifSavePath").toString().trimmed()
+        : QDir(defaultSaveDirectory()).filePath(QStringLiteral("GIFs"));
+    if (configuredDir.isEmpty())
+        configuredDir = s.value("savePath").toString().trimmed();
     if (!configuredDir.isEmpty()) {
         candidates << configuredDir;
     } else {
@@ -325,6 +330,7 @@ void ScreenRecorder::releaseCaptureResources()
 
 QImage ScreenRecorder::grabScreenRegion(const QRect &rect)
 {
+#ifndef Q_OS_WIN
     QScreen *screen = QGuiApplication::screenAt(rect.center());
     if (!screen) screen = QGuiApplication::primaryScreen();
     if (screen) {
@@ -341,6 +347,7 @@ QImage ScreenRecorder::grabScreenRegion(const QRect &rect)
             return img;
         }
     }
+#endif
 
 #ifdef Q_OS_WIN
     int sx = rect.x();

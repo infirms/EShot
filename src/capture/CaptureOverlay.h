@@ -30,6 +30,7 @@ public:
     explicit CaptureOverlay(QWidget *parent = nullptr);
     ~CaptureOverlay();
     void startCapture();
+    void startInstantCapture();
     void startCaptureForRecording();
     void refreshUI();
     void prewarm();
@@ -39,10 +40,10 @@ signals:
     void captureSaved(const QString &path);
     void captureCancelled();
     void pinnedWindowCreated(PinnedWindow *window);
-    void regionSelected(QRect rect);
+    void regionSelected(QRect captureRect, QRect displayRect);
     void regionCancelled();
-    void gifCaptureRequested(QRect rect);
-    void videoCaptureRequested(QRect rect);
+    void gifCaptureRequested(QRect captureRect, QRect displayRect);
+    void videoCaptureRequested(QRect captureRect, QRect displayRect);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -61,6 +62,8 @@ private:
     void finishCapture();
     void cancelCapture();
     QRect normalizedSelectionRect() const;
+    QRect selectedCaptureRect() const;
+    QRect selectedDisplayRect() const;
     QRect monitorRectAt(const QPoint &pos) const;
     void selectMonitorAt(const QPoint &pos);
     QPixmap getSelectedPixmap();
@@ -79,15 +82,23 @@ private:
     QPoint m_moveOffset;
 
     QRect m_virtualDesktopRect;
+    QPoint m_physicalVirtualDesktopTopLeft;
     // Device-pixel ratio bridging the overlay's logical coordinate system
     // (window geometry, mouse, selection) to the physical-pixel m_screenSnapshot.
     qreal m_dpr = 1.0;
     QRect logicalToSnapshot(const QRect &r) const {
-        return QRect(qRound(r.x() * m_dpr), qRound(r.y() * m_dpr),
-                     qRound(r.width() * m_dpr), qRound(r.height() * m_dpr));
+        const qreal sx = width() > 0 ? (m_screenSnapshot.width() / static_cast<qreal>(width())) : m_dpr;
+        const qreal sy = height() > 0 ? (m_screenSnapshot.height() / static_cast<qreal>(height())) : m_dpr;
+        const int x1 = qRound(r.x() * sx);
+        const int y1 = qRound(r.y() * sy);
+        const int x2 = qRound((r.x() + r.width()) * sx);
+        const int y2 = qRound((r.y() + r.height()) * sy);
+        return QRect(x1, y1, qMax(0, x2 - x1), qMax(0, y2 - y1));
     }
     QPoint logicalToSnapshot(const QPoint &p) const {
-        return QPoint(qRound(p.x() * m_dpr), qRound(p.y() * m_dpr));
+        const qreal sx = width() > 0 ? (m_screenSnapshot.width() / static_cast<qreal>(width())) : m_dpr;
+        const qreal sy = height() > 0 ? (m_screenSnapshot.height() / static_cast<qreal>(height())) : m_dpr;
+        return QPoint(qRound(p.x() * sx), qRound(p.y() * sy));
     }
 
     AnnotationToolbar *m_toolbar;
@@ -168,6 +179,7 @@ private:
     // Settings
     bool m_copyAfterCapture;
     bool m_closeAfterCopy;
+    bool m_instantCopyAfterSelection;
 
     // Pinned windows list (for lifetime management)
     QList<QPointer<QWidget>> m_pinnedWindows;
