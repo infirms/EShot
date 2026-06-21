@@ -138,7 +138,7 @@ public slots:
         if (m_pendingMode == 2) {
             onRecordGifSelected(captureRect, displayRect);
         } else if (m_pendingMode == 3) {
-            onRecordVideoSelected(captureRect, displayRect);
+            onRecordVideoSelected(displayRect, displayRect);
         }
         m_pendingMode = 0;
     }

@@ -2502,13 +2502,12 @@ void CaptureOverlay::onVideoRequested()
 {
     QRect selRect = normalizedSelectionRect();
     if (selRect.isEmpty()) return;
-    QRect captureRect = selectedCaptureRect();
     QRect displayRect = selectedDisplayRect();
     hide();
     m_selectionComplete = false;
     m_isSelecting = false;
     hideToolbar();
-    emit videoCaptureRequested(captureRect, displayRect);
+    emit videoCaptureRequested(displayRect, displayRect);
 }
 
 QRect CaptureOverlay::normalizedSelectionRect() const

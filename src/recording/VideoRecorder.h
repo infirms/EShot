@@ -10,10 +10,6 @@
 #include <atomic>
 #include <thread>
 
-#ifdef Q_OS_WIN
-#include <windows.h>
-#endif
-
 class VideoRecorder : public QObject {
     Q_OBJECT
 
@@ -48,7 +44,6 @@ signals:
 
 private slots:
     void onProcessFinished(int exitCode, QProcess::ExitStatus status);
-    void captureFrame();
 
 private:
     QString ffmpegPath() const;
@@ -58,12 +53,9 @@ private:
     void cleanupProcess();
     void stopSystemAudioCapture();
     bool muxSystemAudio();
-    bool initCaptureResources();
-    void releaseCaptureResources();
 
     QProcess *m_process = nullptr;
     QTimer *m_countdownTimer = nullptr;
-    QTimer *m_frameTimer = nullptr;
     QRect m_captureRect;
     QRect m_displayRect;
     QString m_outputPath;
@@ -90,14 +82,6 @@ private:
     bool m_canceling = false;
     std::atomic_bool m_audioStop { false };
     std::thread m_audioThread;
-
-#ifdef Q_OS_WIN
-    HDC m_screenDC = nullptr;
-    HDC m_memDC = nullptr;
-    HBITMAP m_bitmap = nullptr;
-    HGDIOBJ m_oldBitmap = nullptr;
-    void *m_bits = nullptr;
-#endif
 };
 
 #endif
