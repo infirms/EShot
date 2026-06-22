@@ -2,7 +2,7 @@
 
 Fast, lightweight Windows screenshot tool with annotations, OCR, GIF recording, video recording, uploads, and pinned captures.
 
-[![Version](https://img.shields.io/badge/version-3.0.5-blue.svg)](https://github.com/Benoks/EShot/releases)
+[![Version](https://img.shields.io/badge/version-3.0.7-blue.svg)](https://github.com/Benoks/EShot/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey.svg)](#)
 [![Qt](https://img.shields.io/badge/Qt-6.x-green.svg)](https://www.qt.io/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -27,6 +27,14 @@ EShot is built for people who want a quick screenshot workflow without a heavy d
 - Customizable global and in-capture shortcuts
 - Start with Windows through Task Scheduler
 - GitHub release update check
+
+## What's New in v3.0.7
+
+- Known issue: on some mixed-DPI multi-monitor setups, especially when a scaled laptop display is used beside an external primary display, GIF/MP4 recording can start from a shifted or resized region. Normal screenshots are not affected. Workaround: set the affected display to 100% scaling or use matching scaling on both displays before recording.
+
+## What's New in v3.0.6
+
+- Rolled back the experimental video recorder changes while the mixed-DPI recording issue is investigated.
 
 ## What's New in v3.0.5
 
