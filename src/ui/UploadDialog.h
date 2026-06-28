@@ -10,6 +10,7 @@
 #include <QComboBox>
 
 class ImageUploader;
+class QGroupBox;
 
 class UploadDialog : public QDialog {
     Q_OBJECT
@@ -40,6 +41,7 @@ private:
     ImageUploader *m_uploader = nullptr;
 
     QComboBox *m_providerCombo;
+    QGroupBox *m_authBox;
     QLineEdit *m_authEdit;
     QPushButton *m_saveAuthBtn;
     QPushButton *m_uploadBtn;

@@ -4,6 +4,7 @@
 #include "ui/AnnotationToolbar.h"
 #include "ui/OcrDialog.h"
 #include "ui/UploadDialog.h"
+#include "core/ImageUploader.h"
 
 #include "../core/TranslationManager.h"
 
@@ -43,6 +44,9 @@
 #include <QMessageBox>
 #include <QFileInfo>
 #include <QProcess>
+#include <QDesktopServices>
+#include <QUrl>
+#include <QUrlQuery>
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -466,6 +470,7 @@ CaptureOverlay::CaptureOverlay(QWidget *parent)
     connect(m_toolbar, &AnnotationToolbar::lockToggled, this, &CaptureOverlay::onSelectionLockToggled);
     connect(m_toolbar, &AnnotationToolbar::ocrRequested, this, &CaptureOverlay::onOcrRequested);
     connect(m_toolbar, &AnnotationToolbar::uploadRequested, this, &CaptureOverlay::onUploadRequested);
+    connect(m_toolbar, &AnnotationToolbar::googleLensRequested, this, &CaptureOverlay::onGoogleLensRequested);
     connect(m_toolbar, &AnnotationToolbar::gifRequested, this, &CaptureOverlay::onGifRequested);
     connect(m_toolbar, &AnnotationToolbar::videoRequested, this, &CaptureOverlay::onVideoRequested);
     connect(m_annotationEngine, &AnnotationEngine::annotationAdded, this, &CaptureOverlay::updateUndoRedoState);
@@ -530,7 +535,11 @@ CaptureOverlay::CaptureOverlay(QWidget *parent)
 
 }
 
-CaptureOverlay::~CaptureOverlay() {}
+CaptureOverlay::~CaptureOverlay()
+{
+    if (m_googleLensUploader)
+        m_googleLensUploader->cancel();
+}
 
 void CaptureOverlay::setupToolSettingsDrawer()
 {
@@ -1895,6 +1904,7 @@ void CaptureOverlay::keyPressEvent(QKeyEvent *event)
         if (matchesOverlayShortcut(event, QStringLiteral("actionPin"), QStringLiteral("Ctrl+P"))) { onPinToDesktop(); return; }
         if (matchesOverlayShortcut(event, QStringLiteral("actionOcr"), QStringLiteral("Ctrl+O"))) { onOcrRequested(); return; }
         if (matchesOverlayShortcut(event, QStringLiteral("actionUpload"), QStringLiteral("Ctrl+U"))) { onUploadRequested(); return; }
+        if (matchesOverlayShortcut(event, QStringLiteral("actionGoogleLens"), QStringLiteral("Ctrl+L"))) { onGoogleLensRequested(); return; }
         if (matchesOverlayShortcut(event, QStringLiteral("actionGif"), QStringLiteral("Ctrl+G"))) { onGifRequested(); return; }
         if (matchesOverlayShortcut(event, QStringLiteral("actionVideo"), QStringLiteral("Ctrl+Shift+V"))) { onVideoRequested(); return; }
 
@@ -2380,6 +2390,43 @@ void CaptureOverlay::onUploadRequested()
     dlg.exec();
     show();
     if (m_selectionComplete) showToolbar();
+}
+
+void CaptureOverlay::onGoogleLensRequested()
+{
+    QPixmap pix = getSelectedPixmap();
+    if (pix.isNull()) return;
+
+    if (m_googleLensUploader) {
+        m_googleLensUploader->cancel();
+        m_googleLensUploader->deleteLater();
+    }
+
+    m_googleLensUploader = ImageUploader::create(ImageUploader::Provider::Litterbox, this);
+    if (!m_googleLensUploader)
+        return;
+
+    QPointer<CaptureOverlay> self(this);
+    connect(m_googleLensUploader, &ImageUploader::succeeded, this, [this, self](const QString &url, const QString &) {
+        if (!self) return;
+        QUrl lens(QStringLiteral("https://lens.google.com/uploadbyurl"));
+        QUrlQuery query;
+        query.addQueryItem(QStringLiteral("url"), url);
+        lens.setQuery(query);
+        QDesktopServices::openUrl(lens);
+        m_googleLensUploader->deleteLater();
+        m_googleLensUploader = nullptr;
+    });
+    connect(m_googleLensUploader, &ImageUploader::failed, this, [this, self](const QString &reason) {
+        if (!self) return;
+        QMessageBox::warning(this, TranslationManager::uploadFailed(), reason);
+        m_googleLensUploader->deleteLater();
+        m_googleLensUploader = nullptr;
+    });
+    hide();
+    hideToolbar();
+    m_googleLensUploader->setImage(pix);
+    m_googleLensUploader->upload();
 }
 
 void CaptureOverlay::onGifRequested()

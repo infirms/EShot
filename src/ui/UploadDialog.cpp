@@ -28,18 +28,24 @@ UploadDialog::UploadDialog(QWidget *parent) : QDialog(parent)
                               static_cast<int>(ImageUploader::Provider::Catbox));
     m_providerCombo->addItem(QStringLiteral("Uguu.se (3 hours)"),
                               static_cast<int>(ImageUploader::Provider::Uguu));
+    m_providerCombo->addItem(QStringLiteral("Litterbox (24 hours)"),
+                              static_cast<int>(ImageUploader::Provider::Litterbox));
+    m_providerCombo->addItem(QStringLiteral("Yandex Disk"),
+                              static_cast<int>(ImageUploader::Provider::YandexDisk));
+    m_providerCombo->addItem(QStringLiteral("Google Drive"),
+                              static_cast<int>(ImageUploader::Provider::GoogleDrive));
     providerRow->addWidget(providerLabel);
     providerRow->addWidget(m_providerCombo, 1);
     layout->addLayout(providerRow);
 
-    auto *authBox = new QGroupBox(this);
-    auto *authForm = new QFormLayout(authBox);
+    m_authBox = new QGroupBox(this);
+    auto *authForm = new QFormLayout(m_authBox);
     m_authEdit = new QLineEdit(this);
     m_authEdit->setEchoMode(QLineEdit::Password);
     m_saveAuthBtn = new QPushButton(TranslationManager::save(), this);
     authForm->addRow(QString(), m_authEdit);
     authForm->addRow(QString(), m_saveAuthBtn);
-    layout->addWidget(authBox);
+    layout->addWidget(m_authBox);
 
     auto *btnRow = new QHBoxLayout();
     m_uploadBtn = new QPushButton(TranslationManager::upload(), this);
@@ -147,15 +153,14 @@ void UploadDialog::rebuildUploader()
 void UploadDialog::rebuildAuthSection()
 {
     if (!m_uploader) return;
+    m_authBox->setVisible(m_uploader->needsAuth());
     if (m_uploader->needsAuth()) {
         m_authEdit->setVisible(true);
         m_saveAuthBtn->setVisible(true);
-        if (auto *catbox = qobject_cast<CatboxUploader *>(m_uploader)) {
-            QSettings s("EShot", "EShot");
-            m_authEdit->setText(s.value("catboxUserHash").toString());
-            m_authEdit->setPlaceholderText(TranslationManager::catboxUserHashDesc());
-        }
+        m_authEdit->setText(m_uploader->authValue());
+        m_authEdit->setPlaceholderText(m_uploader->authPlaceholder());
     } else {
+        m_authEdit->clear();
         m_authEdit->setVisible(false);
         m_saveAuthBtn->setVisible(false);
     }
@@ -164,9 +169,7 @@ void UploadDialog::rebuildAuthSection()
 void UploadDialog::onSaveAuth()
 {
     if (!m_uploader) return;
-    if (auto *catbox = qobject_cast<CatboxUploader *>(m_uploader)) {
-        catbox->setUserHash(m_authEdit->text());
-    }
+    m_uploader->setAuthValue(m_authEdit->text());
     m_statusLabel->setText(TranslationManager::exportSuccess());
 }
 
@@ -181,6 +184,8 @@ void UploadDialog::onUploadClicked()
     m_deleteEdit->clear();
     m_copyLinkBtn->setEnabled(false);
     m_openLinkBtn->setEnabled(false);
+    if (m_uploader->needsAuth())
+        m_uploader->setAuthValue(m_authEdit->text());
     m_uploader->setImage(m_pixmap);
     m_uploader->upload();
 }

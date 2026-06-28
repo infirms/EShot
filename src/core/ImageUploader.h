@@ -14,6 +14,9 @@ public:
     enum class Provider {
         Catbox,
         Uguu,
+        Litterbox,
+        YandexDisk,
+        GoogleDrive,
     };
 
     struct Result {
@@ -29,6 +32,9 @@ public:
     virtual Provider provider() const = 0;
     virtual QString providerDisplayName() const = 0;
     virtual bool needsAuth() const { return false; }
+    virtual QString authValue() const { return QString(); }
+    virtual QString authPlaceholder() const { return QString(); }
+    virtual void setAuthValue(const QString &) {}
 
     void setImage(const QPixmap &pixmap);
     void setImagePath(const QString &path);

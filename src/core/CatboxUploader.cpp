@@ -25,6 +25,11 @@ QString CatboxUploader::providerDisplayName() const
     return QStringLiteral("Catbox.moe");
 }
 
+QString CatboxUploader::authPlaceholder() const
+{
+    return QStringLiteral("Optional Catbox user hash");
+}
+
 void CatboxUploader::setUserHash(const QString &hash)
 {
     m_userHash = hash.trimmed();

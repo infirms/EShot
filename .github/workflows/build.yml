@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 env:
-  APP_VERSION: '3.0.7'
+  APP_VERSION: '3.0.8'
   QT_VERSION: '6.8.2'
 
 jobs:

@@ -52,7 +52,7 @@ QStringList defaultAnnotationTools()
 
 QStringList defaultToolbarControls()
 {
-    return {"Color","Eyedropper","Lock","BlurIntensity","Undo","Redo","Ocr","Upload","Gif","Video"};
+    return {"Color","Eyedropper","Lock","BlurIntensity","Undo","Redo","Ocr","Upload","GoogleLens","Gif","Video"};
 }
 
 struct OverlayShortcutDef {
@@ -84,6 +84,7 @@ QVector<OverlayShortcutDef> overlayShortcutDefaults()
         {"actionPin", TranslationManager::actionPin(), "Ctrl+P"},
         {"actionOcr", TranslationManager::actionOcr(), "Ctrl+O"},
         {"actionUpload", TranslationManager::uploadToService(), "Ctrl+U"},
+        {"actionGoogleLens", QStringLiteral("Google Lens"), "Ctrl+L"},
         {"actionGif", TranslationManager::recordingStartTitle(), "Ctrl+G"},
         {"actionVideo", TranslationManager::videoRecordingTitle(), "Ctrl+Shift+V"}
     };
@@ -944,6 +945,7 @@ QWidget* SettingsDialog::createInterfaceTab()
         {"Redo",          TranslationManager::toolRedo(),                     ":/icons/redo.svg"},
         {"Ocr",           TranslationManager::actionOcr(),                    ":/icons/ocr.svg"},
         {"Upload",        TranslationManager::uploadToService(),              ":/icons/upload.svg"},
+        {"GoogleLens",    QStringLiteral("Google Lens"),                     ":/icons/search.svg"},
         {"Gif",           TranslationManager::recordingStartTitle(),          ":/icons/gif.svg"},
         {"Video",         TranslationManager::videoRecordingTitle(),          ":/icons/video.svg"},
     };

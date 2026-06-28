@@ -21,6 +21,7 @@ class QPushButton;
 class QCheckBox;
 class QPropertyAnimation;
 class QLabel;
+class ImageUploader;
 
 
 class CaptureOverlay : public QWidget {
@@ -104,6 +105,7 @@ private:
     AnnotationToolbar *m_toolbar;
     QWidget *m_actionPanel;
     AnnotationEngine *m_annotationEngine;
+    ImageUploader *m_googleLensUploader = nullptr;
 
     // Text editing — multi-line support
     QTextEdit *m_textEdit;
@@ -205,6 +207,7 @@ private slots:
     void onBlurIntensityChanged(int intensity);
     void onOcrRequested();
     void onUploadRequested();
+    void onGoogleLensRequested();
     void onGifRequested();
     void onVideoRequested();
 

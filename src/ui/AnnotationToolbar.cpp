@@ -20,7 +20,7 @@ QStringList defaultAnnotationTools()
 
 QStringList defaultToolbarControls()
 {
-    return {"Color","Eyedropper","Lock","BlurIntensity","Undo","Redo","Ocr","Upload","Gif","Video"};
+    return {"Color","Eyedropper","Lock","BlurIntensity","Undo","Redo","Ocr","Upload","GoogleLens","Gif","Video"};
 }
 
 QStringList normalizedToolbarControls(QSettings &settings)
@@ -32,6 +32,13 @@ QStringList normalizedToolbarControls(QSettings &settings)
         if (!controls.contains(QStringLiteral("Video")))
             controls.append(QStringLiteral("Video"));
         settings.setValue("toolbarControlsMigratedVideo", true);
+        settings.setValue("visibleToolbarControls", controls);
+    }
+    if (settings.contains("visibleToolbarControls") &&
+        !settings.value("toolbarControlsMigratedGoogleLens", false).toBool()) {
+        if (!controls.contains(QStringLiteral("GoogleLens")))
+            controls.append(QStringLiteral("GoogleLens"));
+        settings.setValue("toolbarControlsMigratedGoogleLens", true);
         settings.setValue("visibleToolbarControls", controls);
     }
     return controls;
@@ -58,6 +65,7 @@ AnnotationToolbar::AnnotationToolbar(QWidget *parent)
     , m_redoButton(nullptr)
     , m_ocrButton(nullptr)
     , m_uploadButton(nullptr)
+    , m_lensButton(nullptr)
 {
     if (!parent) {
         setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
@@ -453,6 +461,10 @@ void AnnotationToolbar::setupUI()
     m_optionalControls["Upload"] = m_uploadButton;
     m_layout->addWidget(m_uploadButton);
 
+    m_lensButton = createActionButton(":/icons/search.svg", QStringLiteral("Google Lens"), "lens");
+    m_optionalControls["GoogleLens"] = m_lensButton;
+    m_layout->addWidget(m_lensButton);
+
     m_gifButton = new QPushButton(this);
     m_gifButton->setIcon(QIcon(":/icons/gif.svg"));
     m_gifButton->setIconSize(QSize(22, 22));
@@ -648,6 +660,7 @@ void AnnotationToolbar::onActionButtonClicked()
     else if (action == "redo") emit redoRequested();
     else if (action == "ocr") emit ocrRequested();
     else if (action == "upload") emit uploadRequested();
+    else if (action == "lens") emit googleLensRequested();
     else if (action == "gif") emit gifRequested();
     else if (action == "video") emit videoRequested();
 }
@@ -723,6 +736,7 @@ void AnnotationToolbar::refreshToolTips()
     if (m_lockButton) m_lockButton->setToolTip(TranslationManager::actionLock());
     if (m_ocrButton) m_ocrButton->setToolTip(TranslationManager::actionOcr());
     if (m_uploadButton) m_uploadButton->setToolTip(TranslationManager::uploadToService());
+    if (m_lensButton) m_lensButton->setToolTip(QStringLiteral("Google Lens"));
     if (m_gifButton) m_gifButton->setToolTip(TranslationManager::recordingStartTitle());
     if (m_videoButton) m_videoButton->setToolTip(TranslationManager::videoRecordingTitle());
 }

@@ -1,11 +1,517 @@
 #include "ImageUploader.h"
 #include <QNetworkAccessManager>
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QHttpMultiPart>
+#include <QHttpPart>
 #include <QBuffer>
 #include <QFile>
 #include <QFileInfo>
 #include <QDir>
 #include <QDateTime>
 #include <QDebug>
+#include <QPointer>
+#include <QSettings>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QUrl>
+#include <QUrlQuery>
+
+namespace {
+class FormUploader : public ImageUploader {
+public:
+    struct Part {
+        QString name;
+        QByteArray value;
+    };
+
+    FormUploader(Provider provider, const QString &name, const QUrl &url,
+                 const QString &fileField, const QList<Part> &parts,
+                 QObject *parent = nullptr)
+        : ImageUploader(parent)
+        , m_provider(provider)
+        , m_name(name)
+        , m_url(url)
+        , m_fileField(fileField)
+        , m_parts(parts)
+    {}
+
+    ~FormUploader() override { cancel(); }
+
+    Provider provider() const override { return m_provider; }
+    QString providerDisplayName() const override { return m_name; }
+
+    void upload() override
+    {
+        if (m_reply) {
+            emit failed(QStringLiteral("upload already in progress"));
+            return;
+        }
+        if (!hasImage()) {
+            finishWithError(QStringLiteral("image missing"));
+            return;
+        }
+
+        emit uploading();
+        m_multipart = new QHttpMultiPart(QHttpMultiPart::FormDataType);
+        for (const Part &part : m_parts) {
+            QHttpPart p;
+            p.setHeader(QNetworkRequest::ContentDispositionHeader,
+                        QVariant(QStringLiteral("form-data; name=\"%1\"").arg(part.name)));
+            p.setBody(part.value);
+            m_multipart->append(p);
+        }
+
+        QHttpPart filePart;
+        filePart.setHeader(QNetworkRequest::ContentTypeHeader, QVariant(QStringLiteral("image/png")));
+        filePart.setHeader(QNetworkRequest::ContentDispositionHeader,
+                           QVariant(QStringLiteral("form-data; name=\"%1\"; filename=\"%2\"")
+                                        .arg(m_fileField, QFileInfo(imagePath()).fileName())));
+        QFile *file = new QFile(imagePath(), m_multipart);
+        if (!file->open(QIODevice::ReadOnly)) {
+            delete m_multipart;
+            m_multipart = nullptr;
+            finishWithError(QStringLiteral("cannot read image"));
+            return;
+        }
+        filePart.setBodyDevice(file);
+        m_multipart->append(filePart);
+
+        QNetworkRequest req(m_url);
+        req.setRawHeader("User-Agent", "EShot/3.0");
+        req.setTransferTimeout(60000);
+        m_reply = nam()->post(req, m_multipart);
+        m_multipart->setParent(m_reply);
+
+        QPointer<FormUploader> self(this);
+        QObject::connect(m_reply, &QNetworkReply::finished, this, [this, self]() {
+            if (!self) return;
+            QByteArray data = m_reply->readAll();
+            int code = m_reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            QNetworkReply::NetworkError err = m_reply->error();
+            QString errStr = m_reply->errorString();
+
+            QNetworkReply *r = m_reply;
+            QHttpMultiPart *mp = m_multipart;
+            m_reply = nullptr;
+            m_multipart = nullptr;
+            r->deleteLater();
+            if (mp && mp->parent() != r) mp->deleteLater();
+
+            const QString url = QString::fromUtf8(data).trimmed();
+            if (err != QNetworkReply::NoError) {
+                finishWithError(QStringLiteral("network error: %1").arg(errStr));
+            } else if (code < 200 || code >= 300) {
+                finishWithError(QStringLiteral("http %1: %2").arg(code).arg(url.left(120)));
+            } else if (!url.startsWith(QStringLiteral("https://"))) {
+                finishWithError(QStringLiteral("unexpected response: ") + url.left(120));
+            } else {
+                finishWithSuccess(url);
+            }
+        });
+    }
+
+    void cancel() override
+    {
+        if (m_reply) {
+            QNetworkReply *reply = m_reply;
+            QHttpMultiPart *multipart = m_multipart;
+            m_reply = nullptr;
+            m_multipart = nullptr;
+            disconnect(reply, nullptr, this, nullptr);
+            reply->abort();
+            reply->deleteLater();
+            if (multipart && multipart->parent() != reply)
+                multipart->deleteLater();
+        } else if (m_multipart) {
+            m_multipart->deleteLater();
+            m_multipart = nullptr;
+        }
+    }
+
+private:
+    Provider m_provider;
+    QString m_name;
+    QUrl m_url;
+    QString m_fileField;
+    QList<Part> m_parts;
+    QNetworkReply *m_reply = nullptr;
+    QHttpMultiPart *m_multipart = nullptr;
+};
+
+class YandexDiskUploader : public ImageUploader {
+public:
+    explicit YandexDiskUploader(QObject *parent = nullptr)
+        : ImageUploader(parent)
+    {
+        QSettings s("EShot", "EShot");
+        m_token = s.value(QStringLiteral("yandexDiskToken")).toString();
+    }
+
+    ~YandexDiskUploader() override { cancel(); }
+
+    Provider provider() const override { return Provider::YandexDisk; }
+    QString providerDisplayName() const override { return QStringLiteral("Yandex Disk"); }
+    bool needsAuth() const override { return true; }
+    QString authValue() const override { return m_token; }
+    QString authPlaceholder() const override { return QStringLiteral("Yandex Disk OAuth token"); }
+    void setAuthValue(const QString &value) override
+    {
+        m_token = value.trimmed();
+        QSettings s("EShot", "EShot");
+        s.setValue(QStringLiteral("yandexDiskToken"), m_token);
+    }
+
+    void upload() override
+    {
+        if (m_reply) {
+            emit failed(QStringLiteral("upload already in progress"));
+            return;
+        }
+        if (!hasImage()) {
+            finishWithError(QStringLiteral("image missing"));
+            return;
+        }
+        if (m_token.trimmed().isEmpty()) {
+            finishWithError(QStringLiteral("Yandex Disk token missing"));
+            return;
+        }
+
+        emit uploading();
+        m_remotePath = QStringLiteral("disk:/EShot/%1").arg(QFileInfo(imagePath()).fileName());
+        createFolder();
+    }
+
+    void cancel() override
+    {
+        if (!m_reply)
+            return;
+        QNetworkReply *reply = m_reply;
+        m_reply = nullptr;
+        disconnect(reply, nullptr, this, nullptr);
+        reply->abort();
+        reply->deleteLater();
+    }
+
+private:
+    QNetworkRequest request(const QUrl &url) const
+    {
+        QNetworkRequest req(url);
+        req.setRawHeader("Authorization", "OAuth " + m_token.toUtf8());
+        req.setRawHeader("User-Agent", "EShot/3.0");
+        req.setTransferTimeout(60000);
+        return req;
+    }
+
+    QUrl apiUrl(const QString &path, const QUrlQuery &query = QUrlQuery()) const
+    {
+        QUrl url(QStringLiteral("https://cloud-api.yandex.net/v1/disk/%1").arg(path));
+        url.setQuery(query);
+        return url;
+    }
+
+    void createFolder()
+    {
+        QUrlQuery query;
+        query.addQueryItem(QStringLiteral("path"), QStringLiteral("disk:/EShot"));
+        m_reply = nam()->put(request(apiUrl(QStringLiteral("resources"), query)), QByteArray());
+        QPointer<YandexDiskUploader> self(this);
+        QObject::connect(m_reply, &QNetworkReply::finished, this, [this, self]() {
+            if (!self) return;
+            const int code = m_reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            const QNetworkReply::NetworkError err = m_reply->error();
+            clearReply();
+            if (err != QNetworkReply::NoError && code != 409) {
+                finishWithError(QStringLiteral("Yandex folder error (HTTP %1)").arg(code));
+                return;
+            }
+            requestUploadUrl();
+        });
+    }
+
+    void requestUploadUrl()
+    {
+        QUrlQuery query;
+        query.addQueryItem(QStringLiteral("path"), m_remotePath);
+        query.addQueryItem(QStringLiteral("overwrite"), QStringLiteral("true"));
+        m_reply = nam()->get(request(apiUrl(QStringLiteral("resources/upload"), query)));
+        QPointer<YandexDiskUploader> self(this);
+        QObject::connect(m_reply, &QNetworkReply::finished, this, [this, self]() {
+            if (!self) return;
+            const QByteArray data = m_reply->readAll();
+            const int code = m_reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            const QNetworkReply::NetworkError err = m_reply->error();
+            clearReply();
+            if (err != QNetworkReply::NoError) {
+                finishWithError(QStringLiteral("Yandex upload URL error (HTTP %1)").arg(code));
+                return;
+            }
+            const QUrl href(QJsonDocument::fromJson(data).object().value(QStringLiteral("href")).toString());
+            if (!href.isValid()) {
+                finishWithError(QStringLiteral("Yandex upload URL missing"));
+                return;
+            }
+            putFile(href);
+        });
+    }
+
+    void putFile(const QUrl &href)
+    {
+        QFile *file = new QFile(imagePath(), this);
+        if (!file->open(QIODevice::ReadOnly)) {
+            file->deleteLater();
+            finishWithError(QStringLiteral("cannot read image"));
+            return;
+        }
+        QNetworkRequest req(href);
+        req.setTransferTimeout(60000);
+        m_reply = nam()->put(req, file);
+        file->setParent(m_reply);
+        QPointer<YandexDiskUploader> self(this);
+        QObject::connect(m_reply, &QNetworkReply::finished, this, [this, self]() {
+            if (!self) return;
+            const int code = m_reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            const QNetworkReply::NetworkError err = m_reply->error();
+            clearReply();
+            if (err != QNetworkReply::NoError || code < 200 || code >= 300) {
+                finishWithError(QStringLiteral("Yandex upload error (HTTP %1)").arg(code));
+                return;
+            }
+            publish();
+        });
+    }
+
+    void publish()
+    {
+        QUrlQuery query;
+        query.addQueryItem(QStringLiteral("path"), m_remotePath);
+        m_reply = nam()->put(request(apiUrl(QStringLiteral("resources/publish"), query)), QByteArray());
+        QPointer<YandexDiskUploader> self(this);
+        QObject::connect(m_reply, &QNetworkReply::finished, this, [this, self]() {
+            if (!self) return;
+            const int code = m_reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            const QNetworkReply::NetworkError err = m_reply->error();
+            clearReply();
+            if (err != QNetworkReply::NoError && code != 409) {
+                finishWithError(QStringLiteral("Yandex publish error (HTTP %1)").arg(code));
+                return;
+            }
+            readPublicUrl();
+        });
+    }
+
+    void readPublicUrl()
+    {
+        QUrlQuery query;
+        query.addQueryItem(QStringLiteral("path"), m_remotePath);
+        query.addQueryItem(QStringLiteral("fields"), QStringLiteral("public_url"));
+        m_reply = nam()->get(request(apiUrl(QStringLiteral("resources"), query)));
+        QPointer<YandexDiskUploader> self(this);
+        QObject::connect(m_reply, &QNetworkReply::finished, this, [this, self]() {
+            if (!self) return;
+            const QByteArray data = m_reply->readAll();
+            const int code = m_reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            const QNetworkReply::NetworkError err = m_reply->error();
+            clearReply();
+            if (err != QNetworkReply::NoError) {
+                finishWithError(QStringLiteral("Yandex link error (HTTP %1)").arg(code));
+                return;
+            }
+            const QString url = QJsonDocument::fromJson(data).object().value(QStringLiteral("public_url")).toString();
+            if (url.isEmpty()) {
+                finishWithError(QStringLiteral("Yandex public link missing"));
+                return;
+            }
+            finishWithSuccess(url);
+        });
+    }
+
+    void clearReply()
+    {
+        QNetworkReply *reply = m_reply;
+        m_reply = nullptr;
+        if (reply)
+            reply->deleteLater();
+    }
+
+    QString m_token;
+    QString m_remotePath;
+    QNetworkReply *m_reply = nullptr;
+};
+
+class GoogleDriveUploader : public ImageUploader {
+public:
+    explicit GoogleDriveUploader(QObject *parent = nullptr)
+        : ImageUploader(parent)
+    {
+        QSettings s("EShot", "EShot");
+        m_token = s.value(QStringLiteral("googleDriveToken")).toString();
+    }
+
+    ~GoogleDriveUploader() override { cancel(); }
+
+    Provider provider() const override { return Provider::GoogleDrive; }
+    QString providerDisplayName() const override { return QStringLiteral("Google Drive"); }
+    bool needsAuth() const override { return true; }
+    QString authValue() const override { return m_token; }
+    QString authPlaceholder() const override { return QStringLiteral("Google Drive OAuth token"); }
+    void setAuthValue(const QString &value) override
+    {
+        m_token = value.trimmed();
+        QSettings s("EShot", "EShot");
+        s.setValue(QStringLiteral("googleDriveToken"), m_token);
+    }
+
+    void upload() override
+    {
+        if (m_reply) {
+            emit failed(QStringLiteral("upload already in progress"));
+            return;
+        }
+        if (!hasImage()) {
+            finishWithError(QStringLiteral("image missing"));
+            return;
+        }
+        if (m_token.trimmed().isEmpty()) {
+            finishWithError(QStringLiteral("Google Drive token missing"));
+            return;
+        }
+
+        emit uploading();
+        createFile();
+    }
+
+    void cancel() override
+    {
+        QNetworkReply *reply = m_reply;
+        if (m_reply) {
+            m_reply = nullptr;
+            disconnect(reply, nullptr, this, nullptr);
+            reply->abort();
+            reply->deleteLater();
+        }
+        if (m_multipart) {
+            if (!reply || m_multipart->parent() != reply)
+                m_multipart->deleteLater();
+            m_multipart = nullptr;
+        }
+    }
+
+private:
+    QNetworkRequest request(const QUrl &url, const QByteArray &contentType = QByteArray()) const
+    {
+        QNetworkRequest req(url);
+        req.setRawHeader("Authorization", "Bearer " + m_token.toUtf8());
+        req.setRawHeader("User-Agent", "EShot/3.0");
+        if (!contentType.isEmpty())
+            req.setHeader(QNetworkRequest::ContentTypeHeader, QString::fromLatin1(contentType));
+        req.setTransferTimeout(60000);
+        return req;
+    }
+
+    void createFile()
+    {
+        QUrl url(QStringLiteral("https://www.googleapis.com/upload/drive/v3/files"));
+        QUrlQuery query;
+        query.addQueryItem(QStringLiteral("uploadType"), QStringLiteral("multipart"));
+        query.addQueryItem(QStringLiteral("fields"), QStringLiteral("id"));
+        url.setQuery(query);
+
+        m_multipart = new QHttpMultiPart(QHttpMultiPart::RelatedType);
+
+        QJsonObject metadata;
+        metadata.insert(QStringLiteral("name"), QFileInfo(imagePath()).fileName());
+        metadata.insert(QStringLiteral("mimeType"), QStringLiteral("image/png"));
+
+        QHttpPart metadataPart;
+        metadataPart.setHeader(QNetworkRequest::ContentTypeHeader, QVariant(QStringLiteral("application/json; charset=UTF-8")));
+        metadataPart.setBody(QJsonDocument(metadata).toJson(QJsonDocument::Compact));
+        m_multipart->append(metadataPart);
+
+        QHttpPart filePart;
+        filePart.setHeader(QNetworkRequest::ContentTypeHeader, QVariant(QStringLiteral("image/png")));
+        QFile *file = new QFile(imagePath(), m_multipart);
+        if (!file->open(QIODevice::ReadOnly)) {
+            delete m_multipart;
+            m_multipart = nullptr;
+            finishWithError(QStringLiteral("cannot read image"));
+            return;
+        }
+        filePart.setBodyDevice(file);
+        m_multipart->append(filePart);
+
+        m_reply = nam()->post(request(url), m_multipart);
+        m_multipart->setParent(m_reply);
+
+        QPointer<GoogleDriveUploader> self(this);
+        QObject::connect(m_reply, &QNetworkReply::finished, this, [this, self]() {
+            if (!self) return;
+            const QByteArray data = m_reply->readAll();
+            const int code = m_reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            const QNetworkReply::NetworkError err = m_reply->error();
+            QNetworkReply *reply = m_reply;
+            QHttpMultiPart *mp = m_multipart;
+            m_multipart = nullptr;
+            clearReply();
+            if (mp && mp->parent() != reply) mp->deleteLater();
+            if (err != QNetworkReply::NoError || code < 200 || code >= 300) {
+                finishWithError(QStringLiteral("Google Drive upload error (HTTP %1)").arg(code));
+                return;
+            }
+            const QJsonObject obj = QJsonDocument::fromJson(data).object();
+            m_fileId = obj.value(QStringLiteral("id")).toString();
+            if (m_fileId.isEmpty()) {
+                finishWithError(QStringLiteral("Google Drive file id missing"));
+                return;
+            }
+            publish();
+        });
+    }
+
+    void publish()
+    {
+        QUrl url(QStringLiteral("https://www.googleapis.com/drive/v3/files/%1/permissions")
+            .arg(QString::fromLatin1(QUrl::toPercentEncoding(m_fileId))));
+        QUrlQuery query;
+        query.addQueryItem(QStringLiteral("fields"), QStringLiteral("id"));
+        url.setQuery(query);
+
+        QJsonObject permission;
+        permission.insert(QStringLiteral("type"), QStringLiteral("anyone"));
+        permission.insert(QStringLiteral("role"), QStringLiteral("reader"));
+
+        m_reply = nam()->post(
+            request(url, "application/json"),
+            QJsonDocument(permission).toJson(QJsonDocument::Compact));
+
+        QPointer<GoogleDriveUploader> self(this);
+        QObject::connect(m_reply, &QNetworkReply::finished, this, [this, self]() {
+            if (!self) return;
+            const int code = m_reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            const QNetworkReply::NetworkError err = m_reply->error();
+            clearReply();
+            if (err != QNetworkReply::NoError || code < 200 || code >= 300) {
+                finishWithError(QStringLiteral("Google Drive share error (HTTP %1)").arg(code));
+                return;
+            }
+            finishWithSuccess(QStringLiteral("https://drive.google.com/file/d/%1/view").arg(m_fileId));
+        });
+    }
+
+    void clearReply()
+    {
+        QNetworkReply *reply = m_reply;
+        m_reply = nullptr;
+        if (reply)
+            reply->deleteLater();
+    }
+
+    QString m_token;
+    QString m_fileId;
+    QNetworkReply *m_reply = nullptr;
+    QHttpMultiPart *m_multipart = nullptr;
+};
+}
 
 ImageUploader::ImageUploader(QObject *parent) : QObject(parent)
 {
@@ -86,6 +592,18 @@ ImageUploader *ImageUploader::create(Provider p, QObject *parent)
         extern ImageUploader *createUguuUploader(QObject *parent);
         return createUguuUploader(parent);
     }
+    case Provider::Litterbox:
+        return new FormUploader(
+            Provider::Litterbox,
+            QStringLiteral("Litterbox (24 hours)"),
+            QUrl(QStringLiteral("https://litterbox.catbox.moe/resources/internals/api.php")),
+            QStringLiteral("fileToUpload"),
+            {{QStringLiteral("reqtype"), "fileupload"}, {QStringLiteral("time"), "24h"}},
+            parent);
+    case Provider::YandexDisk:
+        return new YandexDiskUploader(parent);
+    case Provider::GoogleDrive:
+        return new GoogleDriveUploader(parent);
     }
     return nullptr;
 }

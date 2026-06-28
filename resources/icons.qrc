@@ -27,6 +27,7 @@
         <file alias="icons/paste.svg">../icons/paste.svg</file>
         <file alias="icons/ocr.svg">../icons/ocr.svg</file>
         <file alias="icons/upload.svg">../icons/upload.svg</file>
+        <file alias="icons/search.svg">../icons/search.svg</file>
         <file alias="icons/record.svg">../icons/record.svg</file>
         <file alias="icons/gif.svg">../icons/gif.svg</file>
         <file alias="icons/video.svg">../icons/video.svg</file>
