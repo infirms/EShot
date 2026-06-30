@@ -1,8 +1,8 @@
 # EShot
 
-Fast, lightweight Windows screenshot tool with annotations, OCR, GIF recording, video recording, uploads, and pinned captures.
+Fast, lightweight Windows screenshot tool with annotations, OCR, uploads, pinned captures, GIF recording, and MP4 screen recording.
 
-[![Version](https://img.shields.io/badge/version-3.0.7-blue.svg)](https://github.com/Benoks/EShot/releases)
+[![Latest release](https://img.shields.io/github/v/release/Benoks/EShot?label=release)](https://github.com/Benoks/EShot/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey.svg)](#)
 [![Qt](https://img.shields.io/badge/Qt-6.x-green.svg)](https://www.qt.io/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -11,86 +11,101 @@ Fast, lightweight Windows screenshot tool with annotations, OCR, GIF recording, 
   <img src="preview.png" alt="EShot preview" width="760">
 </p>
 
-EShot is built for people who want a quick screenshot workflow without a heavy desktop app running in the background. It focuses on region capture, clean annotation, OCR, uploads, pinned screenshots, GIFs, and MP4 screen recording from one compact tray app.
+EShot is built for people who want a quick screenshot workflow without a heavy desktop app getting in the way. Capture an area, mark it up, copy it, save it, upload it, recognize text, search it with Google Lens, pin it as a reference, or record it as GIF/MP4 from one compact tray app.
 
 ## Highlights
 
 - Region capture with multi-monitor and high-DPI support
-- Annotation tools: pen, arrow, line, rectangle, ellipse, text, highlighter, blur, counter, eraser, eyedropper, and semi-transparent rectangle
+- Full-screen monitor capture by double-clicking a screen during selection
+- Clean annotation tools for fast markup
+- OCR powered by Tesseract with selectable language packs
+- Google Lens search for the selected area
+- Direct uploads to short-term and long-term image/file hosts
+- Pinned screenshots that stay above other windows
 - GIF recording for selected screen areas
 - MP4 video recording powered by FFmpeg
 - Desktop audio and microphone support for video recording
-- OCR powered by Tesseract with selectable language packs
-- Catbox and Uguu upload support
-- Pin screenshots above the desktop
-- Quick Settings drawer inside the capture screen
-- Customizable global and in-capture shortcuts
+- Customizable global, direct-capture, recording, and in-capture shortcuts
+- Toolbar visibility settings
+- Windows Print Screen conflict detection and fix helper
 - Start with Windows through Task Scheduler
 - GitHub release update check
+- Import/export settings
 
-## What's New in v3.0.7
+## Capture Workflow
 
-- Known issue: on some mixed-DPI multi-monitor setups, especially when a scaled laptop display is used beside an external primary display, GIF/MP4 recording can start from a shifted or resized region. Normal screenshots are not affected. Workaround: set the affected display to 100% scaling or use matching scaling on both displays before recording.
+Start capture from the tray icon, global hotkey, command line, or direct action hotkeys. After selecting an area, EShot opens a compact toolbar where you can annotate, copy, save, upload, OCR, search with Google Lens, pin, or start GIF/video recording.
 
-## What's New in v3.0.6
+The selection UI adapts to tight screen space, keeps the dimension label anchored to the selected area, and supports locking the selection while editing.
 
-- Rolled back the experimental video recorder changes while the mixed-DPI recording issue is investigated.
+## Annotation Tools
 
-## What's New in v3.0.5
-
-- Added automatic x64 and ARM64 GitHub Release builds from version tags.
-- Fixed the installer language screen to start in English by default.
-- Improved desktop and tray icon contrast with white artwork and black outlines.
-
-## What's New in v3.0.4
-
-- Fixed Print Screen conflict detection on clean Windows 11 installations where the Snipping Tool registry value is absent.
-- Improved applying and verifying the Windows Print Screen shortcut setting.
-
-## What's New in v3.0.3
-
-- Added MP4 video recording for selected areas
-- Added FFmpeg integration as an optional installer component
-- Added desktop audio and microphone recording controls
-- Added Quick Settings drawer for capture, GIF, and video settings
-- Added fully customizable screenshot-screen shortcuts for tools and toolbar actions
-- Added more OCR language support: Japanese, Korean, Simplified Chinese, Portuguese, Polish, and Dutch
-- Improved OCR language picker: unavailable languages are shown disabled instead of silently disappearing
-- Improved setup experience for existing installs and already-installed OCR/FFmpeg components
-- Improved first-capture startup performance with overlay pre-warming
-- Improved text annotation controls and movable text editing panel
-- Improved toolbar grouping, spacing, tool visibility options, and annotation selection behavior
-- Improved notifications for saved images, GIFs, and videos
-
-## Features
-
-### Capture
-
-- Select any region of the screen
-- Move, resize, annotate, copy, save, upload, pin, OCR, record GIF, or record video from the selected area
-- Dimension label stays anchored to the selection
-- Toolbar and side actions reposition when screen space is tight
-
-### Annotation
-
-EShot includes the common tools needed for quick markup:
+EShot includes the tools most screenshot workflows need:
 
 - Freehand pen
 - Arrow and line
 - Rectangle and ellipse
 - Semi-transparent rectangle
-- Multiline text
+- Multiline text with font and size controls
+- Highlighter
 - Mosaic blur with adjustable intensity
-- Counter
+- Counter/number markers
 - Eraser
 - Eyedropper color picker
 - Undo and redo
 
-### GIF Recording
+## OCR
 
-Record a selected area as a GIF. You can configure FPS, maximum duration, and loop behavior.
+EShot can extract text from a selected area using Tesseract OCR. The installer can include the OCR engine and optional language packs.
 
-### Video Recording
+Supported OCR language options include:
+
+- English
+- Turkish
+- Russian
+- German
+- French
+- Spanish
+- Italian
+- Portuguese
+- Polish
+- Dutch
+- Japanese
+- Korean
+- Simplified Chinese
+
+Missing language packs are shown disabled in the OCR dialog instead of silently disappearing.
+
+## Uploads
+
+Upload screenshots directly from the capture toolbar. EShot supports anonymous/simple hosts as well as OAuth-based storage providers.
+
+Supported services:
+
+- Catbox
+- Uguu
+- Litterbox
+- Yandex Disk
+- Google Drive
+
+For OAuth providers, EShot accepts either a raw access token or the full redirect URL and extracts the token automatically. The upload dialog includes provider-specific help links for token setup.
+
+## Google Lens
+
+The Google Lens button opens a visual search for the selected area. It is useful for finding matching images, identifying UI elements, checking product images, or searching from a cropped screenshot without saving it first.
+
+## GIF Recording
+
+Record a selected screen area as a GIF. You can configure:
+
+- FPS
+- Maximum duration
+- Loop behavior
+- Start delay
+- Output folder
+- Direct GIF recording hotkey
+
+## Video Recording
 
 Record a selected area as an MP4 video. Video recording uses FFmpeg and supports:
 
@@ -99,39 +114,34 @@ Record a selected area as an MP4 video. Video recording uses FFmpeg and supports
 - Optional duration limit
 - Desktop/system audio
 - Microphone audio
-- Pause, stop, and cancel controls
+- Audio volume controls
+- Microphone device selection
+- Pause, stop, and cancel hotkeys
+- Output folder
 
-### OCR
+## Pin to Screen
 
-EShot can extract text from a selected area using Tesseract OCR. The installer can include the OCR engine and selectable language packs.
+Pinned screenshots stay above other windows. This is useful for reference images, snippets, UI comparison, notes, forms, and quick visual memory while working in another app.
 
-Supported language options include English, Turkish, Russian, German, French, Spanish, Italian, Portuguese, Polish, Dutch, Japanese, Korean, and Simplified Chinese. Missing language packs are shown disabled in the OCR dialog.
-
-### Upload
-
-Upload screenshots directly from the capture toolbar.
-
-Supported services:
-
-- Catbox
-- Uguu
-
-### Pin to Desktop
-
-Pinned screenshots stay above other windows, useful for reference images, snippets, UI comparison, notes, and quick visual memory.
-
-### Settings
+## Settings
 
 The settings window includes:
 
 - General behavior
+- Separate save folders for screenshots, GIFs, and videos
+- Filename pattern preview
+- Notification controls
 - Capture behavior
 - GIF and video recording settings
+- Audio recording controls
 - Appearance options
+- High contrast mode
+- Black tray icon option for light Windows themes
 - Interface and toolbar visibility
 - Global capture hotkey
-- Recording hotkeys
-- Screenshot-screen tool/action shortcuts
+- Direct screenshot/GIF/video hotkeys
+- Recording control hotkeys
+- In-capture tool/action shortcuts
 - Settings export and import
 
 ## Default Shortcuts
@@ -141,6 +151,7 @@ Most shortcuts can be changed in Settings.
 | Shortcut | Action |
 | --- | --- |
 | `Print Screen` | Start capture |
+| Double-click screen | Capture that full monitor |
 | `Enter` | Copy selected capture |
 | `Ctrl+C` | Copy selected capture |
 | `Ctrl+S` | Save selected capture |
@@ -158,6 +169,8 @@ Most shortcuts can be changed in Settings.
 | `X` | Eraser |
 | `D` | Semi-transparent rectangle |
 | `I` | Eyedropper |
+| `Ctrl+Z` | Undo |
+| `Ctrl+Shift+Z` | Redo |
 
 ## Install
 
@@ -168,7 +181,15 @@ Most shortcuts can be changed in Settings.
 
 If "Start with Windows" is enabled, EShot registers itself through Windows Task Scheduler.
 
-## Build from Source
+## Command Line
+
+```powershell
+EShot.exe --capture
+EShot.exe --save "C:\path\to\capture.png"
+EShot.exe --silent
+```
+
+## Build From Source
 
 Requirements:
 
@@ -189,14 +210,6 @@ Installer:
 
 ```powershell
 iscc EShot_Setup.iss
-```
-
-## Command Line
-
-```powershell
-EShot.exe --capture
-EShot.exe --save "C:\path\to\capture.png"
-EShot.exe --silent
 ```
 
 ## Third-Party Components
