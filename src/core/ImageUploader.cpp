@@ -1,4 +1,5 @@
 #include "ImageUploader.h"
+#include "TranslationManager.h"
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
 #include <QNetworkReply>
@@ -18,6 +19,48 @@
 #include <QUrlQuery>
 
 namespace {
+QString tokenFromQueryLikeString(QString text)
+{
+    text = text.trimmed();
+    if (text.startsWith(QLatin1Char('?')) || text.startsWith(QLatin1Char('#')))
+        text.remove(0, 1);
+
+    const int tokenIndex = text.indexOf(QStringLiteral("access_token="));
+    if (tokenIndex > 0)
+        text = text.mid(tokenIndex);
+
+    QUrlQuery query(text);
+    return query.queryItemValue(QStringLiteral("access_token"), QUrl::FullyDecoded).trimmed();
+}
+
+QString normalizeOAuthTokenInput(const QString &value)
+{
+    QString text = value.trimmed();
+    if (text.isEmpty())
+        return text;
+
+    const QString authorizationPrefix = QStringLiteral("Authorization:");
+    if (text.startsWith(authorizationPrefix, Qt::CaseInsensitive))
+        text = text.mid(authorizationPrefix.size()).trimmed();
+    if (text.startsWith(QStringLiteral("OAuth "), Qt::CaseInsensitive))
+        text = text.mid(6).trimmed();
+    if (text.startsWith(QStringLiteral("Bearer "), Qt::CaseInsensitive))
+        text = text.mid(7).trimmed();
+
+    QUrl url(text);
+    if (url.isValid()) {
+        const QString fragmentToken = tokenFromQueryLikeString(url.fragment());
+        if (!fragmentToken.isEmpty())
+            return fragmentToken;
+        const QString queryToken = tokenFromQueryLikeString(url.query());
+        if (!queryToken.isEmpty())
+            return queryToken;
+    }
+
+    const QString inlineToken = tokenFromQueryLikeString(text);
+    return inlineToken.isEmpty() ? text : inlineToken;
+}
+
 class FormUploader : public ImageUploader {
 public:
     struct Part {
@@ -44,11 +87,11 @@ public:
     void upload() override
     {
         if (m_reply) {
-            emit failed(QStringLiteral("upload already in progress"));
+            emit failed(TranslationManager::uploadErrorInProgress());
             return;
         }
         if (!hasImage()) {
-            finishWithError(QStringLiteral("image missing"));
+            finishWithError(TranslationManager::uploadErrorImageMissing());
             return;
         }
 
@@ -71,7 +114,7 @@ public:
         if (!file->open(QIODevice::ReadOnly)) {
             delete m_multipart;
             m_multipart = nullptr;
-            finishWithError(QStringLiteral("cannot read image"));
+            finishWithError(TranslationManager::uploadErrorCannotReadImage());
             return;
         }
         filePart.setBodyDevice(file);
@@ -100,11 +143,11 @@ public:
 
             const QString url = QString::fromUtf8(data).trimmed();
             if (err != QNetworkReply::NoError) {
-                finishWithError(QStringLiteral("network error: %1").arg(errStr));
+                finishWithError(TranslationManager::uploadErrorNetwork(errStr));
             } else if (code < 200 || code >= 300) {
-                finishWithError(QStringLiteral("http %1: %2").arg(code).arg(url.left(120)));
+                finishWithError(TranslationManager::uploadErrorHttp(code) + QStringLiteral(": ") + url.left(120));
             } else if (!url.startsWith(QStringLiteral("https://"))) {
-                finishWithError(QStringLiteral("unexpected response: ") + url.left(120));
+                finishWithError(TranslationManager::uploadErrorUnexpectedResponse(url.left(120)));
             } else {
                 finishWithSuccess(url);
             }
@@ -145,7 +188,10 @@ public:
         : ImageUploader(parent)
     {
         QSettings s("EShot", "EShot");
-        m_token = s.value(QStringLiteral("yandexDiskToken")).toString();
+        const QString stored = s.value(QStringLiteral("yandexDiskToken")).toString();
+        m_token = normalizeOAuthTokenInput(stored);
+        if (m_token != stored)
+            s.setValue(QStringLiteral("yandexDiskToken"), m_token);
     }
 
     ~YandexDiskUploader() override { cancel(); }
@@ -154,10 +200,10 @@ public:
     QString providerDisplayName() const override { return QStringLiteral("Yandex Disk"); }
     bool needsAuth() const override { return true; }
     QString authValue() const override { return m_token; }
-    QString authPlaceholder() const override { return QStringLiteral("Yandex Disk OAuth token"); }
+    QString authPlaceholder() const override { return TranslationManager::yandexAuthPlaceholder(); }
     void setAuthValue(const QString &value) override
     {
-        m_token = value.trimmed();
+        m_token = normalizeOAuthTokenInput(value);
         QSettings s("EShot", "EShot");
         s.setValue(QStringLiteral("yandexDiskToken"), m_token);
     }
@@ -165,15 +211,15 @@ public:
     void upload() override
     {
         if (m_reply) {
-            emit failed(QStringLiteral("upload already in progress"));
+            emit failed(TranslationManager::uploadErrorInProgress());
             return;
         }
         if (!hasImage()) {
-            finishWithError(QStringLiteral("image missing"));
+            finishWithError(TranslationManager::uploadErrorImageMissing());
             return;
         }
         if (m_token.trimmed().isEmpty()) {
-            finishWithError(QStringLiteral("Yandex Disk token missing"));
+            finishWithError(TranslationManager::uploadErrorYandexTokenMissing());
             return;
         }
 
@@ -194,6 +240,19 @@ public:
     }
 
 private:
+    QString yandexError(const QString &step, int code, const QByteArray &data) const
+    {
+        if (code == 401) {
+            return TranslationManager::uploadErrorYandexAuthFailed();
+        }
+
+        QString message = TranslationManager::uploadErrorYandexStep(step, code);
+        const QString body = QString::fromUtf8(data).simplified().left(160);
+        if (!body.isEmpty())
+            message += QStringLiteral(": ") + body;
+        return message;
+    }
+
     QNetworkRequest request(const QUrl &url) const
     {
         QNetworkRequest req(url);
@@ -218,11 +277,12 @@ private:
         QPointer<YandexDiskUploader> self(this);
         QObject::connect(m_reply, &QNetworkReply::finished, this, [this, self]() {
             if (!self) return;
+            const QByteArray data = m_reply->readAll();
             const int code = m_reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
             const QNetworkReply::NetworkError err = m_reply->error();
             clearReply();
             if (err != QNetworkReply::NoError && code != 409) {
-                finishWithError(QStringLiteral("Yandex folder error (HTTP %1)").arg(code));
+                finishWithError(yandexError(QStringLiteral("folder"), code, data));
                 return;
             }
             requestUploadUrl();
@@ -243,12 +303,12 @@ private:
             const QNetworkReply::NetworkError err = m_reply->error();
             clearReply();
             if (err != QNetworkReply::NoError) {
-                finishWithError(QStringLiteral("Yandex upload URL error (HTTP %1)").arg(code));
+                finishWithError(yandexError(QStringLiteral("upload URL"), code, data));
                 return;
             }
             const QUrl href(QJsonDocument::fromJson(data).object().value(QStringLiteral("href")).toString());
             if (!href.isValid()) {
-                finishWithError(QStringLiteral("Yandex upload URL missing"));
+                finishWithError(TranslationManager::uploadErrorYandexUploadUrlMissing());
                 return;
             }
             putFile(href);
@@ -260,7 +320,7 @@ private:
         QFile *file = new QFile(imagePath(), this);
         if (!file->open(QIODevice::ReadOnly)) {
             file->deleteLater();
-            finishWithError(QStringLiteral("cannot read image"));
+            finishWithError(TranslationManager::uploadErrorCannotReadImage());
             return;
         }
         QNetworkRequest req(href);
@@ -274,7 +334,7 @@ private:
             const QNetworkReply::NetworkError err = m_reply->error();
             clearReply();
             if (err != QNetworkReply::NoError || code < 200 || code >= 300) {
-                finishWithError(QStringLiteral("Yandex upload error (HTTP %1)").arg(code));
+                finishWithError(TranslationManager::uploadErrorYandexStep(QStringLiteral("upload"), code));
                 return;
             }
             publish();
@@ -291,9 +351,10 @@ private:
             if (!self) return;
             const int code = m_reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
             const QNetworkReply::NetworkError err = m_reply->error();
+            const QByteArray data = m_reply->readAll();
             clearReply();
             if (err != QNetworkReply::NoError && code != 409) {
-                finishWithError(QStringLiteral("Yandex publish error (HTTP %1)").arg(code));
+                finishWithError(yandexError(QStringLiteral("publish"), code, data));
                 return;
             }
             readPublicUrl();
@@ -314,12 +375,12 @@ private:
             const QNetworkReply::NetworkError err = m_reply->error();
             clearReply();
             if (err != QNetworkReply::NoError) {
-                finishWithError(QStringLiteral("Yandex link error (HTTP %1)").arg(code));
+                finishWithError(yandexError(QStringLiteral("link"), code, data));
                 return;
             }
             const QString url = QJsonDocument::fromJson(data).object().value(QStringLiteral("public_url")).toString();
             if (url.isEmpty()) {
-                finishWithError(QStringLiteral("Yandex public link missing"));
+                finishWithError(TranslationManager::uploadErrorYandexPublicLinkMissing());
                 return;
             }
             finishWithSuccess(url);
@@ -345,7 +406,10 @@ public:
         : ImageUploader(parent)
     {
         QSettings s("EShot", "EShot");
-        m_token = s.value(QStringLiteral("googleDriveToken")).toString();
+        const QString stored = s.value(QStringLiteral("googleDriveToken")).toString();
+        m_token = normalizeOAuthTokenInput(stored);
+        if (m_token != stored)
+            s.setValue(QStringLiteral("googleDriveToken"), m_token);
     }
 
     ~GoogleDriveUploader() override { cancel(); }
@@ -354,10 +418,10 @@ public:
     QString providerDisplayName() const override { return QStringLiteral("Google Drive"); }
     bool needsAuth() const override { return true; }
     QString authValue() const override { return m_token; }
-    QString authPlaceholder() const override { return QStringLiteral("Google Drive OAuth token"); }
+    QString authPlaceholder() const override { return TranslationManager::googleDriveAuthPlaceholder(); }
     void setAuthValue(const QString &value) override
     {
-        m_token = value.trimmed();
+        m_token = normalizeOAuthTokenInput(value);
         QSettings s("EShot", "EShot");
         s.setValue(QStringLiteral("googleDriveToken"), m_token);
     }
@@ -365,15 +429,15 @@ public:
     void upload() override
     {
         if (m_reply) {
-            emit failed(QStringLiteral("upload already in progress"));
+            emit failed(TranslationManager::uploadErrorInProgress());
             return;
         }
         if (!hasImage()) {
-            finishWithError(QStringLiteral("image missing"));
+            finishWithError(TranslationManager::uploadErrorImageMissing());
             return;
         }
         if (m_token.trimmed().isEmpty()) {
-            finishWithError(QStringLiteral("Google Drive token missing"));
+            finishWithError(TranslationManager::uploadErrorGoogleTokenMissing());
             return;
         }
 
@@ -434,7 +498,7 @@ private:
         if (!file->open(QIODevice::ReadOnly)) {
             delete m_multipart;
             m_multipart = nullptr;
-            finishWithError(QStringLiteral("cannot read image"));
+            finishWithError(TranslationManager::uploadErrorCannotReadImage());
             return;
         }
         filePart.setBodyDevice(file);
@@ -455,13 +519,13 @@ private:
             clearReply();
             if (mp && mp->parent() != reply) mp->deleteLater();
             if (err != QNetworkReply::NoError || code < 200 || code >= 300) {
-                finishWithError(QStringLiteral("Google Drive upload error (HTTP %1)").arg(code));
+                finishWithError(TranslationManager::uploadErrorHttp(code));
                 return;
             }
             const QJsonObject obj = QJsonDocument::fromJson(data).object();
             m_fileId = obj.value(QStringLiteral("id")).toString();
             if (m_fileId.isEmpty()) {
-                finishWithError(QStringLiteral("Google Drive file id missing"));
+                finishWithError(TranslationManager::uploadErrorGoogleFileIdMissing());
                 return;
             }
             publish();
@@ -491,7 +555,7 @@ private:
             const QNetworkReply::NetworkError err = m_reply->error();
             clearReply();
             if (err != QNetworkReply::NoError || code < 200 || code >= 300) {
-                finishWithError(QStringLiteral("Google Drive share error (HTTP %1)").arg(code));
+                finishWithError(TranslationManager::uploadErrorHttp(code));
                 return;
             }
             finishWithSuccess(QStringLiteral("https://drive.google.com/file/d/%1/view").arg(m_fileId));

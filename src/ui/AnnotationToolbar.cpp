@@ -348,12 +348,12 @@ void AnnotationToolbar::setupUI()
     m_textFontCombo = new QFontComboBox(m_textOptionsWidget);
     m_textFontCombo->setCurrentFont(QFont("Segoe UI"));
     m_textFontCombo->setFixedWidth(118);
-    m_textFontCombo->setToolTip("Font");
+    m_textFontCombo->setToolTip(TranslationManager::toolFont());
     m_textSizeSpin = new QSpinBox(m_textOptionsWidget);
     m_textSizeSpin->setRange(8, 72);
     m_textSizeSpin->setValue(18);
     m_textSizeSpin->setFixedWidth(54);
-    m_textSizeSpin->setToolTip("Font size");
+    m_textSizeSpin->setToolTip(TranslationManager::toolFontSize());
     connect(m_textFontCombo, &QFontComboBox::currentFontChanged, this, [this](const QFont &font) {
         emit textFontFamilyChanged(font.family());
     });
@@ -734,6 +734,8 @@ void AnnotationToolbar::refreshToolTips()
     if (m_colorButton) m_colorButton->setToolTip(TranslationManager::toolColor());
     if (m_eyedropperButton) m_eyedropperButton->setToolTip(TranslationManager::toolEyedropper());
     if (m_lockButton) m_lockButton->setToolTip(TranslationManager::actionLock());
+    if (m_textFontCombo) m_textFontCombo->setToolTip(TranslationManager::toolFont());
+    if (m_textSizeSpin) m_textSizeSpin->setToolTip(TranslationManager::toolFontSize());
     if (m_ocrButton) m_ocrButton->setToolTip(TranslationManager::actionOcr());
     if (m_uploadButton) m_uploadButton->setToolTip(TranslationManager::uploadToService());
     if (m_lensButton) m_lensButton->setToolTip(QStringLiteral("Google Lens"));

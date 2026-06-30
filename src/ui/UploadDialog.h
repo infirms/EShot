@@ -36,6 +36,7 @@ private:
     void setBusy(bool busy);
     void rebuildAuthSection();
     void rebuildUploader();
+    void updateAuthHelp();
 
     QPixmap m_pixmap;
     ImageUploader *m_uploader = nullptr;
@@ -43,6 +44,7 @@ private:
     QComboBox *m_providerCombo;
     QGroupBox *m_authBox;
     QLineEdit *m_authEdit;
+    QLabel *m_authHelpLabel;
     QPushButton *m_saveAuthBtn;
     QPushButton *m_uploadBtn;
     QLabel *m_statusLabel;

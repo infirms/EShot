@@ -118,9 +118,7 @@ void OcrDialog::populateLanguages()
         {"\347\256\200\344\275\223\344\270\255\346\226\207", "zh-CN"},
     };
 
-    const QString missingTip = (TranslationManager::currentLanguage() == TranslationManager::Turkish)
-        ? QStringLiteral("Dil paketi yüklü değil")
-        : QStringLiteral("Language pack is not installed");
+    const QString missingTip = TranslationManager::ocrLanguagePackMissing();
 
     for (const auto &language : languages) {
         const QString tag = QString::fromLatin1(language.tag);

@@ -1,4 +1,5 @@
 #include "UguuUploader.h"
+#include "TranslationManager.h"
 #include <QNetworkRequest>
 #include <QNetworkReply>
 #include <QHttpMultiPart>
@@ -24,7 +25,7 @@ QString networkErrorMessage(const QString &errorString, int statusCode, const QB
     QString message = errorString.trimmed();
     const QString body = responsePreview(data);
     if (message.isEmpty())
-        message = QStringLiteral("server rejected the upload");
+        message = TranslationManager::uploadErrorServerRejected();
     if (statusCode > 0)
         message += QStringLiteral(" (HTTP %1)").arg(statusCode);
     if (!body.isEmpty())
@@ -48,11 +49,11 @@ QString UguuUploader::providerDisplayName() const
 void UguuUploader::upload()
 {
     if (m_reply) {
-        emit failed(QStringLiteral("upload already in progress"));
+        emit failed(TranslationManager::uploadErrorInProgress());
         return;
     }
     if (!hasImage()) {
-        finishWithError(QStringLiteral("image missing"));
+        finishWithError(TranslationManager::uploadErrorImageMissing());
         return;
     }
 
@@ -69,7 +70,7 @@ void UguuUploader::upload()
     if (!file->open(QIODevice::ReadOnly)) {
         delete m_multipart;
         m_multipart = nullptr;
-        finishWithError(QStringLiteral("cannot read image"));
+        finishWithError(TranslationManager::uploadErrorCannotReadImage());
         return;
     }
     filePart.setBodyDevice(file);
@@ -99,14 +100,14 @@ void UguuUploader::upload()
         if (mp) mp->deleteLater();
 
         if (err != QNetworkReply::NoError) {
-            finishWithError(QStringLiteral("network error: %1").arg(networkErrorMessage(errStr, code, data)));
+            finishWithError(TranslationManager::uploadErrorNetwork(networkErrorMessage(errStr, code, data)));
             return;
         }
         if (code < 200 || code >= 300) {
             const QString body = responsePreview(data);
             finishWithError(body.isEmpty()
-                ? QStringLiteral("http %1").arg(code)
-                : QStringLiteral("http %1: %2").arg(code).arg(body));
+                ? TranslationManager::uploadErrorHttp(code)
+                : TranslationManager::uploadErrorHttp(code) + QStringLiteral(": ") + body);
             return;
         }
 
@@ -121,7 +122,7 @@ void UguuUploader::upload()
 
         if (url.isEmpty() || !url.startsWith(QStringLiteral("https://"))) {
             QString text = QString::fromUtf8(data).trimmed();
-            finishWithError(QStringLiteral("unexpected response: ") + text.left(120));
+            finishWithError(TranslationManager::uploadErrorUnexpectedResponse(text.left(120)));
             return;
         }
         finishWithSuccess(url);

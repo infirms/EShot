@@ -42,8 +42,14 @@ UploadDialog::UploadDialog(QWidget *parent) : QDialog(parent)
     auto *authForm = new QFormLayout(m_authBox);
     m_authEdit = new QLineEdit(this);
     m_authEdit->setEchoMode(QLineEdit::Password);
+    m_authHelpLabel = new QLabel(this);
+    m_authHelpLabel->setWordWrap(true);
+    m_authHelpLabel->setOpenExternalLinks(true);
+    m_authHelpLabel->setTextInteractionFlags(Qt::TextBrowserInteraction);
+    m_authHelpLabel->setStyleSheet(QStringLiteral("color: #9aa0a6; font-size: 11px;"));
     m_saveAuthBtn = new QPushButton(TranslationManager::save(), this);
     authForm->addRow(QString(), m_authEdit);
+    authForm->addRow(QString(), m_authHelpLabel);
     authForm->addRow(QString(), m_saveAuthBtn);
     layout->addWidget(m_authBox);
 
@@ -159,17 +165,44 @@ void UploadDialog::rebuildAuthSection()
         m_saveAuthBtn->setVisible(true);
         m_authEdit->setText(m_uploader->authValue());
         m_authEdit->setPlaceholderText(m_uploader->authPlaceholder());
+        updateAuthHelp();
     } else {
         m_authEdit->clear();
         m_authEdit->setVisible(false);
+        m_authHelpLabel->clear();
+        m_authHelpLabel->setVisible(false);
         m_saveAuthBtn->setVisible(false);
     }
+}
+
+void UploadDialog::updateAuthHelp()
+{
+    if (!m_uploader || !m_authHelpLabel) return;
+
+    QString text;
+    switch (m_uploader->provider()) {
+    case ImageUploader::Provider::YandexDisk:
+        text = TranslationManager::uploadAuthHelpYandex();
+        break;
+    case ImageUploader::Provider::GoogleDrive:
+        text = TranslationManager::uploadAuthHelpGoogleDrive();
+        break;
+    case ImageUploader::Provider::Catbox:
+        text = TranslationManager::uploadAuthHelpCatbox();
+        break;
+    default:
+        break;
+    }
+
+    m_authHelpLabel->setText(text);
+    m_authHelpLabel->setVisible(!text.isEmpty());
 }
 
 void UploadDialog::onSaveAuth()
 {
     if (!m_uploader) return;
     m_uploader->setAuthValue(m_authEdit->text());
+    m_authEdit->setText(m_uploader->authValue());
     m_statusLabel->setText(TranslationManager::exportSuccess());
 }
 
@@ -184,8 +217,10 @@ void UploadDialog::onUploadClicked()
     m_deleteEdit->clear();
     m_copyLinkBtn->setEnabled(false);
     m_openLinkBtn->setEnabled(false);
-    if (m_uploader->needsAuth())
+    if (m_uploader->needsAuth()) {
         m_uploader->setAuthValue(m_authEdit->text());
+        m_authEdit->setText(m_uploader->authValue());
+    }
     m_uploader->setImage(m_pixmap);
     m_uploader->upload();
 }

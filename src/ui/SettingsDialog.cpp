@@ -397,23 +397,17 @@ static bool setAutoStartTask(bool enabled)
 
 static QString printScreenConflictTitle()
 {
-    return TranslationManager::currentLanguage() == TranslationManager::Turkish
-        ? QString::fromUtf8("Print Screen çakışması")
-        : QStringLiteral("Print Screen conflict");
+    return TranslationManager::printScreenConflictTitle();
 }
 
 static QString printScreenConflictMessage()
 {
-    return TranslationManager::currentLanguage() == TranslationManager::Turkish
-        ? QString::fromUtf8("Windows, Print Screen tuşunu Snipping Tool için kullanıyor. EShot'un Print Screen ile çalışması için bu Windows ayarını kapatmanız gerekir.")
-        : QStringLiteral("Windows is using the Print Screen key for Snipping Tool. Turn off this Windows setting to let EShot use Print Screen.");
+    return TranslationManager::printScreenConflictMessage();
 }
 
 static QString printScreenConflictFixText()
 {
-    return TranslationManager::currentLanguage() == TranslationManager::Turkish
-        ? QString::fromUtf8("Windows Print Screen ayarını kapat")
-        : QStringLiteral("Disable Windows Print Screen shortcut");
+    return TranslationManager::printScreenConflictFix();
 }
 
 void SettingsDialog::setupUI()
@@ -596,9 +590,12 @@ QWidget* SettingsDialog::createGeneralTab()
     QGroupBox *accessGroup = new QGroupBox(TranslationManager::accessibility());
     QVBoxLayout *accessLayout = new QVBoxLayout(accessGroup);
     m_highContrastCheck = new QCheckBox(TranslationManager::highContrast());
+    m_blackTrayIconCheck = new QCheckBox(TranslationManager::trayIconDark());
     m_highContrastCheck->setToolTip(TranslationManager::tipHighContrast());
+    m_blackTrayIconCheck->setToolTip(TranslationManager::tipTrayIcon());
     connect(m_highContrastCheck, &QCheckBox::toggled, this, &SettingsDialog::onThemeChanged);
     accessLayout->addWidget(m_highContrastCheck);
+    accessLayout->addWidget(m_blackTrayIconCheck);
     layout->addWidget(accessGroup);
 
     // Import/export settings
@@ -1257,6 +1254,8 @@ void SettingsDialog::loadSettings()
     if (ci >= 0) m_crosshairStyleCombo->setCurrentIndex(ci);
 
     m_highContrastCheck->setChecked(m_settings->value("highContrast", false).toBool());
+    if (m_blackTrayIconCheck)
+        m_blackTrayIconCheck->setChecked(m_settings->value("blackTrayIcon", false).toBool());
 
     QStringList visibleTools = m_settings->value("visibleTools", defaultAnnotationTools()).toStringList();
     QStringList visibleToolbarControls = m_settings->value("visibleToolbarControls", defaultToolbarControls()).toStringList();
@@ -1265,6 +1264,13 @@ void SettingsDialog::loadSettings()
         if (!visibleToolbarControls.contains(QStringLiteral("Video")))
             visibleToolbarControls.append(QStringLiteral("Video"));
         m_settings->setValue("toolbarControlsMigratedVideo", true);
+        m_settings->setValue("visibleToolbarControls", visibleToolbarControls);
+    }
+    if (m_settings->contains("visibleToolbarControls") &&
+        !m_settings->value("toolbarControlsMigratedGoogleLens", false).toBool()) {
+        if (!visibleToolbarControls.contains(QStringLiteral("GoogleLens")))
+            visibleToolbarControls.append(QStringLiteral("GoogleLens"));
+        m_settings->setValue("toolbarControlsMigratedGoogleLens", true);
         m_settings->setValue("visibleToolbarControls", visibleToolbarControls);
     }
     auto applyVisibility = [](QListWidget *list, const QStringList &visible) {
@@ -1360,9 +1366,7 @@ void SettingsDialog::onDisableWindowsPrintScreenSnipping()
     QMessageBox::information(
         this,
         printScreenConflictTitle(),
-        TranslationManager::currentLanguage() == TranslationManager::Turkish
-            ? QString::fromUtf8("Windows'un Print Screen Snipping Tool ayarı kapatıldı. Print Screen artık EShot tarafından kullanılabilir.")
-            : QStringLiteral("Windows Print Screen Snipping Tool shortcut has been disabled. Print Screen can now be used by EShot."));
+        TranslationManager::printScreenConflictDisabled());
 }
 
 void SettingsDialog::onFilenamePatternChanged(const QString &text)
@@ -1457,7 +1461,7 @@ void SettingsDialog::onSave()
         QMessageBox::warning(
             this,
             TranslationManager::errInvalidHotkeyTitle(),
-            TranslationManager::errInvalidHotkey() + QStringLiteral("\n\nBu kısayol başka bir uygulama tarafından kullanılıyor olabilir."));
+            TranslationManager::errInvalidHotkey() + QStringLiteral("\n\n") + TranslationManager::hotkeyMayBeInUse());
         m_hotkeyEdit->setKeySequence(win32ToKeySequence(
             HotkeyManager::instance().captureModifiers(),
             HotkeyManager::instance().captureVirtualKey()));
@@ -1477,7 +1481,7 @@ void SettingsDialog::onSave()
         QMessageBox::warning(
             this,
             TranslationManager::errInvalidHotkeyTitle(),
-            TranslationManager::errInvalidHotkey() + QStringLiteral("\n\nBu kayÄ±t kÄ±sayollarÄ±ndan biri baÅŸka bir uygulama tarafÄ±ndan kullanÄ±lÄ±yor olabilir."));
+            TranslationManager::errInvalidHotkey() + QStringLiteral("\n\n") + TranslationManager::recordingHotkeyMayBeInUse());
         return;
     }
 
@@ -1501,7 +1505,7 @@ void SettingsDialog::onSave()
         QMessageBox::warning(
             this,
             TranslationManager::errInvalidHotkeyTitle(),
-            TranslationManager::errInvalidHotkey() + QStringLiteral("\n\nOne of the direct capture hotkeys may already be used by another app."));
+            TranslationManager::errInvalidHotkey() + QStringLiteral("\n\n") + TranslationManager::directCaptureHotkeyMayBeInUse());
         return;
     }
 
@@ -1544,6 +1548,7 @@ void SettingsDialog::onSave()
     m_settings->setValue("overlayOpacity",     m_opacitySlider->value());
     m_settings->setValue("crosshairStyle",     m_crosshairStyleCombo->currentData().toString());
     m_settings->setValue("highContrast",       m_highContrastCheck->isChecked());
+    m_settings->setValue("blackTrayIcon",      m_blackTrayIconCheck ? m_blackTrayIconCheck->isChecked() : false);
 
     QStringList visibleTools;
     QStringList visibleToolbarControls;
@@ -1614,7 +1619,7 @@ void SettingsDialog::onSave()
 
     if (m_autoStartCheck->isChecked() != m_loadedAutoStart && !setAutoStartTask(m_autoStartCheck->isChecked())) {
         QMessageBox::warning(this, TranslationManager::errTitle(),
-                             QStringLiteral("Windows ile başlat ayarı kaydedilemedi."));
+                             TranslationManager::autoStartSaveFailed());
         return;
     }
 
@@ -1667,6 +1672,7 @@ void SettingsDialog::onExportSettings()
     obj["overlayOpacity"] = m_opacitySlider->value();
     obj["crosshairStyle"] = m_crosshairStyleCombo->currentData().toString();
     obj["highContrast"] = m_highContrastCheck->isChecked();
+    obj["blackTrayIcon"] = m_blackTrayIconCheck ? m_blackTrayIconCheck->isChecked() : false;
 
     QJsonArray tools;
     QJsonArray toolbarControls;
@@ -1703,6 +1709,7 @@ void SettingsDialog::onExportSettings()
     appendHotkey("instantCaptureHotkeyModifiers", "instantCaptureHotkeyVKey", m_instantCaptureHotkeyEdit);
     appendHotkey("gifCaptureHotkeyModifiers", "gifCaptureHotkeyVKey", m_gifCaptureHotkeyEdit);
     appendHotkey("videoCaptureHotkeyModifiers", "videoCaptureHotkeyVKey", m_videoCaptureHotkeyEdit);
+    obj["uploadProvider"] = m_settings->value("uploadProvider", 0).toInt();
     QJsonObject overlayShortcuts;
     for (auto it = m_overlayHotkeyEdits.constBegin(); it != m_overlayHotkeyEdits.constEnd(); ++it) {
         if (it.value())
@@ -1807,6 +1814,8 @@ void SettingsDialog::onImportSettings()
         if (ci >= 0) m_crosshairStyleCombo->setCurrentIndex(ci);
     }
     if (obj.contains("highContrast")) m_highContrastCheck->setChecked(obj["highContrast"].toBool());
+    if (obj.contains("blackTrayIcon") && m_blackTrayIconCheck)
+        m_blackTrayIconCheck->setChecked(obj["blackTrayIcon"].toBool());
     if (obj.contains("visibleTools")) {
         QJsonArray tools = obj["visibleTools"].toArray();
         QStringList visibleTools;
@@ -1847,6 +1856,8 @@ void SettingsDialog::onImportSettings()
     importHotkey("instantCaptureHotkeyModifiers", "instantCaptureHotkeyVKey", m_instantCaptureHotkeyEdit);
     importHotkey("gifCaptureHotkeyModifiers", "gifCaptureHotkeyVKey", m_gifCaptureHotkeyEdit);
     importHotkey("videoCaptureHotkeyModifiers", "videoCaptureHotkeyVKey", m_videoCaptureHotkeyEdit);
+    if (obj.contains("uploadProvider"))
+        m_settings->setValue("uploadProvider", obj["uploadProvider"].toInt());
     if (obj.contains("overlayShortcuts") && obj["overlayShortcuts"].isObject()) {
         const QJsonObject shortcuts = obj["overlayShortcuts"].toObject();
         for (auto it = m_overlayHotkeyEdits.begin(); it != m_overlayHotkeyEdits.end(); ++it) {

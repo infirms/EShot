@@ -93,6 +93,7 @@ private:
 
     // Accessibility
     QCheckBox *m_highContrastCheck = nullptr;
+    QCheckBox *m_blackTrayIconCheck = nullptr;
 
     // UI - Tool visibility
     QListWidget *m_toolVisibilityList = nullptr;

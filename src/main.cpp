@@ -203,8 +203,8 @@ public slots:
         if (!HotkeyManager::setWindowsPrintScreenSnippingEnabled(false)) {
             if (m_trayIcon) {
                 m_trayIcon->showMessage(
-                    QStringLiteral("EShot"),
-                    QStringLiteral("Could not change the Windows Print Screen setting. Open Settings > Accessibility > Keyboard and turn off the Print Screen Snipping Tool option."),
+                    TranslationManager::errTitle(),
+                    TranslationManager::printScreenConflictMessage(),
                     QSystemTrayIcon::Warning,
                     7000);
             }
@@ -213,8 +213,8 @@ public slots:
 
         if (m_trayIcon) {
             m_trayIcon->showMessage(
-                QStringLiteral("EShot"),
-                QStringLiteral("Windows Print Screen Snipping Tool shortcut disabled. If Print Screen does not open EShot immediately, restart Windows once."),
+                TranslationManager::notifCaptureTitle(),
+                TranslationManager::printScreenConflictDisabled(),
                 QSystemTrayIcon::Information,
                 4000);
         }
@@ -461,6 +461,7 @@ private:
         m_notifySave = s.value("notifySave", true).toBool();
         m_notifyGif = s.value("notifyGif", true).toBool();
         m_notifyVideo = s.value("notifyVideo", true).toBool();
+        m_blackTrayIcon = s.value("blackTrayIcon", false).toBool();
     }
 
     static QIcon trayIcon(const QString &path, const QSize &size = QSize(16, 16))
@@ -484,7 +485,7 @@ private:
         if (hasPrintScreenConflict()) {
             QAction *fixPrintScreenAction = m_trayMenu->addAction(
                 trayIcon(":/icons/gear.svg"),
-                QStringLiteral("Fix Print Screen shortcut"));
+                TranslationManager::printScreenConflictFix());
             connect(fixPrintScreenAction, &QAction::triggered,
                     this, &EShotApp::onFixPrintScreenConflict);
             m_trayMenu->addSeparator();
@@ -512,12 +513,7 @@ private:
     {
         m_trayIcon = new QSystemTrayIcon(this);
 
-        QIcon trayIcon(":/icons/pen_tray.svg");
-        if (trayIcon.isNull()) {
-            QPixmap pix(32, 32); pix.fill(Qt::blue);
-            trayIcon = QIcon(pix);
-        }
-        m_trayIcon->setIcon(trayIcon);
+        setTrayIconNormal();
         m_trayIcon->setToolTip(QString("%1 v%2").arg(TranslationManager::appTitle(), QCoreApplication::applicationVersion()));
 
         m_trayMenu = new QMenu();
@@ -678,7 +674,9 @@ private:
     void setTrayIconUpdate()
     {
         if (!m_trayIcon) return;
-        m_trayIcon->setIcon(QIcon(":/icons/pen_tray_update.svg"));
+        m_trayIcon->setIcon(QIcon(m_blackTrayIcon
+            ? QStringLiteral(":/icons/pen_tray_update_black.svg")
+            : QStringLiteral(":/icons/pen_tray_update.svg")));
         m_trayIcon->setToolTip(QString("%1 v%2 — %3").arg(
             TranslationManager::appTitle(),
             QCoreApplication::applicationVersion(),
@@ -688,7 +686,9 @@ private:
     void setTrayIconNormal()
     {
         if (!m_trayIcon) return;
-        QIcon trayIcon(":/icons/pen_tray.svg");
+        QIcon trayIcon(m_blackTrayIcon
+            ? QStringLiteral(":/icons/pen_tray_black.svg")
+            : QStringLiteral(":/icons/pen_tray.svg"));
         if (trayIcon.isNull()) {
             QPixmap pix(32, 32); pix.fill(Qt::blue);
             trayIcon = QIcon(pix);
@@ -705,6 +705,7 @@ private:
     bool m_notifySave = true;
     bool m_notifyGif = true;
     bool m_notifyVideo = true;
+    bool m_blackTrayIcon = false;
     bool m_updateAvailable = false;
     QString m_latestVersion;
     QString m_latestReleaseUrl;

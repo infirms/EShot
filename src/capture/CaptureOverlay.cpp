@@ -387,7 +387,8 @@ CaptureOverlay::CaptureOverlay(QWidget *parent)
     QHBoxLayout *textPanelLayout = new QHBoxLayout(m_textEditPanel);
     textPanelLayout->setContentsMargins(4, 4, 4, 4);
     textPanelLayout->setSpacing(4);
-    m_textMoveHandle = new QPushButton(QStringLiteral("Move"), m_textEditPanel);
+    m_textMoveHandle = new QPushButton(TranslationManager::toolMove(), m_textEditPanel);
+    m_textMoveHandle->setToolTip(TranslationManager::toolMove());
     m_textMoveHandle->setCursor(Qt::SizeAllCursor);
     m_textMoveHandle->installEventFilter(this);
     m_textEditPanel->installEventFilter(this);

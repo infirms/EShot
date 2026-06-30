@@ -187,6 +187,9 @@ public:
     static QString toolLine()         { return tr("toolLine"); }
     static QString toolColor()        { return tr("toolColor"); }
     static QString toolWidth()        { return tr("toolWidth"); }
+    static QString toolFont()         { return tr("toolFont"); }
+    static QString toolFontSize()     { return tr("toolFontSize"); }
+    static QString toolMove()         { return tr("toolMove"); }
     static QString toolUndo()         { return tr("toolUndo"); }
     static QString toolRedo()         { return tr("toolRedo"); }
     static QString toolEyedropper()   { return tr("toolEyedropper"); }
@@ -252,6 +255,14 @@ public:
     static QString wizardBack()       { return tr("wizardBack"); }
     static QString wizardFinish()     { return tr("wizardFinish"); }
     static QString wizardHotkeyDesc() { return tr("wizardHotkeyDesc"); }
+    static QString printScreenConflictTitle() { return tr("printScreenConflictTitle"); }
+    static QString printScreenConflictMessage() { return tr("printScreenConflictMessage"); }
+    static QString printScreenConflictFix() { return tr("printScreenConflictFix"); }
+    static QString printScreenConflictDisabled() { return tr("printScreenConflictDisabled"); }
+    static QString hotkeyMayBeInUse() { return tr("hotkeyMayBeInUse"); }
+    static QString recordingHotkeyMayBeInUse() { return tr("recordingHotkeyMayBeInUse"); }
+    static QString directCaptureHotkeyMayBeInUse() { return tr("directCaptureHotkeyMayBeInUse"); }
+    static QString autoStartSaveFailed() { return tr("autoStartSaveFailed"); }
 
     // ─── Dışa/İçe ───
     static QString settingsExportImport() { return tr("settingsExportImport"); }
@@ -281,6 +292,7 @@ public:
     static QString ocrRetry()         { return tr("ocrRetry"); }
     static QString ocrProcessing()    { return tr("ocrProcessing"); }
     static QString ocrNoText()        { return tr("ocrNoText"); }
+    static QString ocrLanguagePackMissing() { return tr("ocrLanguagePackMissing"); }
 
     // ─── Kayıt (Recording) ───
     static QString recordingStart()   { return tr("recordingStart"); }
@@ -344,6 +356,26 @@ public:
     static QString uploadOpen()       { return tr("uploadOpen"); }
     static QString uploadLinkPlaceholder()   { return tr("uploadLinkPlaceholder"); }
     static QString uploadDeletePlaceholder() { return tr("uploadDeletePlaceholder"); }
+    static QString yandexAuthPlaceholder() { return tr("yandexAuthPlaceholder"); }
+    static QString googleDriveAuthPlaceholder() { return tr("googleDriveAuthPlaceholder"); }
+    static QString catboxUserHashPlaceholder() { return tr("catboxUserHashPlaceholder"); }
+    static QString uploadAuthHelpYandex() { return tr("uploadAuthHelpYandex"); }
+    static QString uploadAuthHelpGoogleDrive() { return tr("uploadAuthHelpGoogleDrive"); }
+    static QString uploadAuthHelpCatbox() { return tr("uploadAuthHelpCatbox"); }
+    static QString uploadErrorInProgress() { return tr("uploadErrorInProgress"); }
+    static QString uploadErrorImageMissing() { return tr("uploadErrorImageMissing"); }
+    static QString uploadErrorCannotReadImage() { return tr("uploadErrorCannotReadImage"); }
+    static QString uploadErrorServerRejected() { return tr("uploadErrorServerRejected"); }
+    static QString uploadErrorNetwork(const QString &detail) { return tr("uploadErrorNetwork").arg(detail); }
+    static QString uploadErrorHttp(int code) { return tr("uploadErrorHttp").arg(code); }
+    static QString uploadErrorUnexpectedResponse(const QString &detail) { return tr("uploadErrorUnexpectedResponse").arg(detail); }
+    static QString uploadErrorYandexTokenMissing() { return tr("uploadErrorYandexTokenMissing"); }
+    static QString uploadErrorYandexAuthFailed() { return tr("uploadErrorYandexAuthFailed"); }
+    static QString uploadErrorYandexStep(const QString &step, int code) { return tr("uploadErrorYandexStep").arg(step).arg(code); }
+    static QString uploadErrorYandexUploadUrlMissing() { return tr("uploadErrorYandexUploadUrlMissing"); }
+    static QString uploadErrorYandexPublicLinkMissing() { return tr("uploadErrorYandexPublicLinkMissing"); }
+    static QString uploadErrorGoogleTokenMissing() { return tr("uploadErrorGoogleTokenMissing"); }
+    static QString uploadErrorGoogleFileIdMissing() { return tr("uploadErrorGoogleFileIdMissing"); }
     static QString copy()             { return tr("copy"); }
     static QString catboxUserHash()   { return tr("catboxUserHash"); }
     static QString catboxUserHashDesc() { return tr("catboxUserHashDesc"); }
@@ -457,7 +489,7 @@ private:
         {"accessibility",  {"Erişilebilirlik", "Accessibility", "Barrierefreiheit", "Accessibilité", "Accesibilidad", "アクセシビリティ", "无障碍", "Доступность"}},
         {"highContrast",   {"Yüksek kontrast", "High contrast", "Hoher Kontrast", "Contraste élevé", "Alto contraste", "ハイコントラスト", "高对比度", "Высокий контраст"}},
         {"trayIcon",       {"Tepsi Simgesi", "Tray Icon", "Taskbar-Symbol", "Icône de zone", "Icono de bandeja", "トレイアイコン", "托盘图标", "Значок в трее"}},
-        {"trayIconDark",   {"Koyu", "Dark", "Dunkel", "Sombre", "Oscuro", "ダーク", "深色", "Тёмный"}},
+        {"trayIconDark",   {"Siyah tepsi simgesi", "Black tray icon", "Schwarzes Taskbar-Symbol", "Icône de zone noire", "Icono de bandeja negro", "黒いトレイアイコン", "黑色托盘图标", "Чёрный значок в трее"}},
         {"trayIconLight",  {"Açık", "Light", "Hell", "Clair", "Claro", "ライト", "浅色", "Светлый"}},
 
         // ─── Toolbar ───
@@ -473,6 +505,9 @@ private:
         {"toolLine",       {"Çizgi (L)", "Line (L)", "Linie (L)", "Ligne (L)", "Línea (L)", "線 (L)", "线条 (L)", "Линия (L)"}},
         {"toolColor",      {"Renk Seç", "Pick Color", "Farbe wählen", "Couleur", "Elegir color", "色を選択", "选择颜色", "Выбрать цвет"}},
         {"toolWidth",      {"Kalınlık", "Width", "Breite", "Épaisseur", "Grosor", "太さ", "粗细", "Толщина"}},
+        {"toolFont",       {"Yazi Tipi", "Font", "Schriftart", "Police", "Fuente", "Font", "Font", "Font"}},
+        {"toolFontSize",   {"Yazi Boyutu", "Font Size", "Schriftgroesse", "Taille de police", "Tamano de fuente", "Font Size", "Font Size", "Font Size"}},
+        {"toolMove",       {"Tasi", "Move", "Verschieben", "Deplacer", "Mover", "Move", "Move", "Move"}},
         {"toolUndo",       {"Geri Al (Ctrl+Z)", "Undo (Ctrl+Z)", "Rückgängig (Strg+Z)", "Annuler (Ctrl+Z)", "Deshacer (Ctrl+Z)", "元に戻す (Ctrl+Z)", "撤销 (Ctrl+Z)", "Отменить (Ctrl+Z)"}},
         {"toolRedo",       {"İleri Al (Ctrl+Y)", "Redo (Ctrl+Y)", "Wiederholen (Strg+Y)", "Rétablir (Ctrl+Y)", "Rehacer (Ctrl+Y)", "やり直し (Ctrl+Y)", "重做 (Ctrl+Y)", "Повторить (Ctrl+Y)"}},
         {"actionPin",      {"Ekrana Sabitle", "Pin to Screen", "Heften", "Épingler", "Fijar", "ピン留め", "固定", "Закрепить"}},
@@ -538,6 +573,14 @@ private:
         {"wizardBack",     {"Geri", "Back", "Zurück", "Retour", "Atrás", "戻る", "返回", "Назад"}},
         {"wizardFinish",   {"Tamamla", "Finish", "Fertig", "Terminer", "Finalizar", "完了", "完成", "Готово"}},
         {"wizardHotkeyDesc",{"Kısayol tuşunu ayarlayın.\nVarsayılan: Print Screen", "Set the hotkey.\nDefault: Print Screen", "Tastenkürzel festlegen.\nStandard: Druck", "Définir le raccourci.\nDéfaut: Impr. écran", "Configure el atajo.\nPredeterminado: Imp Pant", "ホットキーを設定。\nデフォルト: Print Screen", "设置快捷键。\n默认: Print Screen", "Установите клавишу.\nПо умолчанию: Print Screen"}},
+        {"printScreenConflictTitle",{"Print Screen çakışması", "Print Screen conflict", "Print Screen Konflikt", "Conflit Print Screen", "Conflicto de Print Screen", "Print Screen の競合", "Print Screen 冲突", "Конфликт Print Screen"}},
+        {"printScreenConflictMessage",{"Windows, Print Screen tuşunu Snipping Tool için kullanıyor. EShot'un Print Screen ile çalışması için bu Windows ayarını kapatın.", "Windows is using Print Screen for Snipping Tool. Disable this Windows setting to let EShot use Print Screen.", "Windows verwendet Print Screen für das Snipping Tool. Deaktivieren Sie diese Windows-Einstellung, damit EShot Print Screen verwenden kann.", "Windows utilise Print Screen pour Snipping Tool. Désactivez ce réglage Windows pour permettre à EShot d'utiliser Print Screen.", "Windows usa Print Screen para Snipping Tool. Desactive este ajuste de Windows para que EShot pueda usar Print Screen.", "Windows が Print Screen を Snipping Tool に使用しています。EShot で Print Screen を使うには、この Windows 設定を無効にしてください。", "Windows 正在将 Print Screen 用于截图工具。请关闭此 Windows 设置，以便 EShot 使用 Print Screen。", "Windows использует Print Screen для Snipping Tool. Отключите этот параметр Windows, чтобы EShot мог использовать Print Screen."}},
+        {"printScreenConflictFix",{"Windows Print Screen ayarını kapat", "Disable Windows Print Screen shortcut", "Windows Print Screen Kurzbefehl deaktivieren", "Désactiver le raccourci Print Screen de Windows", "Desactivar el atajo Print Screen de Windows", "Windows の Print Screen ショートカットを無効にする", "禁用 Windows Print Screen 快捷键", "Отключить сочетание Windows Print Screen"}},
+        {"printScreenConflictDisabled",{"Windows Print Screen Snipping Tool ayarı kapatıldı. Print Screen artık EShot tarafından kullanılabilir.", "Windows Print Screen Snipping Tool shortcut has been disabled. Print Screen can now be used by EShot.", "Windows Print Screen für Snipping Tool wurde deaktiviert. Print Screen kann jetzt von EShot verwendet werden.", "Le raccourci Windows Print Screen pour Snipping Tool a été désactivé. Print Screen peut maintenant être utilisé par EShot.", "El atajo Windows Print Screen para Snipping Tool se ha desactivado. EShot ya puede usar Print Screen.", "Windows Print Screen の Snipping Tool ショートカットを無効にしました。Print Screen を EShot で使用できます。", "Windows Print Screen 截图工具快捷键已禁用。EShot 现在可以使用 Print Screen。", "Сочетание Windows Print Screen для Snipping Tool отключено. Теперь EShot может использовать Print Screen."}},
+        {"hotkeyMayBeInUse",{"Bu kısayol başka bir uygulama tarafından kullanılıyor olabilir. Lütfen farklı bir kombinasyon seçin.", "This hotkey may already be used by another app. Please choose a different combination.", "Dieses Kürzel wird möglicherweise bereits von einer anderen App verwendet. Bitte wählen Sie eine andere Kombination.", "Ce raccourci est peut-être déjà utilisé par une autre application. Choisissez une autre combinaison.", "Este atajo ya puede estar usado por otra aplicación. Elija otra combinación.", "このホットキーは他のアプリで既に使用されている可能性があります。別の組み合わせを選んでください。", "此快捷键可能已被其他应用使用。请选择其他组合。", "Эта горячая клавиша уже может использоваться другим приложением. Выберите другую комбинацию."}},
+        {"recordingHotkeyMayBeInUse",{"Bu kayıt kısayollarından biri başka bir uygulama tarafından kullanılıyor olabilir.", "One of these recording hotkeys may already be used by another app.", "Eines dieser Aufnahme-Kürzel wird möglicherweise bereits von einer anderen App verwendet.", "Un de ces raccourcis d'enregistrement est peut-être déjà utilisé par une autre application.", "Uno de estos atajos de grabación ya puede estar usado por otra aplicación.", "録画用ホットキーのいずれかが他のアプリで使用されている可能性があります。", "某个录制快捷键可能已被其他应用使用。", "Одна из горячих клавиш записи уже может использоваться другим приложением."}},
+        {"directCaptureHotkeyMayBeInUse",{"Doğrudan yakalama kısayollarından biri başka bir uygulama tarafından kullanılıyor olabilir.", "One of the direct capture hotkeys may already be used by another app.", "Eines der Direktaufnahme-Kürzel wird möglicherweise bereits von einer anderen App verwendet.", "Un des raccourcis de capture directe est peut-être déjà utilisé par une autre application.", "Uno de los atajos de captura directa ya puede estar usado por otra aplicación.", "直接キャプチャのホットキーのいずれかが他のアプリで使用されている可能性があります。", "某个直接捕获快捷键可能已被其他应用使用。", "Одна из горячих клавиш прямого захвата уже может использоваться другим приложением."}},
+        {"autoStartSaveFailed",{"Windows ile başlat ayarı kaydedilemedi.", "Could not save the Windows startup setting.", "Die Windows-Startoption konnte nicht gespeichert werden.", "Impossible d'enregistrer le réglage de démarrage Windows.", "No se pudo guardar la opción de inicio con Windows.", "Windows 起動時設定を保存できませんでした。", "无法保存 Windows 启动设置。", "Не удалось сохранить настройку запуска вместе с Windows."}},
 
         // ─── Dışa/İçe ───
         {"settingsExportImport",{"Ayarları Dışa / İçe Aktar", "Export / Import Settings", "Einstellungen exportieren/importieren", "Exporter / Importer", "Exportar / Importar", "設定の書き出し/取り込み", "导出/导入设置", "Экспорт/Импорт настроек"}},
@@ -555,7 +598,7 @@ private:
         {"tipPlaySound",   {"Ses çal.", "Play sound.", "Ton abspielen.", "Jouer le son.", "Reproducir sonido.", "サウンド再生。", "播放声音。", "Звук."}},
         {"tipCopyPath",    {"Yolu kopyala.", "Copy path.", "Pfad kopieren.", "Copier le chemin.", "Copiar ruta.", "パスをコピー。", "复制路径。", "Копировать путь."}},
         {"tipHighContrast",{"Yüksek kontrast.", "High contrast.", "Hoher Kontrast.", "Contraste élevé.", "Alto contraste.", "ハイコントラスト。", "高对比度。", "Высокий контраст."}},
-        {"tipTrayIcon",    {"Tepsi simgesi rengi.", "Tray icon color.", "Taskbar-Symbolfarbe.", "Couleur de l'icône.", "Color del icono.", "トレイアイコンの色。", "托盘图标颜色。", "Цвет значка в трее."}},
+        {"tipTrayIcon",    {"Açık Windows temasında daha görünür olması için siyah tepsi simgesi kullanır.", "Use a black tray icon for better visibility on light Windows themes.", "Verwendet ein schwarzes Taskbar-Symbol für bessere Sichtbarkeit bei hellen Windows-Designs.", "Utilise une icône de zone noire pour mieux se voir avec les thèmes Windows clairs.", "Usa un icono de bandeja negro para verlo mejor con temas claros de Windows.", "明るい Windows テーマで見やすい黒いトレイアイコンを使います。", "在浅色 Windows 主题下使用更清晰的黑色托盘图标。", "Использует чёрный значок в трее для лучшей видимости в светлых темах Windows."}},
 
         // ─── OCR ───
         {"ocrTitle",       {"Metin Tanıma (OCR)", "Text Recognition (OCR)", "Texterkennung (OCR)", "Reconnaissance de texte (OCR)", "Reconocimiento de texto (OCR)", "テキスト認識 (OCR)", "文字识别 (OCR)", "Распознавание текста (OCR)"}},
@@ -567,6 +610,7 @@ private:
         {"ocrRetry",       {"Yeniden Dene", "Retry", "Erneut", "Réessayer", "Reintentar", "再試行", "重试", "Повторить"}},
         {"ocrProcessing",  {"Tanınıyor...", "Recognizing...", "Erkennung...", "Reconnaissance...", "Reconociendo...", "認識中...", "识别中...", "Распознавание..."}},
         {"ocrNoText",      {"Metin algılanmadı", "No text detected", "Kein Text erkannt", "Aucun texte détecté", "No se detectó texto", "テキストが検出されませんでした", "未检测到文字", "Текст не обнаружен"}},
+        {"ocrLanguagePackMissing",{"Dil paketi yuklu degil", "Language pack is not installed", "Sprachpaket ist nicht installiert", "Le module de langue n'est pas installe", "El paquete de idioma no esta instalado", "Language pack is not installed", "Language pack is not installed", "Language pack is not installed"}},
 
         // ─── Kayıt (Recording) ───
         {"recordingStart", {"Kaydı Başlat", "Start Recording", "Aufnahme starten", "Démarrer l'enregistrement", "Iniciar grabación", "録画開始", "开始录制", "Начать запись"}},
@@ -630,6 +674,26 @@ private:
         {"uploadOpen",     {"Bağlantıyı Aç", "Open Link", "Link öffnen", "Ouvrir le lien", "Abrir enlace", "リンクを開く", "打开链接", "Открыть ссылку"}},
         {"uploadLinkPlaceholder",{"Görsel bağlantısı burada görünecek", "Image link will appear here", "Bildlink erscheint hier", "Le lien apparaîtra ici", "El enlace aparecerá aquí", "リンクがここに表示されます", "链接将显示在此处", "Ссылка появится здесь"}},
         {"uploadDeletePlaceholder",{"Silme bağlantısı (opsiyonel)", "Delete link (optional)", "Löschlink (optional)", "Lien de suppression (optionnel)", "Enlace de borrado (opcional)", "削除リンク（任意）", "删除链接（可选）", "Ссылка на удаление (необязательно)"}},
+        {"yandexAuthPlaceholder",{"Yandex OAuth tokeni veya yönlendirme URL'si", "Yandex OAuth token or redirect URL", "Yandex-OAuth-Token oder Weiterleitungs-URL", "Jeton OAuth Yandex ou URL de redirection", "Token OAuth de Yandex o URL de redirección", "Yandex OAuth トークンまたはリダイレクト URL", "Yandex OAuth 令牌或重定向 URL", "OAuth-токен Yandex или URL перенаправления"}},
+        {"googleDriveAuthPlaceholder",{"Google Drive OAuth tokeni veya yönlendirme URL'si", "Google Drive OAuth token or redirect URL", "Google-Drive-OAuth-Token oder Weiterleitungs-URL", "Jeton OAuth Google Drive ou URL de redirection", "Token OAuth de Google Drive o URL de redirección", "Google Drive OAuth トークンまたはリダイレクト URL", "Google Drive OAuth 令牌或重定向 URL", "OAuth-токен Google Drive или URL перенаправления"}},
+        {"catboxUserHashPlaceholder",{"İsteğe bağlı Catbox user hash", "Optional Catbox user hash", "Optionaler Catbox-User-Hash", "Hash utilisateur Catbox facultatif", "Hash de usuario de Catbox opcional", "任意の Catbox ユーザーハッシュ", "可选 Catbox 用户哈希", "Необязательный user hash Catbox"}},
+        {"uploadAuthHelpYandex",{"Yandex OAuth tokeni gerekir. Yandex ID/OAuth uygulamasında Disk API izni verin; access_token değerini veya tam yönlendirme URL'sini buraya yapıştırabilirsiniz. <a href=\"https://yandex.com/dev/id/doc/en/tokens/debug-token\">Doküman</a>", "Requires a Yandex OAuth token. Authorize a Yandex ID/OAuth app with Disk API access, then paste the access_token or full redirect URL here. <a href=\"https://yandex.com/dev/id/doc/en/tokens/debug-token\">Docs</a>", "Benötigt einen Yandex-OAuth-Token. Autorisieren Sie eine Yandex ID/OAuth-App mit Disk-API-Zugriff und fügen Sie access_token oder die vollständige Weiterleitungs-URL hier ein. <a href=\"https://yandex.com/dev/id/doc/en/tokens/debug-token\">Doku</a>", "Nécessite un jeton OAuth Yandex. Autorisez une application Yandex ID/OAuth avec l'accès à Disk API, puis collez ici access_token ou l'URL de redirection complète. <a href=\"https://yandex.com/dev/id/doc/en/tokens/debug-token\">Docs</a>", "Requiere un token OAuth de Yandex. Autoriza una app de Yandex ID/OAuth con acceso a Disk API y pega aquí access_token o la URL de redirección completa. <a href=\"https://yandex.com/dev/id/doc/en/tokens/debug-token\">Docs</a>", "Yandex OAuth トークンが必要です。Disk API アクセスを持つ Yandex ID/OAuth アプリを承認し、access_token または完全なリダイレクト URL を貼り付けてください。 <a href=\"https://yandex.com/dev/id/doc/en/tokens/debug-token\">Docs</a>", "需要 Yandex OAuth 令牌。请授权具有 Disk API 访问权限的 Yandex ID/OAuth 应用，然后在此粘贴 access_token 或完整重定向 URL。 <a href=\"https://yandex.com/dev/id/doc/en/tokens/debug-token\">文档</a>", "Требуется OAuth-токен Yandex. Разрешите приложению Yandex ID/OAuth доступ к Disk API, затем вставьте сюда access_token или полный URL перенаправления. <a href=\"https://yandex.com/dev/id/doc/en/tokens/debug-token\">Документация</a>"}},
+        {"uploadAuthHelpGoogleDrive",{"Google Drive OAuth access token gerekir. Drive yükleme/paylaşma izni olan tokeni veya tam yönlendirme URL'sini yapıştırın. <a href=\"https://developers.google.com/identity/protocols/oauth2\">Doküman</a>", "Requires a Google OAuth access token with Drive upload/share access. Paste the token or full redirect URL here. <a href=\"https://developers.google.com/identity/protocols/oauth2\">Docs</a>", "Benötigt einen Google-OAuth-Zugriffstoken mit Drive-Upload/Freigabe-Zugriff. Fügen Sie den Token oder die vollständige Weiterleitungs-URL hier ein. <a href=\"https://developers.google.com/identity/protocols/oauth2\">Doku</a>", "Nécessite un jeton d'accès OAuth Google avec accès d'envoi/partage Drive. Collez ici le jeton ou l'URL de redirection complète. <a href=\"https://developers.google.com/identity/protocols/oauth2\">Docs</a>", "Requiere un token OAuth de Google con acceso para subir/compartir en Drive. Pega aquí el token o la URL de redirección completa. <a href=\"https://developers.google.com/identity/protocols/oauth2\">Docs</a>", "Drive のアップロード/共有権限を持つ Google OAuth アクセストークンが必要です。トークンまたは完全なリダイレクト URL を貼り付けてください。 <a href=\"https://developers.google.com/identity/protocols/oauth2\">Docs</a>", "需要具有 Drive 上传/共享权限的 Google OAuth 访问令牌。请在此粘贴令牌或完整重定向 URL。 <a href=\"https://developers.google.com/identity/protocols/oauth2\">文档</a>", "Требуется OAuth-токен Google с доступом к загрузке/публикации в Drive. Вставьте сюда токен или полный URL перенаправления. <a href=\"https://developers.google.com/identity/protocols/oauth2\">Документация</a>"}},
+        {"uploadAuthHelpCatbox",{"Catbox user hash isteğe bağlıdır. Boş bırakırsanız anonim yüklenir; user hash girerseniz dosya hesabınızda görünür.", "Catbox user hash is optional. Leave it empty for anonymous upload, or paste your user hash to attach uploads to your account.", "Der Catbox-User-Hash ist optional. Leer lassen für anonymes Hochladen oder einfügen, damit Uploads Ihrem Konto zugeordnet werden.", "Le hash utilisateur Catbox est facultatif. Laissez vide pour un envoi anonyme ou collez votre hash pour lier les envois à votre compte.", "El hash de usuario de Catbox es opcional. Déjalo vacío para subir de forma anónima o pégalo para vincular las subidas a tu cuenta.", "Catbox ユーザーハッシュは任意です。匿名アップロードなら空のまま、アカウントに紐付ける場合は貼り付けてください。", "Catbox 用户哈希是可选的。留空即匿名上传；粘贴用户哈希可将上传关联到你的账户。", "User hash Catbox необязателен. Оставьте пустым для анонимной загрузки или вставьте hash, чтобы привязать файлы к аккаунту."}},
+        {"uploadErrorInProgress",{"Yükleme zaten devam ediyor", "Upload already in progress", "Upload läuft bereits", "Téléversement déjà en cours", "La subida ya está en curso", "アップロードは既に進行中です", "上传已在进行中", "Загрузка уже выполняется"}},
+        {"uploadErrorImageMissing",{"Yüklenecek görsel yok", "Image missing", "Bild fehlt", "Image manquante", "Falta la imagen", "画像がありません", "缺少图片", "Нет изображения"}},
+        {"uploadErrorCannotReadImage",{"Görsel dosyası okunamadı", "Cannot read image", "Bild kann nicht gelesen werden", "Impossible de lire l'image", "No se puede leer la imagen", "画像を読み取れません", "无法读取图片", "Не удалось прочитать изображение"}},
+        {"uploadErrorServerRejected",{"Sunucu yüklemeyi reddetti", "Server rejected the upload", "Server hat den Upload abgelehnt", "Le serveur a refusé le téléversement", "El servidor rechazó la subida", "サーバーがアップロードを拒否しました", "服务器拒绝上传", "Сервер отклонил загрузку"}},
+        {"uploadErrorNetwork",{"Ağ hatası: %1", "Network error: %1", "Netzwerkfehler: %1", "Erreur réseau : %1", "Error de red: %1", "ネットワークエラー: %1", "网络错误：%1", "Ошибка сети: %1"}},
+        {"uploadErrorHttp",{"HTTP hatası %1", "HTTP error %1", "HTTP-Fehler %1", "Erreur HTTP %1", "Error HTTP %1", "HTTP エラー %1", "HTTP 错误 %1", "Ошибка HTTP %1"}},
+        {"uploadErrorUnexpectedResponse",{"Beklenmeyen yanıt: %1", "Unexpected response: %1", "Unerwartete Antwort: %1", "Réponse inattendue : %1", "Respuesta inesperada: %1", "予期しない応答: %1", "意外响应：%1", "Неожиданный ответ: %1"}},
+        {"uploadErrorYandexTokenMissing",{"Yandex Disk tokeni eksik", "Yandex Disk token missing", "Yandex-Disk-Token fehlt", "Jeton Yandex Disk manquant", "Falta el token de Yandex Disk", "Yandex Disk トークンがありません", "缺少 Yandex Disk 令牌", "Отсутствует токен Yandex Disk"}},
+        {"uploadErrorYandexAuthFailed",{"Yandex yetkilendirmesi başarısız (HTTP 401). OAuth access tokeni veya tam yönlendirme URL'sini tekrar yapıştırıp kaydedin.", "Yandex authorization failed (HTTP 401). Paste an OAuth access token, or paste the full redirect URL again and save it.", "Yandex-Autorisierung fehlgeschlagen (HTTP 401). Fügen Sie einen OAuth-Zugriffstoken oder erneut die vollständige Weiterleitungs-URL ein und speichern Sie.", "Échec de l'autorisation Yandex (HTTP 401). Collez un jeton d'accès OAuth ou l'URL de redirection complète, puis enregistrez.", "Falló la autorización de Yandex (HTTP 401). Pega un token OAuth o la URL de redirección completa y guarda.", "Yandex 認証に失敗しました (HTTP 401)。OAuth アクセストークンまたは完全なリダイレクト URL を貼り直して保存してください。", "Yandex 授权失败 (HTTP 401)。请粘贴 OAuth 访问令牌，或再次粘贴完整重定向 URL 并保存。", "Авторизация Yandex не удалась (HTTP 401). Вставьте OAuth access token или полный URL перенаправления и сохраните."}},
+        {"uploadErrorYandexStep",{"Yandex %1 hatası (HTTP %2)", "Yandex %1 error (HTTP %2)", "Yandex-%1-Fehler (HTTP %2)", "Erreur Yandex %1 (HTTP %2)", "Error de Yandex %1 (HTTP %2)", "Yandex %1 エラー (HTTP %2)", "Yandex %1 错误 (HTTP %2)", "Ошибка Yandex %1 (HTTP %2)"}},
+        {"uploadErrorYandexUploadUrlMissing",{"Yandex yükleme URL'si bulunamadı", "Yandex upload URL missing", "Yandex-Upload-URL fehlt", "URL de téléversement Yandex manquante", "Falta la URL de subida de Yandex", "Yandex アップロード URL がありません", "缺少 Yandex 上传 URL", "Отсутствует URL загрузки Yandex"}},
+        {"uploadErrorYandexPublicLinkMissing",{"Yandex herkese açık bağlantı döndürmedi", "Yandex public link missing", "Öffentlicher Yandex-Link fehlt", "Lien public Yandex manquant", "Falta el enlace público de Yandex", "Yandex 公開リンクがありません", "缺少 Yandex 公开链接", "Отсутствует публичная ссылка Yandex"}},
+        {"uploadErrorGoogleTokenMissing",{"Google Drive tokeni eksik", "Google Drive token missing", "Google-Drive-Token fehlt", "Jeton Google Drive manquant", "Falta el token de Google Drive", "Google Drive トークンがありません", "缺少 Google Drive 令牌", "Отсутствует токен Google Drive"}},
+        {"uploadErrorGoogleFileIdMissing",{"Google Drive dosya kimliği döndürmedi", "Google Drive file ID missing", "Google-Drive-Datei-ID fehlt", "ID de fichier Google Drive manquant", "Falta el ID del archivo de Google Drive", "Google Drive ファイル ID がありません", "缺少 Google Drive 文件 ID", "Отсутствует ID файла Google Drive"}},
         {"copy",           {"Kopyala", "Copy", "Kopieren", "Copier", "Copiar", "コピー", "复制", "Копировать"}},
         {"catboxUserHash", {"Catbox Kullanıcı Hash:", "Catbox User Hash:", "Catbox Benutzer-Hash:", "Hash utilisateur Catbox :", "Hash de usuario Catbox:", "Catbox ユーザーハッシュ:", "Catbox 用户哈希:", "Хэш пользователя Catbox:"}},
         {"catboxUserHashDesc",{"İsteğe bağlı. Hesabınızla yükleme/düzenleme/silme için catbox.moe → Hesap.", "Optional. For upload/edit/delete with your account: catbox.moe → Account.", "Optional. Für Hochladen/Bearbeiten/Löschen mit Konto: catbox.moe → Konto.", "Optionnel. Pour téléverser/modifier/supprimer avec votre compte : catbox.moe → Compte.", "Opcional. Para subir/editar/borrar con su cuenta: catbox.moe → Cuenta.", "任意。アカウントでアップロード/編集/削除する場合: catbox.moe → アカウント", "可选。使用您的账户上传/编辑/删除：catbox.moe → 账户", "Необязательно. Для загрузки/правки/удаления в своём аккаунте: catbox.moe → Аккаунт."}},

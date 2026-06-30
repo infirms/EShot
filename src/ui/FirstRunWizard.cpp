@@ -221,10 +221,7 @@ void FirstRunWizard::setupUi()
     m_hotkeyStatusLabel->setStyleSheet("font-size: 12px;");
     hkLayout->addWidget(m_hotkeyStatusLabel);
 
-    m_printScreenConflictLabel = new QLabel(
-        TranslationManager::currentLanguage() == TranslationManager::Turkish
-            ? QString::fromUtf8("Windows, Print Screen tuşunu Snipping Tool için kullanıyor. EShot'un Print Screen ile çalışması için bu Windows ayarını kapatın.")
-            : QStringLiteral("Windows is using Print Screen for Snipping Tool. Disable this Windows setting to let EShot use Print Screen."));
+    m_printScreenConflictLabel = new QLabel(TranslationManager::printScreenConflictMessage());
     m_printScreenConflictLabel->setWordWrap(true);
     m_printScreenConflictLabel->setStyleSheet(
         "background: rgba(255, 193, 7, 0.14); color: #ffd166; "
@@ -232,10 +229,7 @@ void FirstRunWizard::setupUi()
         "padding: 7px; font-size: 12px;");
     hkLayout->addWidget(m_printScreenConflictLabel);
 
-    m_printScreenFixButton = new QPushButton(
-        TranslationManager::currentLanguage() == TranslationManager::Turkish
-            ? QString::fromUtf8("Windows Print Screen ayarını kapat")
-            : QStringLiteral("Disable Windows Print Screen shortcut"));
+    m_printScreenFixButton = new QPushButton(TranslationManager::printScreenConflictFix());
     connect(m_printScreenFixButton, &QPushButton::clicked,
             this, &FirstRunWizard::onDisableWindowsPrintScreenSnipping);
     hkLayout->addWidget(m_printScreenFixButton);
@@ -360,9 +354,7 @@ void FirstRunWizard::onFinish()
         QMessageBox::warning(
             this,
             TranslationManager::errInvalidHotkeyTitle(),
-            TranslationManager::currentLanguage() == TranslationManager::Turkish
-                ? QString::fromUtf8("Bu kısayol başka bir uygulama tarafından kullanılıyor olabilir. Lütfen farklı bir kombinasyon seçin.")
-                : QStringLiteral("This hotkey may already be used by another app. Please choose a different combination."));
+            TranslationManager::hotkeyMayBeInUse());
         return;
     }
 

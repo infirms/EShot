@@ -1,4 +1,5 @@
 #include "CatboxUploader.h"
+#include "TranslationManager.h"
 #include <QNetworkRequest>
 #include <QNetworkReply>
 #include <QHttpMultiPart>
@@ -27,7 +28,7 @@ QString CatboxUploader::providerDisplayName() const
 
 QString CatboxUploader::authPlaceholder() const
 {
-    return QStringLiteral("Optional Catbox user hash");
+    return TranslationManager::catboxUserHashPlaceholder();
 }
 
 void CatboxUploader::setUserHash(const QString &hash)
@@ -40,11 +41,11 @@ void CatboxUploader::setUserHash(const QString &hash)
 void CatboxUploader::upload()
 {
     if (m_reply) {
-        emit failed(QStringLiteral("upload already in progress"));
+        emit failed(TranslationManager::uploadErrorInProgress());
         return;
     }
     if (!hasImage()) {
-        finishWithError(QStringLiteral("image missing"));
+        finishWithError(TranslationManager::uploadErrorImageMissing());
         return;
     }
 
@@ -75,7 +76,7 @@ void CatboxUploader::upload()
     if (!file->open(QIODevice::ReadOnly)) {
         delete m_multipart;
         m_multipart = nullptr;
-        finishWithError(QStringLiteral("cannot read image"));
+        finishWithError(TranslationManager::uploadErrorCannotReadImage());
         return;
     }
     filePart.setBodyDevice(file);
@@ -104,16 +105,16 @@ void CatboxUploader::upload()
         if (mp) mp->deleteLater();
 
         if (err != QNetworkReply::NoError) {
-            finishWithError(QStringLiteral("network error: %1").arg(errStr));
+            finishWithError(TranslationManager::uploadErrorNetwork(errStr));
             return;
         }
         if (code != 200) {
-            finishWithError(QStringLiteral("http %1").arg(code));
+            finishWithError(TranslationManager::uploadErrorHttp(code));
             return;
         }
         QString url = QString::fromUtf8(data).trimmed();
         if (url.isEmpty() || !url.startsWith(QStringLiteral("https://"))) {
-            finishWithError(QStringLiteral("unexpected response: ") + url.left(120));
+            finishWithError(TranslationManager::uploadErrorUnexpectedResponse(url.left(120)));
             return;
         }
         finishWithSuccess(url, QString());
