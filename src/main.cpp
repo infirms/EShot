@@ -38,6 +38,7 @@
 
 #include "core/HotkeyManager.h"
 #include "core/TranslationManager.h"
+#include "core/UpdateManager.h"
 #include "capture/CaptureOverlay.h"
 #include "capture/PinnedWindow.h"
 #include "capture/PinManager.h"
@@ -60,6 +61,7 @@ public:
     {
         TranslationManager::init();
         loadSettings();
+        setupUpdater();
         setupTrayIcon();
         setupHotkey();
         checkForUpdates();
@@ -166,14 +168,28 @@ public slots:
 
     void onUpdateRequested()
     {
-        QDesktopServices::openUrl(QUrl(m_latestReleaseUrl.isEmpty()
-            ? QStringLiteral("https://github.com/Benoks/EShot/releases/latest")
-            : m_latestReleaseUrl));
+        if (m_updateManager)
+            m_updateManager->installUpdate();
     }
 
     void onSettingsRequested()
     {
         SettingsDialog dlg;
+        if (m_updateManager) {
+            dlg.setUpdateInfo(m_updateManager->updateAvailable(),
+                              m_updateManager->latestVersion(),
+                              m_updateManager->isBusy(),
+                              m_updateManager->statusText());
+            QPointer<SettingsDialog> dlgPtr(&dlg);
+            connect(m_updateManager, &UpdateManager::statusChanged, &dlg, [this, dlgPtr]() {
+                if (!dlgPtr || !m_updateManager) return;
+                dlgPtr->setUpdateInfo(m_updateManager->updateAvailable(),
+                                      m_updateManager->latestVersion(),
+                                      m_updateManager->isBusy(),
+                                      m_updateManager->statusText());
+            });
+            connect(&dlg, &SettingsDialog::updateRequested, this, &EShotApp::onUpdateRequested);
+        }
         dlg.show();
         QApplication::processEvents(); // Let ARM64 DWM finalize frame geometry and draw the title bar
         if (QScreen *screen = QGuiApplication::screenAt(QCursor::pos())) {
@@ -464,6 +480,49 @@ private:
         m_blackTrayIcon = s.value("blackTrayIcon", false).toBool();
     }
 
+    void setupUpdater()
+    {
+        m_updateManager = new UpdateManager(this);
+        connect(m_updateManager, &UpdateManager::updateCheckFinished, this,
+                [this](bool available, const QString &version) {
+            m_updateAvailable = available;
+            m_latestVersion = version;
+            if (available)
+                setTrayIconUpdate();
+            else
+                setTrayIconNormal();
+            rebuildTrayMenu();
+        });
+        connect(m_updateManager, &UpdateManager::statusChanged, this, [this]() {
+            if (!m_updateManager) return;
+            m_updateAvailable = m_updateManager->updateAvailable();
+            m_latestVersion = m_updateManager->latestVersion();
+            if (m_updateAvailable)
+                setTrayIconUpdate();
+            else
+                setTrayIconNormal();
+            rebuildTrayMenu();
+        });
+        connect(m_updateManager, &UpdateManager::failed, this, [this](const QString &message) {
+            if (m_trayIcon && m_showNotifications) {
+                m_trayIcon->showMessage(
+                    TranslationManager::errTitle(),
+                    TranslationManager::updateStatusFailed(message),
+                    QSystemTrayIcon::Warning,
+                    7000);
+            }
+        });
+        connect(m_updateManager, &UpdateManager::installerLaunched, this, [this]() {
+            if (m_trayIcon) {
+                m_trayIcon->showMessage(
+                    TranslationManager::updateTitle(),
+                    TranslationManager::updateStatusRestarting(),
+                    QSystemTrayIcon::Information,
+                    4000);
+            }
+        });
+    }
+
     static QIcon trayIcon(const QString &path, const QSize &size = QSize(16, 16))
     {
         QIcon src(path);
@@ -492,9 +551,13 @@ private:
         }
 
         if (m_updateAvailable) {
+            const QString updateText = m_updateManager && m_updateManager->isBusy()
+                ? m_updateManager->statusText()
+                : QString("%1 v%2").arg(TranslationManager::updateNow(), m_latestVersion);
             QAction *updateAction = m_trayMenu->addAction(
-                trayIcon(":/icons/upload.svg"),
-                QString("%1 v%2").arg(TranslationManager::updateTitle(), m_latestVersion));
+                trayIcon(":/icons/pen_tray_update.svg"),
+                updateText);
+            updateAction->setEnabled(!m_updateManager || !m_updateManager->isBusy());
             connect(updateAction, &QAction::triggered, this, &EShotApp::onUpdateRequested);
             m_trayMenu->addSeparator();
         }
@@ -527,12 +590,12 @@ private:
             "}"
             "QMenu::item {"
             "  min-height: 22px;"
-            "  padding: 3px 28px 3px 28px;"
+            "  padding: 3px 18px 3px 24px;"
             "  border-radius: 2px;"
             "}"
             "QMenu::item:selected { background: #3a3a3a; }"
             "QMenu::item:disabled { color: #8a8a8a; }"
-            "QMenu::icon { width: 16px; height: 16px; left: 7px; }"
+            "QMenu::icon { width: 16px; height: 16px; left: 5px; }"
             "QMenu::separator { height: 1px; background: #424242; margin: 4px 5px; }"));
         rebuildTrayMenu();
 
@@ -619,47 +682,8 @@ private:
 
     void checkForUpdates()
     {
-        QNetworkAccessManager *mgr = new QNetworkAccessManager(this);
-        connect(mgr, &QNetworkAccessManager::finished, this, [this, mgr](QNetworkReply *reply) {
-            bool iconChanged = false;
-            if (reply->error() == QNetworkReply::NoError) {
-                QByteArray data = reply->readAll();
-                QJsonDocument doc = QJsonDocument::fromJson(data);
-                if (doc.isObject()) {
-                    QJsonObject obj = doc.object();
-                    QString latestTag = obj["tag_name"].toString();
-                    if (latestTag.startsWith("v") || latestTag.startsWith("V"))
-                        latestTag = latestTag.mid(1);
-                    QString currentVersion = QCoreApplication::applicationVersion();
-                    qDebug() << "[EShot] Update check: current=" << currentVersion << "latest=" << latestTag;
-                    if (!latestTag.isEmpty() && isNewerVersion(latestTag, currentVersion)) {
-                        qDebug() << "[EShot] Update available:" << latestTag;
-                        m_updateAvailable = true;
-                        m_latestVersion = latestTag;
-                        m_latestReleaseUrl = obj["html_url"].toString();
-                        setTrayIconUpdate();
-                        iconChanged = true;
-                    } else {
-                        qDebug() << "[EShot] Already up to date";
-                        m_updateAvailable = false;
-                        m_latestVersion.clear();
-                        m_latestReleaseUrl.clear();
-                        setTrayIconNormal();
-                        iconChanged = true;
-                    }
-                }
-            } else {
-                qDebug() << "[EShot] Update check failed:" << reply->errorString();
-            }
-            if (iconChanged) rebuildTrayMenu();
-            reply->deleteLater();
-            mgr->deleteLater();
-        });
-        QUrl url("https://api.github.com/repos/Benoks/EShot/releases/latest");
-        QUrlQuery query;
-        query.addQueryItem("_t", QString::number(QDateTime::currentMSecsSinceEpoch()));
-        url.setQuery(query);
-        mgr->get(QNetworkRequest(url));
+        if (m_updateManager)
+            m_updateManager->checkForUpdates(false);
     }
 
     static bool isNewerVersion(const QString &latest, const QString &current)
@@ -699,6 +723,7 @@ private:
 
     QSystemTrayIcon *m_trayIcon = nullptr;
     QMenu *m_trayMenu = nullptr;
+    UpdateManager *m_updateManager = nullptr;
     CaptureOverlay *m_overlay = nullptr;
     bool m_showNotifications = true;
     bool m_notifyCopy = false;

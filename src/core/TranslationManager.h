@@ -247,6 +247,19 @@ public:
     // ─── Güncelleme ───
     static QString updateTitle()      { return tr("updateTitle"); }
     static QString updateMessage(const QString &v) { return tr("updateMessage").arg(v); }
+    static QString updateNow()        { return tr("updateNow"); }
+    static QString updateStatusIdle() { return tr("updateStatusIdle"); }
+    static QString updateStatusChecking() { return tr("updateStatusChecking"); }
+    static QString updateStatusUpToDate() { return tr("updateStatusUpToDate"); }
+    static QString updateStatusAvailable(const QString &v) { return tr("updateStatusAvailable").arg(v); }
+    static QString updateStatusDownloading() { return tr("updateStatusDownloading"); }
+    static QString updateStatusInstalling() { return tr("updateStatusInstalling"); }
+    static QString updateStatusRestarting() { return tr("updateStatusRestarting"); }
+    static QString updateStatusFailed(const QString &reason) { return tr("updateStatusFailed").arg(reason); }
+    static QString updateNoInstaller() { return tr("updateNoInstaller"); }
+    static QString updateInvalidResponse() { return tr("updateInvalidResponse"); }
+    static QString updateInvalidDownload() { return tr("updateInvalidDownload"); }
+    static QString updateCannotLaunchInstaller() { return tr("updateCannotLaunchInstaller"); }
 
     // ─── Sihirbaz ───
     static QString wizardTitle()      { return tr("wizardTitle"); }
@@ -564,7 +577,20 @@ private:
 
         // ─── Güncelleme ───
         {"updateTitle",    {"Güncelleme Mevcut", "Update Available", "Update verfügbar", "Mise à jour", "Actualización", "アップデート可能", "有可用更新", "Доступно обновление"}},
-        {"updateMessage",  {"Yeni sürüm: %1\nGitHub'dan indirin.", "New version: %1\nDownload from GitHub.", "Neue Version: %1\nVon GitHub herunterladen.", "Nouvelle version : %1\nTélécharger.", "Nueva versión: %1\nDescargar.", "新しいバージョン: %1\nGitHubからダウンロード。", "新版本: %1\n从GitHub下载。", "Новая версия: %1\nЗагрузите с GitHub."}},
+        {"updateMessage",  {"Yeni sürüm: %1", "New version: %1", "Neue Version: %1", "Nouvelle version : %1", "Nueva versión: %1", "新しいバージョン: %1", "新版本: %1", "Новая версия: %1"}},
+        {"updateNow",      {"Şimdi Güncelle", "Update Now", "Jetzt aktualisieren", "Mettre à jour", "Actualizar ahora", "今すぐ更新", "立即更新", "Обновить сейчас"}},
+        {"updateStatusIdle",{"Güncelleme otomatik kontrol edilir.", "Updates are checked automatically.", "Updates werden automatisch geprüft.", "Les mises à jour sont vérifiées automatiquement.", "Las actualizaciones se comprueban automáticamente.", "アップデートは自動的に確認されます。", "会自动检查更新。", "Обновления проверяются автоматически."}},
+        {"updateStatusChecking",{"Güncellemeler kontrol ediliyor...", "Checking for updates...", "Updates werden gesucht...", "Recherche de mises à jour...", "Buscando actualizaciones...", "アップデートを確認中...", "正在检查更新...", "Проверка обновлений..."}},
+        {"updateStatusUpToDate",{"EShot güncel.", "EShot is up to date.", "EShot ist aktuell.", "EShot est à jour.", "EShot está actualizado.", "EShot は最新です。", "EShot 已是最新。", "EShot обновлён."}},
+        {"updateStatusAvailable",{"Yeni sürüm mevcut: %1", "New version available: %1", "Neue Version verfügbar: %1", "Nouvelle version disponible : %1", "Nueva versión disponible: %1", "新しいバージョンがあります: %1", "有新版本：%1", "Доступна новая версия: %1"}},
+        {"updateStatusDownloading",{"Güncelleme indiriliyor...", "Downloading update...", "Update wird heruntergeladen...", "Téléchargement de la mise à jour...", "Descargando actualización...", "アップデートをダウンロード中...", "正在下载更新...", "Загрузка обновления..."}},
+        {"updateStatusInstalling",{"Güncelleme kuruluyor...", "Installing update...", "Update wird installiert...", "Installation de la mise à jour...", "Instalando actualización...", "アップデートをインストール中...", "正在安装更新...", "Установка обновления..."}},
+        {"updateStatusRestarting",{"EShot güncelleniyor ve yeniden açılacak.", "EShot is updating and will reopen.", "EShot wird aktualisiert und neu gestartet.", "EShot se met à jour et va se rouvrir.", "EShot se está actualizando y se volverá a abrir.", "EShot を更新中です。再起動します。", "EShot 正在更新并将重新打开。", "EShot обновляется и откроется снова."}},
+        {"updateStatusFailed",{"Güncelleme başarısız: %1", "Update failed: %1", "Update fehlgeschlagen: %1", "Échec de la mise à jour : %1", "Error al actualizar: %1", "アップデートに失敗しました: %1", "更新失败：%1", "Не удалось обновить: %1"}},
+        {"updateNoInstaller",{"Bu cihaz için uygun installer bulunamadı.", "No suitable installer was found for this device.", "Für dieses Gerät wurde kein passender Installer gefunden.", "Aucun installateur adapté n'a été trouvé pour cet appareil.", "No se encontró un instalador adecuado para este dispositivo.", "このデバイスに適したインストーラーが見つかりませんでした。", "未找到适用于此设备的安装程序。", "Не найден подходящий установщик для этого устройства."}},
+        {"updateInvalidResponse",{"Güncelleme yanıtı okunamadı.", "Could not read the update response.", "Update-Antwort konnte nicht gelesen werden.", "Impossible de lire la réponse de mise à jour.", "No se pudo leer la respuesta de actualización.", "アップデート応答を読み取れませんでした。", "无法读取更新响应。", "Не удалось прочитать ответ обновления."}},
+        {"updateInvalidDownload",{"İndirilen güncelleme dosyası doğrulanamadı.", "The downloaded update file could not be verified.", "Die heruntergeladene Update-Datei konnte nicht geprüft werden.", "Le fichier de mise à jour téléchargé n'a pas pu être vérifié.", "No se pudo verificar el archivo de actualización descargado.", "ダウンロードしたアップデートファイルを確認できませんでした。", "无法验证下载的更新文件。", "Не удалось проверить загруженный файл обновления."}},
+        {"updateCannotLaunchInstaller",{"Installer başlatılamadı.", "Could not launch the installer.", "Installer konnte nicht gestartet werden.", "Impossible de lancer l'installateur.", "No se pudo iniciar el instalador.", "インストーラーを起動できませんでした。", "无法启动安装程序。", "Не удалось запустить установщик."}},
 
         // ─── Sihirbaz ───
         {"wizardTitle",    {"EShot'a Hoş Geldiniz!", "Welcome to EShot!", "Willkommen bei EShot!", "Bienvenue !", "¡Bienvenido!", "ようこそ！", "欢迎使用EShot！", "Добро пожаловать в EShot!"}},

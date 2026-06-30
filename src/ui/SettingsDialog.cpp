@@ -1,5 +1,6 @@
 #include "SettingsDialog.h"
 #include "../core/HotkeyManager.h"
+#include "../core/OcrEngine.h"
 #include "../core/TranslationManager.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -28,6 +29,12 @@
 #include <QScreen>
 #include <QShowEvent>
 #include <QFrame>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QSysInfo>
+#include <QTimer>
+#include <QUrl>
 #include <algorithm>
 
 #ifdef Q_OS_WIN
@@ -173,11 +180,92 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
     setMaximumSize(750, 800);
 
     m_settings = new QSettings("EShot", "EShot", this);
+    m_packageNetwork = new QNetworkAccessManager(this);
     setupUI();
     loadSettings();
 }
 
-SettingsDialog::~SettingsDialog() {}
+SettingsDialog::~SettingsDialog()
+{
+    if (m_packageReply)
+        m_packageReply->abort();
+    if (m_packageDownloadFile) {
+        m_packageDownloadFile->close();
+        delete m_packageDownloadFile;
+    }
+}
+
+void SettingsDialog::setUpdateInfo(bool available, const QString &version, bool busy, const QString &status)
+{
+    if (m_updateStatusLabel) {
+        QString text = status;
+        if (text.isEmpty())
+            text = available
+                ? TranslationManager::updateStatusAvailable(version)
+                : TranslationManager::updateStatusIdle();
+        m_updateStatusLabel->setText(text);
+    }
+    if (m_updateGroup)
+        m_updateGroup->setVisible(available || busy);
+    if (m_updateButton) {
+        m_updateButton->setEnabled(!busy);
+        m_updateButton->setText(available ? TranslationManager::updateNow() : TranslationManager::checkForUpdates());
+        m_updateButton->setStyleSheet(available
+            ? QStringLiteral("color: #f5c542; font-weight: 600;")
+            : QString());
+    }
+}
+
+struct OcrPackageDef {
+    const char *code;
+    const char *name;
+    bool recommended;
+    bool essential;
+};
+
+QVector<OcrPackageDef> ocrPackageDefs()
+{
+    return {
+        {"eng", "English", true, true},
+        {"tur", "Turkish", true, true},
+        {"rus", "Russian", true, false},
+        {"deu", "German", false, false},
+        {"fra", "French", false, false},
+        {"spa", "Spanish", false, false},
+        {"ita", "Italian", false, false},
+        {"por", "Portuguese", false, false},
+        {"pol", "Polish", false, false},
+        {"nld", "Dutch", false, false},
+        {"jpn", "Japanese", false, false},
+        {"kor", "Korean", false, false},
+        {"chi_sim", "Chinese Simplified", false, false},
+    };
+}
+
+QString packageStatusText(bool installed)
+{
+    return installed
+        ? uiLabel("Kurulu", "Installed")
+        : uiLabel("Eksik - indirilebilir", "Missing - downloadable");
+}
+
+QString packageSourceUrl(const QString &code)
+{
+    return QStringLiteral("https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/%1.traineddata").arg(code);
+}
+
+QString bundledTesseractDir()
+{
+    const QString appTesseractDir = QCoreApplication::applicationDirPath() + QStringLiteral("/tesseract");
+    const QString exe = QDir(appTesseractDir).filePath(QStringLiteral("tesseract.exe"));
+    return QFileInfo::exists(exe) ? appTesseractDir : QString();
+}
+
+QString psQuote(QString value)
+{
+    value.replace(QStringLiteral("'"), QStringLiteral("''"));
+    return QStringLiteral("'") + value + QStringLiteral("'");
+}
 
 QString SettingsDialog::resolvePatternPreview(const QString &pattern) const
 {
@@ -422,6 +510,7 @@ void SettingsDialog::setupUI()
 
     QTabWidget *tabs = new QTabWidget(this);
     tabs->addTab(createGeneralTab(),     TranslationManager::tabGeneral());
+    tabs->addTab(createPackagesTab(),    uiLabel("Paketler", "Packages"));
     tabs->addTab(createCaptureTab(),     TranslationManager::tabCapture());
     tabs->addTab(createRecordingTab(),   TranslationManager::tabRecording());
     tabs->addTab(createAppearanceTab(),  TranslationManager::tabAppearance());
@@ -464,6 +553,18 @@ QWidget* SettingsDialog::createGeneralTab()
     scroll->setFrameShape(QFrame::NoFrame);
     QWidget *content = new QWidget(scroll);
     QVBoxLayout *layout = new QVBoxLayout(content);
+
+    m_updateGroup = new QGroupBox(TranslationManager::updateTitle());
+    QVBoxLayout *updateLayout = new QVBoxLayout(m_updateGroup);
+    m_updateStatusLabel = new QLabel(TranslationManager::updateStatusIdle(), m_updateGroup);
+    m_updateStatusLabel->setWordWrap(true);
+    m_updateStatusLabel->setStyleSheet("color: #aaa; font-size: 12px;");
+    m_updateButton = new QPushButton(TranslationManager::updateNow(), m_updateGroup);
+    connect(m_updateButton, &QPushButton::clicked, this, &SettingsDialog::updateRequested);
+    updateLayout->addWidget(m_updateStatusLabel);
+    updateLayout->addWidget(m_updateButton);
+    m_updateGroup->setVisible(false);
+    layout->addWidget(m_updateGroup);
 
     // Language selection
     QGroupBox *langGroup = new QGroupBox(TranslationManager::language());
@@ -613,6 +714,98 @@ QWidget* SettingsDialog::createGeneralTab()
     layout->addStretch();
     scroll->setWidget(content);
     outerLayout->addWidget(scroll);
+    return tab;
+}
+
+QWidget* SettingsDialog::createPackagesTab()
+{
+    QWidget *tab = new QWidget();
+    QVBoxLayout *outerLayout = new QVBoxLayout(tab);
+    outerLayout->setContentsMargins(0, 0, 0, 0);
+
+    QScrollArea *scroll = new QScrollArea(tab);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    QWidget *content = new QWidget(scroll);
+    QVBoxLayout *layout = new QVBoxLayout(content);
+    layout->setSpacing(10);
+
+    QGroupBox *componentsGroup = new QGroupBox(uiLabel("Bileşen durumu", "Component status"));
+    QGridLayout *componentsLayout = new QGridLayout(componentsGroup);
+    const bool tesseractInstalled = QFileInfo::exists(OcrEngine::tesseractPath());
+    const bool tesseractBundled = !bundledTesseractDir().isEmpty();
+    const bool ffmpegBundled = QFileInfo::exists(QCoreApplication::applicationDirPath() + QStringLiteral("/ffmpeg/ffmpeg.exe"));
+    auto addComponentRow = [&](int row, const QString &name, const QString &status, bool canDelete,
+                               QLabel **statusPtr, QPushButton **buttonPtr, const QObject *receiver, const char *slot) {
+        QLabel *nameLabel = new QLabel(name, componentsGroup);
+        QLabel *statusLabel = new QLabel(status, componentsGroup);
+        statusLabel->setStyleSheet(status == uiLabel("Kurulu", "Installed") ? "color: #8bd17c;" : "color: #f0c36d;");
+        QPushButton *deleteButton = new QPushButton(QIcon::fromTheme(QStringLiteral("edit-delete")), uiLabel("Sil", "Delete"), componentsGroup);
+        deleteButton->setEnabled(canDelete);
+        deleteButton->setFixedWidth(82);
+        deleteButton->setStyleSheet("color: #ff6b6b;");
+        connect(deleteButton, SIGNAL(clicked()), receiver, slot);
+        if (statusPtr) *statusPtr = statusLabel;
+        if (buttonPtr) *buttonPtr = deleteButton;
+        componentsLayout->addWidget(nameLabel, row, 0);
+        componentsLayout->addWidget(statusLabel, row, 1);
+        componentsLayout->addWidget(deleteButton, row, 2);
+    };
+    addComponentRow(0, QStringLiteral("Tesseract OCR:"), tesseractInstalled ? uiLabel("Kurulu", "Installed") : uiLabel("Eksik", "Missing"),
+                    true, &m_tesseractStatusLabel, &m_tesseractDeleteButton, this, SLOT(onTesseractComponentAction()));
+    addComponentRow(1, QStringLiteral("FFmpeg:"), ffmpegBundled ? uiLabel("Kurulu", "Installed") : uiLabel("Eksik", "Missing"),
+                    true, &m_ffmpegStatusLabel, &m_ffmpegDeleteButton, this, SLOT(onFfmpegComponentAction()));
+    componentsLayout->setColumnStretch(1, 1);
+    layout->addWidget(componentsGroup);
+
+    QGroupBox *ocrGroup = new QGroupBox(uiLabel("OCR dil paketleri", "OCR language packs"));
+    QVBoxLayout *ocrLayout = new QVBoxLayout(ocrGroup);
+    QLabel *hint = new QLabel(uiLabel(
+        "Eksik dilleri buradan indirebilir, kullanmadıklarını silebilirsin.",
+        "Download missing languages here, or remove the ones you do not use."), ocrGroup);
+    hint->setWordWrap(true);
+    hint->setStyleSheet("color: #aaa; font-size: 12px;");
+    ocrLayout->addWidget(hint);
+
+    m_packageList = new QListWidget(ocrGroup);
+    m_packageList->setSelectionMode(QAbstractItemView::NoSelection);
+    m_packageList->setMinimumHeight(300);
+    m_packageList->setStyleSheet(R"(
+        QListWidget {
+            background: #252525;
+            border: 1px solid #3d3d3d;
+            border-radius: 6px;
+            padding: 6px;
+        }
+        QListWidget::item {
+            min-height: 38px;
+            border-radius: 4px;
+        }
+    )");
+    ocrLayout->addWidget(m_packageList);
+
+    QHBoxLayout *bulkLayout = new QHBoxLayout();
+    m_essentialOcrButton = new QPushButton(uiLabel("Temel paketleri indir", "Download essentials"), ocrGroup);
+    m_deleteSelectedOcrButton = new QPushButton(uiLabel("Seçili paketleri sil", "Delete selected"), ocrGroup);
+    m_deleteSelectedOcrButton->setStyleSheet("color: #ff6b6b;");
+    connect(m_essentialOcrButton, &QPushButton::clicked, this, &SettingsDialog::onDownloadEssentialOcr);
+    connect(m_deleteSelectedOcrButton, &QPushButton::clicked, this, &SettingsDialog::onDeleteSelectedOcr);
+    bulkLayout->addWidget(m_essentialOcrButton);
+    bulkLayout->addWidget(m_deleteSelectedOcrButton);
+    bulkLayout->addStretch();
+    ocrLayout->addLayout(bulkLayout);
+
+    m_packageStatusLabel = new QLabel(ocrGroup);
+    m_packageStatusLabel->setWordWrap(true);
+    m_packageStatusLabel->setStyleSheet("color: #aaa; font-size: 12px;");
+    ocrLayout->addWidget(m_packageStatusLabel);
+
+    layout->addWidget(ocrGroup);
+    layout->addStretch();
+    scroll->setWidget(content);
+    outerLayout->addWidget(scroll);
+
+    refreshPackageStatus();
     return tab;
 }
 
@@ -1130,6 +1323,454 @@ QWidget* SettingsDialog::createHotkeyTab()
     scroll->setWidget(content);
     outerLayout->addWidget(scroll);
     return tab;
+}
+
+QString SettingsDialog::tessdataTargetDir() const
+{
+    QString dir = OcrEngine::tessdataDir();
+    if (dir.trimmed().isEmpty())
+        dir = QCoreApplication::applicationDirPath() + QStringLiteral("/tesseract/tessdata");
+    return dir;
+}
+
+void SettingsDialog::refreshPackageStatus()
+{
+    if (!m_packageList)
+        return;
+
+    const bool busy = m_packageReply != nullptr || !m_pendingOcrDownloads.isEmpty();
+    const bool tesseractInstalled = QFileInfo::exists(OcrEngine::tesseractPath());
+    const bool tesseractBundled = !bundledTesseractDir().isEmpty();
+    const bool ffmpegBundled = QFileInfo::exists(QCoreApplication::applicationDirPath() + QStringLiteral("/ffmpeg/ffmpeg.exe"));
+    auto setComponentStatus = [](QLabel *label, QPushButton *button, bool installed, bool canUse, bool downloadWhenMissing = false) {
+        if (label) {
+            label->setText(installed ? uiLabel("Kurulu", "Installed") : uiLabel("Eksik", "Missing"));
+            label->setStyleSheet(installed ? "color: #8bd17c;" : "color: #f0c36d;");
+        }
+        if (button) {
+            button->setText(installed ? uiLabel("Sil", "Delete") : uiLabel("İndir", "Download"));
+            button->setIcon(installed ? QIcon::fromTheme(QStringLiteral("edit-delete")) : QIcon());
+            button->setStyleSheet(installed ? "color: #ff6b6b;" : QString());
+            button->setEnabled(canUse || (!installed && downloadWhenMissing));
+        }
+    };
+    setComponentStatus(m_tesseractStatusLabel, m_tesseractDeleteButton, tesseractInstalled, !busy && tesseractBundled, !busy);
+    setComponentStatus(m_ffmpegStatusLabel, m_ffmpegDeleteButton, ffmpegBundled, ffmpegBundled && !busy, !busy);
+
+    m_packageList->clear();
+    m_packageList->setEnabled(tesseractInstalled);
+
+    const QString tessDir = tessdataTargetDir();
+    for (const OcrPackageDef &def : ocrPackageDefs()) {
+        const QString code = QString::fromLatin1(def.code);
+        const QString name = QString::fromLatin1(def.name);
+        const bool installed = QFileInfo::exists(QDir(tessDir).filePath(code + QStringLiteral(".traineddata")));
+        const bool active = code == m_activeOcrDownload;
+
+        QListWidgetItem *item = new QListWidgetItem(m_packageList);
+        item->setFlags(item->flags() & ~Qt::ItemIsSelectable);
+        item->setData(Qt::UserRole, code);
+        item->setData(Qt::UserRole + 1, installed);
+        item->setSizeHint(QSize(0, 44));
+
+        QWidget *row = new QWidget(m_packageList);
+        row->setEnabled(tesseractInstalled);
+        QHBoxLayout *rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(6, 4, 6, 4);
+        rowLayout->setSpacing(6);
+
+        QCheckBox *selectBox = new QCheckBox(row);
+        selectBox->setFixedWidth(22);
+        selectBox->setEnabled(tesseractInstalled && installed && !busy);
+        connect(selectBox, &QCheckBox::toggled, this, [item](bool checked) {
+            item->setData(Qt::UserRole + 2, checked);
+        });
+        QLabel *nameLabel = new QLabel(QStringLiteral("%1 (%2)").arg(name, code), row);
+        nameLabel->setFixedWidth(150);
+        nameLabel->setToolTip(QStringLiteral("%1 (%2)").arg(name, code));
+        QLabel *statusLabel = new QLabel(active ? uiLabel("İndiriliyor...", "Downloading...") : packageStatusText(installed), row);
+        statusLabel->setStyleSheet(installed ? "color: #8bd17c;" : "color: #f0c36d;");
+        statusLabel->setFixedWidth(128);
+
+        QPushButton *downloadButton = new QPushButton(uiLabel("İndir", "Download"), row);
+        QPushButton *deleteButton = new QPushButton(QIcon::fromTheme(QStringLiteral("edit-delete")), uiLabel("Sil", "Delete"), row);
+        downloadButton->setFixedWidth(78);
+        deleteButton->setFixedWidth(78);
+        deleteButton->setStyleSheet("color: #ff6b6b;");
+        downloadButton->setEnabled(tesseractInstalled && !busy && !installed);
+        deleteButton->setEnabled(tesseractInstalled && !busy && installed);
+        downloadButton->setVisible(!installed);
+        connect(downloadButton, &QPushButton::clicked, this, [this, code]() { downloadOcrLanguage(code); });
+        connect(deleteButton, &QPushButton::clicked, this, [this, code]() { deleteOcrLanguage(code); });
+
+        rowLayout->addWidget(selectBox);
+        rowLayout->addWidget(nameLabel);
+        rowLayout->addWidget(statusLabel);
+        rowLayout->addWidget(downloadButton);
+        rowLayout->addWidget(deleteButton);
+        m_packageList->addItem(item);
+        m_packageList->setItemWidget(item, row);
+    }
+
+    if (m_packageStatusLabel) {
+        m_packageStatusLabel->setText(!m_packageOperationStatus.isEmpty()
+            ? m_packageOperationStatus
+            : tesseractInstalled
+            ? uiLabel("Paketler tesseract/tessdata klasörüne yazılır. Kurulum klasörü korumalıysa yönetici izni gerekebilir.",
+                      "Packages are written to the tesseract/tessdata folder. Administrator permission may be required if the install folder is protected.")
+            : uiLabel("Tesseract OCR motoru eksik. Dil paketleri indirilebilir ama OCR için motorun da kurulu olması gerekir.",
+                      "Tesseract OCR engine is missing. Language packs can be downloaded, but OCR also needs the engine."));
+    }
+    if (m_essentialOcrButton) m_essentialOcrButton->setEnabled(tesseractInstalled && !busy);
+    if (m_deleteSelectedOcrButton) m_deleteSelectedOcrButton->setEnabled(tesseractInstalled && !busy);
+}
+
+void SettingsDialog::downloadOcrLanguage(const QString &code)
+{
+    if (code.isEmpty())
+        return;
+    if (m_packageReply) {
+        if (!m_pendingOcrDownloads.contains(code))
+            m_pendingOcrDownloads.append(code);
+        refreshPackageStatus();
+        return;
+    }
+
+    const QString targetDir = tessdataTargetDir();
+    if (!QDir().mkpath(targetDir)) {
+        QMessageBox::warning(this, TranslationManager::errTitle(),
+                             uiLabel("Paket klasörü oluşturulamadı.", "Could not create the package folder."));
+        return;
+    }
+
+    const QString targetPath = QDir(targetDir).filePath(code + QStringLiteral(".traineddata"));
+    if (QFileInfo::exists(targetPath)) {
+        refreshPackageStatus();
+        return;
+    }
+
+    m_activeOcrDownload = code;
+    refreshPackageStatus();
+
+    QNetworkRequest request(QUrl(packageSourceUrl(code)));
+    request.setRawHeader("User-Agent", "EShot-Package-Manager");
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    m_packageReply = m_packageNetwork->get(request);
+    connect(m_packageReply, &QNetworkReply::finished, this, [this, code, targetPath]() {
+        QNetworkReply *reply = m_packageReply;
+        m_packageReply = nullptr;
+        m_activeOcrDownload.clear();
+
+        const bool networkOk = reply && reply->error() == QNetworkReply::NoError;
+        const QByteArray data = networkOk ? reply->readAll() : QByteArray();
+        const QString errorText = reply ? reply->errorString() : uiLabel("Bilinmeyen ağ hatası", "Unknown network error");
+        if (reply)
+            reply->deleteLater();
+
+        if (!networkOk || data.size() < 1024) {
+            QMessageBox::warning(this, TranslationManager::errTitle(),
+                                 uiLabel("OCR paketi indirilemedi: ", "Could not download OCR package: ") + errorText);
+        } else {
+            const QString tempPath = targetPath + QStringLiteral(".download");
+            QFile file(tempPath);
+            if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate) || file.write(data) != data.size()) {
+                QMessageBox::warning(this, TranslationManager::errTitle(),
+                                     uiLabel("OCR paketi yazılamadı.", "Could not write the OCR package."));
+                file.close();
+                QFile::remove(tempPath);
+            } else {
+                file.close();
+                QFile::remove(targetPath);
+                if (!QFile::rename(tempPath, targetPath)) {
+                    QFile::remove(tempPath);
+                    QMessageBox::warning(this, TranslationManager::errTitle(),
+                                         uiLabel("OCR paketi yerine taşınamadı.", "Could not move the OCR package into place."));
+                }
+            }
+        }
+
+        if (!m_pendingOcrDownloads.isEmpty()) {
+            const QString next = m_pendingOcrDownloads.takeFirst();
+            QTimer::singleShot(0, this, [this, next]() { downloadOcrLanguage(next); });
+        }
+        refreshPackageStatus();
+    });
+}
+
+void SettingsDialog::deleteOcrLanguage(const QString &code)
+{
+    if (code.isEmpty() || m_packageReply)
+        return;
+    const QString path = QDir(tessdataTargetDir()).filePath(code + QStringLiteral(".traineddata"));
+    if (!QFileInfo::exists(path)) {
+        refreshPackageStatus();
+        return;
+    }
+    if (!QFile::remove(path)) {
+        QMessageBox::warning(this, TranslationManager::errTitle(),
+                             uiLabel("OCR paketi silinemedi.", "Could not delete the OCR package."));
+    }
+    refreshPackageStatus();
+}
+
+void SettingsDialog::onTesseractComponentAction()
+{
+    if (m_packageReply)
+        return;
+    const QString dirPath = bundledTesseractDir();
+    if (dirPath.isEmpty()) {
+        downloadTesseractComponent();
+        return;
+    }
+    if (QMessageBox::question(this,
+            uiLabel("OCR bileşenini sil", "Delete OCR component"),
+            uiLabel("Tesseract OCR ve tüm OCR dil paketleri silinsin mi?",
+                    "Delete Tesseract OCR and all OCR language packs?"),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No) != QMessageBox::Yes) {
+        return;
+    }
+    if (!QDir(dirPath).removeRecursively()) {
+        QMessageBox::warning(this, TranslationManager::errTitle(),
+                             uiLabel("Tesseract OCR bileşeni silinemedi.", "Could not delete the Tesseract OCR component."));
+    }
+    refreshPackageStatus();
+}
+
+void SettingsDialog::downloadTesseractComponent()
+{
+    downloadReleaseComponent(QStringLiteral("tesseract"), QStringLiteral("tesseract.exe"), uiLabel("OCR bileşeni", "OCR component"));
+}
+
+void SettingsDialog::downloadFfmpegComponent()
+{
+    downloadReleaseComponent(QStringLiteral("ffmpeg"), QStringLiteral("ffmpeg.exe"), QStringLiteral("FFmpeg"));
+}
+
+void SettingsDialog::downloadReleaseComponent(const QString &componentDir, const QString &exeName, const QString &statusPrefix)
+{
+    if (m_packageReply)
+        return;
+    m_packageOperationStatus = QStringLiteral("%1: %2").arg(
+        statusPrefix,
+        uiLabel("release paketi aranıyor...", "looking for release package..."));
+    refreshPackageStatus();
+
+    QUrl url(QStringLiteral("https://api.github.com/repos/Benoks/EShot/releases/latest"));
+    QNetworkRequest request(url);
+    request.setRawHeader("Accept", "application/vnd.github+json");
+    request.setRawHeader("User-Agent", "EShot-Package-Manager");
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    m_packageReply = m_packageNetwork->get(request);
+    connect(m_packageReply, &QNetworkReply::finished, this, [this, componentDir, exeName, statusPrefix]() {
+        QNetworkReply *reply = m_packageReply;
+        m_packageReply = nullptr;
+        const bool ok = reply && reply->error() == QNetworkReply::NoError;
+        const QByteArray data = ok ? reply->readAll() : QByteArray();
+        const QString errorText = reply ? reply->errorString() : uiLabel("Bilinmeyen ağ hatası", "Unknown network error");
+        if (reply)
+            reply->deleteLater();
+
+        if (!ok) {
+            QMessageBox::warning(this, TranslationManager::errTitle(),
+                                 uiLabel("Release bilgisi alınamadı: ", "Could not read release info: ") + errorText);
+            m_packageOperationStatus.clear();
+            refreshPackageStatus();
+            return;
+        }
+
+        const QJsonDocument doc = QJsonDocument::fromJson(data);
+        const QJsonArray assets = doc.object().value(QStringLiteral("assets")).toArray();
+        const QString arch = QSysInfo::currentCpuArchitecture().toLower().contains(QStringLiteral("arm"))
+            ? QStringLiteral("arm64")
+            : QStringLiteral("x64");
+        QString assetUrl;
+        QString assetName;
+        qint64 assetSize = 0;
+        for (const QJsonValue &value : assets) {
+            const QJsonObject asset = value.toObject();
+            const QString name = asset.value(QStringLiteral("name")).toString();
+            const QString lower = name.toLower();
+            if (lower.endsWith(QStringLiteral(".zip"))
+                && lower.contains(QStringLiteral("portable"))
+                && lower.contains(arch)) {
+                assetName = name;
+                assetUrl = asset.value(QStringLiteral("browser_download_url")).toString();
+                assetSize = static_cast<qint64>(asset.value(QStringLiteral("size")).toDouble());
+                break;
+            }
+        }
+
+        if (assetUrl.isEmpty()) {
+            QMessageBox::warning(this, TranslationManager::errTitle(),
+                                 uiLabel("Bu cihaz için portable release paketi bulunamadı.", "No portable release package was found for this device."));
+            m_packageOperationStatus.clear();
+            refreshPackageStatus();
+            return;
+        }
+        downloadComponentArchive(assetUrl, assetName, assetSize, componentDir, exeName, statusPrefix);
+    });
+}
+
+void SettingsDialog::downloadComponentArchive(const QString &url, const QString &assetName, qint64 expectedSize,
+                                              const QString &componentDir, const QString &exeName, const QString &statusPrefix)
+{
+    QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+    if (cacheDir.trimmed().isEmpty())
+        cacheDir = QDir::tempPath() + QStringLiteral("/EShot");
+    cacheDir = QDir(cacheDir).filePath(QStringLiteral("packages"));
+    QDir().mkpath(cacheDir);
+
+    m_packageDownloadPath = QDir(cacheDir).filePath(assetName.isEmpty() ? QStringLiteral("EShot_portable.zip") : assetName);
+    m_packageExpectedSize = expectedSize;
+    delete m_packageDownloadFile;
+    m_packageDownloadFile = new QFile(m_packageDownloadPath);
+    if (!m_packageDownloadFile->open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        QMessageBox::warning(this, TranslationManager::errTitle(),
+                             uiLabel("OCR bileşeni indirilecek dosya açılamadı.", "Could not open the OCR component download file."));
+        delete m_packageDownloadFile;
+        m_packageDownloadFile = nullptr;
+        m_packageOperationStatus.clear();
+        refreshPackageStatus();
+        return;
+    }
+
+    m_packageOperationStatus = QStringLiteral("%1: %2").arg(statusPrefix, uiLabel("indiriliyor...", "downloading..."));
+    refreshPackageStatus();
+
+    QNetworkRequest request{QUrl(url)};
+    request.setRawHeader("User-Agent", "EShot-Package-Manager");
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    m_packageReply = m_packageNetwork->get(request);
+    connect(m_packageReply, &QNetworkReply::readyRead, this, [this]() {
+        if (m_packageDownloadFile && m_packageReply)
+            m_packageDownloadFile->write(m_packageReply->readAll());
+    });
+    connect(m_packageReply, &QNetworkReply::finished, this, [this, componentDir, exeName, statusPrefix]() {
+        QNetworkReply *reply = m_packageReply;
+        m_packageReply = nullptr;
+        if (m_packageDownloadFile && reply)
+            m_packageDownloadFile->write(reply->readAll());
+        if (m_packageDownloadFile) {
+            m_packageDownloadFile->flush();
+            m_packageDownloadFile->close();
+            delete m_packageDownloadFile;
+            m_packageDownloadFile = nullptr;
+        }
+
+        const bool ok = reply && reply->error() == QNetworkReply::NoError;
+        const QString errorText = reply ? reply->errorString() : uiLabel("Bilinmeyen ağ hatası", "Unknown network error");
+        if (reply)
+            reply->deleteLater();
+
+        const qint64 size = QFileInfo(m_packageDownloadPath).size();
+        if (!ok || size <= 0 || (m_packageExpectedSize > 0 && size != m_packageExpectedSize)) {
+            QFile::remove(m_packageDownloadPath);
+            QMessageBox::warning(this, TranslationManager::errTitle(),
+                                 uiLabel("OCR bileşeni indirilemedi: ", "Could not download OCR component: ") + errorText);
+            m_packageOperationStatus.clear();
+            refreshPackageStatus();
+            return;
+        }
+        extractComponentArchive(m_packageDownloadPath, componentDir, exeName, statusPrefix);
+    });
+}
+
+void SettingsDialog::extractComponentArchive(const QString &archivePath, const QString &componentDir,
+                                             const QString &exeName, const QString &statusPrefix)
+{
+    m_packageOperationStatus = QStringLiteral("%1: %2").arg(statusPrefix, uiLabel("kuruluyor...", "installing..."));
+    refreshPackageStatus();
+
+    const QString appDir = QCoreApplication::applicationDirPath();
+    const QString extractDir = QFileInfo(archivePath).absoluteDir().filePath(QStringLiteral("extract_tesseract"));
+    QString script = QStringLiteral(
+        "$ErrorActionPreference='Stop';"
+        "$zip=%1;$extract=%2;$app=%3;$exeName=%4;$component=%5;"
+        "Remove-Item -LiteralPath $extract -Recurse -Force -ErrorAction SilentlyContinue;"
+        "Expand-Archive -LiteralPath $zip -DestinationPath $extract -Force;"
+        "$exe=Get-ChildItem -LiteralPath $extract -Recurse -Filter $exeName | Select-Object -First 1;"
+        "if (-not $exe) { exit 2 };"
+        "$src=Split-Path -Parent $exe.FullName;"
+        "$dst=Join-Path $app $component;"
+        "Remove-Item -LiteralPath $dst -Recurse -Force -ErrorAction SilentlyContinue;"
+        "Copy-Item -LiteralPath $src -Destination $dst -Recurse -Force;"
+        "Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue;"
+        "Remove-Item -LiteralPath $extract -Recurse -Force -ErrorAction SilentlyContinue;")
+        .arg(psQuote(QDir::toNativeSeparators(archivePath)),
+             psQuote(QDir::toNativeSeparators(extractDir)),
+             psQuote(QDir::toNativeSeparators(appDir)),
+             psQuote(exeName),
+             psQuote(componentDir));
+
+    const int exitCode = QProcess::execute(QStringLiteral("powershell.exe"),
+        {QStringLiteral("-NoProfile"),
+         QStringLiteral("-ExecutionPolicy"), QStringLiteral("Bypass"),
+         QStringLiteral("-Command"), script});
+    if (exitCode != 0) {
+        QMessageBox::warning(this, TranslationManager::errTitle(),
+                             uiLabel("OCR bileşeni kurulamadı. Kurulum klasörü için yönetici izni gerekebilir.",
+                                     "Could not install the OCR component. Administrator permission may be required for the install folder."));
+    }
+    m_packageOperationStatus.clear();
+    refreshPackageStatus();
+}
+
+void SettingsDialog::onFfmpegComponentAction()
+{
+    if (m_packageReply)
+        return;
+    const QString dirPath = QCoreApplication::applicationDirPath() + QStringLiteral("/ffmpeg");
+    if (!QFileInfo::exists(QDir(dirPath).filePath(QStringLiteral("ffmpeg.exe")))) {
+        downloadFfmpegComponent();
+        return;
+    }
+    if (QMessageBox::question(this,
+            uiLabel("FFmpeg bileşenini sil", "Delete FFmpeg component"),
+            uiLabel("Bundled FFmpeg video bileşeni silinsin mi?",
+                    "Delete the bundled FFmpeg video component?"),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No) != QMessageBox::Yes) {
+        return;
+    }
+    if (!QDir(dirPath).removeRecursively()) {
+        QMessageBox::warning(this, TranslationManager::errTitle(),
+                             uiLabel("FFmpeg bileşeni silinemedi.", "Could not delete the FFmpeg component."));
+    }
+    refreshPackageStatus();
+}
+
+void SettingsDialog::onDownloadEssentialOcr()
+{
+    for (const OcrPackageDef &def : ocrPackageDefs()) {
+        if (!def.essential)
+            continue;
+        const QString code = QString::fromLatin1(def.code);
+        if (!QFileInfo::exists(QDir(tessdataTargetDir()).filePath(code + QStringLiteral(".traineddata")))
+            && !m_pendingOcrDownloads.contains(code)) {
+            m_pendingOcrDownloads.append(code);
+        }
+    }
+    if (!m_pendingOcrDownloads.isEmpty()) {
+        const QString next = m_pendingOcrDownloads.takeFirst();
+        downloadOcrLanguage(next);
+    }
+}
+
+void SettingsDialog::onDeleteSelectedOcr()
+{
+    if (!m_packageList || m_packageReply)
+        return;
+    for (int i = 0; i < m_packageList->count(); ++i) {
+        QListWidgetItem *item = m_packageList->item(i);
+        if (!item || !item->data(Qt::UserRole + 2).toBool())
+            continue;
+        const QString code = item->data(Qt::UserRole).toString();
+        const QString path = QDir(tessdataTargetDir()).filePath(code + QStringLiteral(".traineddata"));
+        if (QFileInfo::exists(path))
+            QFile::remove(path);
+    }
+    refreshPackageStatus();
 }
 
 void SettingsDialog::loadSettings()
