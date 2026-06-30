@@ -102,8 +102,14 @@ jobs:
       - name: Stage Tesseract (${{ matrix.arch }}, vcpkg native)
         shell: pwsh
         run: |
-          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install tesseract:${{ matrix.vcpkg_triplet }}
-          if ($LASTEXITCODE -ne 0) { throw "vcpkg install failed" }
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            Write-Host "vcpkg install attempt $attempt/$maxAttempts"
+            & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install tesseract:${{ matrix.vcpkg_triplet }}
+            if ($LASTEXITCODE -eq 0) { break }
+            if ($attempt -eq $maxAttempts) { throw "vcpkg install failed after $maxAttempts attempts" }
+            Start-Sleep -Seconds (20 * $attempt)
+          }
           $inst = "$env:VCPKG_INSTALLATION_ROOT\installed\${{ matrix.vcpkg_triplet }}"
           $dst  = "third_party/tesseract"
           New-Item -ItemType Directory -Force $dst | Out-Null
