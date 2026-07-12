@@ -29,6 +29,11 @@
   <url type="homepage">https://github.com/Benoks/EShot</url>
   <url type="bugtracker">https://github.com/Benoks/EShot/issues</url>
   <releases>
+    <release version="4.0.0" date="2026-07-13">
+      <description>
+        <p>Adds the complete Linux and KDE Plasma 6 port, AppImage and native packages, Wayland capture and recording, Linux desktop integration, and selectable Google Lens or Yandex visual search.</p>
+      </description>
+    </release>
     <release version="3.1.0" date="2026-07-09">
       <description>
         <p>Adds Linux build, packaging, and native desktop integration support.</p>

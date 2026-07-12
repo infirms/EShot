@@ -90,6 +90,8 @@ EShot_new.exe
 gif_test/
 gif_test_output.txt
 test_output.gif
+test_record_output.gif
+test_log.txt
 test_ocr.png
 *.gif.tmp
 *.mp4
