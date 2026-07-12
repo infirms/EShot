@@ -364,8 +364,10 @@ void HotkeyManager::unregisterHotkey(int id)
 #endif
     m_registeredHotkeys.removeAll(id);
     m_registeredHotkeyDefs.remove(id);
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
     if (m_kdeShortcuts && m_kdeShortcuts->isAvailable())
         m_kdeShortcuts->setShortcuts(m_registeredHotkeyDefs);
+#endif
     refreshPortalShortcuts();
 }
 
@@ -515,7 +517,9 @@ void HotkeyManager::emitHotkey(int id)
 
 void HotkeyManager::refreshPortalShortcuts()
 {
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
     if ((!m_kdeShortcuts || !m_kdeShortcuts->isAvailable())
         && m_portalShortcuts && m_portalShortcuts->isAvailable())
         m_portalShortcuts->setShortcuts(m_registeredHotkeyDefs);
+#endif
 }
