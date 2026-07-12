@@ -25,6 +25,7 @@
 #include <QGuiApplication>
 #include <QScreen>
 #include <QCursor>
+#include <QScrollArea>
 #ifdef Q_OS_LINUX
 #include <QCheckBox>
 #include <QProcess>
@@ -35,12 +36,14 @@
 FirstRunWizard::FirstRunWizard(QWidget *parent)
     : QDialog(parent)
 {
-    // Strip maximize button to prevent Windows 11 ARM64 Snap Layouts crash
+#ifdef Q_OS_WIN
+    // Strip maximize button to prevent Windows 11 ARM64 Snap Layouts crash.
     setWindowFlags(windowFlags() & ~Qt::WindowMaximizeButtonHint);
+#endif
     setWindowTitle(TranslationManager::wizardTitle());
     setWindowIcon(QIcon(":/icons/pen.svg"));
-    setMinimumSize(560, 300); // Small enough to fit highly scaled low-res screens
-    setMaximumSize(750, 600);
+    setMinimumSize(560, 400);
+    resize(640, 720);
 
     setupUi();
     loadDefaults();
@@ -183,8 +186,21 @@ bool FirstRunWizard::keySequenceToWin32(const QKeySequence &seq, UINT &modifiers
 
 void FirstRunWizard::setupUi()
 {
-    QVBoxLayout *mainLayout = new QVBoxLayout(this);
+    QVBoxLayout *outerLayout = new QVBoxLayout(this);
+    outerLayout->setContentsMargins(8, 8, 8, 8);
+
+    auto *scrollArea = new QScrollArea(this);
+    scrollArea->setObjectName(QStringLiteral("firstRunScrollArea"));
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+
+    auto *content = new QWidget(scrollArea);
+    content->setObjectName(QStringLiteral("firstRunScrollContent"));
+    QVBoxLayout *mainLayout = new QVBoxLayout(content);
     mainLayout->setSpacing(12);
+    scrollArea->setWidget(content);
+    outerLayout->addWidget(scrollArea, 1);
 
     QFont titleFont;
     titleFont.setPointSize(16);
@@ -268,7 +284,7 @@ void FirstRunWizard::setupUi()
     const auto names = ocrLanguageDisplayNames();
     const auto defaults = defaultOcrLanguageCodes(QLocale::system().name());
     int languageIndex = 0;
-    for (const QString &code : supportedOcrLanguageCodes()) { auto *check = new QCheckBox(names.value(code)); check->setProperty("ocrCode", code); check->setChecked(defaults.contains(code)); languages->addWidget(check, languageIndex / 4, languageIndex % 4); m_linuxLanguageChecks << check; ++languageIndex; }
+    for (const QString &code : supportedOcrLanguageCodes()) { auto *check = new QCheckBox(names.value(code)); check->setProperty("ocrCode", code); check->setChecked(defaults.contains(code)); languages->addWidget(check, languageIndex / 2, languageIndex % 2); m_linuxLanguageChecks << check; ++languageIndex; }
     depsLayout->addLayout(languages);
     connect(m_linuxOcrCheck, &QCheckBox::toggled, depsGroup, [this](bool enabled) { for (auto *check : m_linuxLanguageChecks) check->setEnabled(enabled); });
     QPushButton *skipDeps = new QPushButton(tr("Skip optional dependency setup"));
@@ -277,8 +293,6 @@ void FirstRunWizard::setupUi()
     m_linuxInstallStatus = new QLabel(); m_linuxInstallStatus->setWordWrap(true); depsLayout->addWidget(m_linuxInstallStatus);
     mainLayout->addWidget(depsGroup);
 #endif
-
-    mainLayout->addStretch();
 
     QHBoxLayout *btnLayout = new QHBoxLayout();
     btnLayout->addStretch();
@@ -294,7 +308,7 @@ void FirstRunWizard::setupUi()
     )");
     connect(finishBtn, &QPushButton::clicked, this, &FirstRunWizard::onFinish);
     btnLayout->addWidget(finishBtn);
-    mainLayout->addLayout(btnLayout);
+    outerLayout->addLayout(btnLayout);
 }
 
 void FirstRunWizard::loadDefaults()

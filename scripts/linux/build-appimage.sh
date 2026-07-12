@@ -2,8 +2,8 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-build_dir="${repo_root}/build-appimage"
-appdir="${repo_root}/EShot.AppDir"
+build_dir="${ESHOT_APPIMAGE_BUILD_DIR:-${repo_root}/build-appimage}"
+appdir="${ESHOT_APPIMAGE_APPDIR:-${repo_root}/EShot.AppDir}"
 tools_dir="${repo_root}/build-appimage-tools"
 package_dir="${repo_root}/packages"
 version="$(sed -n 's/^project(EShot VERSION \([0-9][0-9.]*\).*/\1/p' "${repo_root}/CMakeLists.txt" | head -n1)"

@@ -1094,7 +1094,9 @@ int main(int argc, char *argv[])
                 if (!screen) screen = QGuiApplication::primaryScreen();
                 QRect avail = screen->availableGeometry();
                 
-                wizard->resize(wizard->minimumSizeHint());
+                const int targetWidth = qMin(680, qMax(wizard->minimumWidth(), avail.width() - 40));
+                const int targetHeight = qMin(760, qMax(wizard->minimumHeight(), avail.height() - 80));
+                wizard->resize(targetWidth, targetHeight);
                 QApplication::processEvents();
                 
                 int nx = avail.center().x() - wizard->width() / 2;
