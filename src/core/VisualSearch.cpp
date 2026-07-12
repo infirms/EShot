@@ -43,6 +43,8 @@ QUrl visualSearchResultUrl(VisualSearchProvider provider, const QUrl &imageUrl)
                     ? QStringLiteral("https://yandex.com/images/search")
                     : QStringLiteral("https://lens.google.com/uploadbyurl"));
     QUrlQuery query;
+    if (provider == VisualSearchProvider::YandexImages)
+        query.addQueryItem(QStringLiteral("rpt"), QStringLiteral("imageview"));
     query.addQueryItem(QStringLiteral("url"), imageUrl.toString(QUrl::FullyEncoded));
     result.setQuery(query);
     return result;

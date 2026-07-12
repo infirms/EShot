@@ -1,5 +1,6 @@
 #include "VideoRecorder.h"
 #include "core/LinuxPortalScreenCast.h"
+#include "LinuxRecordingSupport.h"
 
 #include <QCoreApplication>
 #include <QGuiApplication>
@@ -77,6 +78,8 @@ QStringList platformAudioDevices(const QString &ffmpegPath)
     devices << QStringLiteral("default")
             << QStringLiteral("@DEFAULT_SOURCE@")
             << QStringLiteral("@DEFAULT_SINK@.monitor");
+    devices << discoverLinuxMicrophoneSources();
+    devices.removeDuplicates();
     return devices;
 #endif
 }
@@ -469,7 +472,15 @@ void VideoRecorder::stop()
     if (m_paused)
         resume();
     m_stopping = true;
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    if (m_usesGStreamer)
+        QProcess::execute(QStringLiteral("kill"),
+                          {QStringLiteral("-INT"), QString::number(m_process->processId())});
+    else
+        m_process->write("q\n");
+#else
     m_process->write("q\n");
+#endif
     QTimer::singleShot(2500, this, [this]() {
         if (m_process && m_recording)
             m_process->terminate();
@@ -656,12 +667,11 @@ bool VideoRecorder::startWaylandPortalRecording(const QRect &captureRect)
     const int top = qBound(0, relativeRect.y(), qMax(0, streamSize.height() - 1));
     const int right = qMax(0, streamSize.width() - left - captureRect.width());
     const int bottom = qMax(0, streamSize.height() - top - captureRect.height());
-    const QSize outputSize(qMax(8, qMin(captureRect.width(), streamSize.width() - left)),
-                           qMax(8, qMin(captureRect.height(), streamSize.height() - top)));
+    const QSize outputSize = evenRecordingSize(QSize(
+        qMax(8, qMin(captureRect.width(), streamSize.width() - left)),
+        qMax(8, qMin(captureRect.height(), streamSize.height() - top))));
 
-    const QString targetObject = stream.pipewireSerial > 0
-        ? QString::number(stream.pipewireSerial)
-        : QString::number(stream.nodeId);
+    const QString sourcePath = pipeWireSourcePath(stream.nodeId);
     const int pipewireFd = stream.remoteFd();
 
     QStringList args;
@@ -675,7 +685,7 @@ bool VideoRecorder::startWaylandPortalRecording(const QRect &captureRect)
          << QStringLiteral("location=%1").arg(m_outputPath)
          << QStringLiteral("pipewiresrc")
          << QStringLiteral("fd=%1").arg(pipewireFd)
-         << QStringLiteral("target-object=%1").arg(targetObject)
+         << sourcePath
          << QStringLiteral("do-timestamp=true")
          << QStringLiteral("!")
          << QStringLiteral("queue")
@@ -778,20 +788,6 @@ bool VideoRecorder::startWaylandPortalRecording(const QRect &captureRect)
         return false;
     }
     m_usesGStreamer = true;
-    connect(m_process, &QProcess::finished, this, &VideoRecorder::onProcessFinished);
-    connect(m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
-        if (!m_recording)
-            return;
-        const bool canceled = m_canceling;
-        const QString reason = m_process ? m_process->errorString() : QStringLiteral("gstreamer process error");
-        const QString output = m_outputPath;
-        cleanupProcess();
-        if (!output.isEmpty())
-            QFile::remove(output);
-        if (!canceled)
-            emit recordingFailed(reason);
-    });
-
     m_process->start();
     if (!m_process->waitForStarted(3000)) {
         const QString reason = m_process->errorString();
@@ -799,6 +795,24 @@ bool VideoRecorder::startWaylandPortalRecording(const QRect &captureRect)
         emit recordingFailed(reason.isEmpty() ? QStringLiteral("cannot start gstreamer") : reason);
         return false;
     }
+    if (m_process->waitForFinished(700)) {
+        const QString reason = QString::fromLocal8Bit(m_process->readAll()).trimmed();
+        cleanupProcess();
+        QFile::remove(m_outputPath);
+        emit recordingFailed(reason.isEmpty() ? QStringLiteral("gstreamer pipeline exited during startup") : reason);
+        return false;
+    }
+
+    connect(m_process, &QProcess::finished, this, &VideoRecorder::onProcessFinished);
+    connect(m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
+        if (!m_recording) return;
+        const bool canceled = m_canceling;
+        const QString reason = m_process ? m_process->errorString() : QStringLiteral("gstreamer process error");
+        const QString output = m_outputPath;
+        cleanupProcess();
+        if (!output.isEmpty()) QFile::remove(output);
+        if (!canceled) emit recordingFailed(reason);
+    });
 
     m_recording = true;
     m_elapsed.start();

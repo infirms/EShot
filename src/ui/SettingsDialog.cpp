@@ -2,6 +2,7 @@
 #include "../core/HotkeyManager.h"
 #include "../core/OcrEngine.h"
 #include "../core/TranslationManager.h"
+#include "../recording/LinuxRecordingSupport.h"
 #ifdef Q_OS_LINUX
 #include "FirstRunWizard.h"
 #endif
@@ -186,7 +187,10 @@ QStringList microphoneAudioDevices()
 #ifdef Q_OS_WIN
     return windowsAudioInputDevices();
 #else
-    return {QStringLiteral("default"), QStringLiteral("@DEFAULT_SOURCE@")};
+    QStringList devices{QStringLiteral("default"), QStringLiteral("@DEFAULT_SOURCE@")};
+    devices << discoverLinuxMicrophoneSources();
+    devices.removeDuplicates();
+    return devices;
 #endif
 }
 }

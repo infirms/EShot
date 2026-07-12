@@ -122,7 +122,7 @@ eshot_runtime_ready() {
   done
 
   local plugin
-  for plugin in pipewiresrc pulsesrc x264enc h264parse mp4mux voaacenc gifenc; do
+  for plugin in pipewiresrc pulsesrc x264enc h264parse mp4mux voaacenc; do
     gst-inspect-1.0 "${plugin}" >/dev/null 2>&1 || return 1
   done
 }

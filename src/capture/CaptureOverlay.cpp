@@ -7,6 +7,7 @@
 #include "core/ImageUploader.h"
 #include "core/LinuxPortalScreenshot.h"
 #include "core/VisualSearch.h"
+#include "recording/LinuxRecordingSupport.h"
 
 #include "../core/TranslationManager.h"
 
@@ -251,7 +252,10 @@ QStringList microphoneAudioDevices()
 #ifdef Q_OS_WIN
     return windowsAudioInputDevices();
 #else
-    return {QStringLiteral("default"), QStringLiteral("@DEFAULT_SOURCE@")};
+    QStringList devices{QStringLiteral("default"), QStringLiteral("@DEFAULT_SOURCE@")};
+    devices << discoverLinuxMicrophoneSources();
+    devices.removeDuplicates();
+    return devices;
 #endif
 }
 

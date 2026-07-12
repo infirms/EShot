@@ -57,7 +57,6 @@ check_gst x264enc
 check_gst h264parse
 check_gst mp4mux
 check_gst voaacenc
-check_gst gifenc
 
 portal_xml=""
 if command -v qdbus6 >/dev/null 2>&1; then

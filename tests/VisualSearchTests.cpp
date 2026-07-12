@@ -1,4 +1,5 @@
 #include <QtTest/QTest>
+#include <QUrlQuery>
 
 #include "core/VisualSearch.h"
 
@@ -74,6 +75,7 @@ void VisualSearchTests::buildsEncodedResultUrls()
     QCOMPARE(yandex.scheme(), QStringLiteral("https"));
     QCOMPARE(yandex.host(), QStringLiteral("yandex.com"));
     QCOMPARE(yandex.path(), QStringLiteral("/images/search"));
+    QCOMPARE(QUrlQuery(yandex).queryItemValue(QStringLiteral("rpt")), QStringLiteral("imageview"));
     QVERIFY(yandex.toString(QUrl::FullyEncoded).contains(
         QStringLiteral("url=https://images.example.test/a%20crop.png?x%3D1%26y%3Dtwo%20words")));
 }

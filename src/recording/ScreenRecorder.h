@@ -56,6 +56,8 @@ private:
     void releaseCaptureResources();
     bool startWaylandPortalRecording(const QRect &captureRect);
     QString gstLaunchPath() const;
+    QString ffmpegPath() const;
+    bool convertPortalVideoToGif();
 
     GifEncoder *m_encoder = nullptr;
     QProcess *m_process = nullptr;
@@ -74,6 +76,8 @@ private:
     QImage m_pendingFrame;
     int m_pendingDelayCs = 0;
     QString m_outputPath;
+    QString m_portalVideoPath;
+    int m_loopCount = 0;
     QDateTime m_recordingStartedAt;
 
 #ifdef Q_OS_WIN

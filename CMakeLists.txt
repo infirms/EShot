@@ -53,6 +53,7 @@ set(SOURCES
     src/ui/OcrDialog.cpp
     src/ui/UploadDialog.cpp
     src/recording/GifEncoder.cpp
+    src/recording/LinuxRecordingSupport.cpp
     src/recording/ScreenRecorder.cpp
     src/recording/VideoRecorder.cpp
     src/recording/RecordingIndicator.cpp
@@ -86,6 +87,7 @@ set(HEADERS
     src/ui/OcrDialog.h
     src/ui/UploadDialog.h
     src/recording/GifEncoder.h
+    src/recording/LinuxRecordingSupport.h
     src/recording/ScreenRecorder.h
     src/recording/VideoRecorder.h
     src/recording/RecordingIndicator.h
@@ -251,6 +253,15 @@ if(BUILD_TESTING)
         target_link_libraries(eshot_linux_portal_shortcut_tests PRIVATE Qt6::DBus)
     endif()
     add_test(NAME linux_portal_shortcut COMMAND eshot_linux_portal_shortcut_tests)
+
+    qt_add_executable(eshot_linux_recording_support_tests
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/LinuxRecordingSupportTests.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/recording/LinuxRecordingSupport.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/recording/LinuxRecordingSupport.h
+    )
+    target_include_directories(eshot_linux_recording_support_tests PRIVATE src)
+    target_link_libraries(eshot_linux_recording_support_tests PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME linux_recording_support COMMAND eshot_linux_recording_support_tests)
 endif()
 
 if(UNIX AND NOT APPLE)
