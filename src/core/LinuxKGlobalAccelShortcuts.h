@@ -16,6 +16,7 @@ public:
     bool setShortcuts(const QHash<int, QPair<UINT, UINT>> &shortcuts);
     static bool isKdeDesktop(const QString &desktop);
     static QStringList actionId(int id);
+    static uint registrationFlags();
 
 signals:
     void shortcutActivated(int id);

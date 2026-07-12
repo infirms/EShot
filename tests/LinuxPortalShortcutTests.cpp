@@ -58,6 +58,11 @@ private slots:
         QCOMPARE(id.value(2), QStringLiteral("EShot"));
         QCOMPARE(id.value(3), QStringLiteral("Capture"));
     }
+
+    void marksKdeShortcutsAsPresent()
+    {
+        QCOMPARE(LinuxKGlobalAccelShortcuts::registrationFlags(), uint(6));
+    }
 };
 
 QTEST_APPLESS_MAIN(LinuxPortalShortcutTests)

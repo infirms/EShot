@@ -98,6 +98,13 @@ QStringList LinuxKGlobalAccelShortcuts::actionId(int id)
     return {QString::fromLatin1(Component), actionName(id), QStringLiteral("EShot"), actionDescription(id)};
 }
 
+uint LinuxKGlobalAccelShortcuts::registrationFlags()
+{
+    constexpr uint SetPresent = 2;
+    constexpr uint NoAutoloading = 4;
+    return SetPresent | NoAutoloading;
+}
+
 bool LinuxKGlobalAccelShortcuts::setShortcuts(const QHash<int, QPair<UINT, UINT>> &shortcuts)
 {
     if (!m_available) return false;
@@ -112,7 +119,7 @@ bool LinuxKGlobalAccelShortcuts::setShortcuts(const QHash<int, QPair<UINT, UINT>
         const int key = combinedKey(it.value().first, it.value().second);
         if (key == 0) return false;
         const QDBusReply<QList<int>> assigned = accel.call(QStringLiteral("setShortcut"), id,
-                                                            QVariant::fromValue(QList<int>{key}), uint(4));
+                                                            QVariant::fromValue(QList<int>{key}), registrationFlags());
         if (!assigned.isValid() || !assigned.value().contains(key)) return false;
         m_ids.insert(id.at(1), it.key());
     }
