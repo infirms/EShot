@@ -1,185 +1,134 @@
 # EShot
 
-Fast, lightweight native screenshot tool for Windows and Linux with annotations, OCR, uploads, pinned captures, GIF recording, and MP4 screen recording.
+Native screenshot, annotation, OCR, visual-search, upload, GIF, and video capture for Windows and Linux.
 
 [![Latest release](https://img.shields.io/github/v/release/Benoks/EShot?label=release)](https://github.com/Benoks/EShot/releases/latest)
-[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20%7C%20Linux-lightgrey.svg)](#)
-[![Qt](https://img.shields.io/badge/Qt-6.x-green.svg)](https://www.qt.io/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Build](https://github.com/Benoks/EShot/actions/workflows/build.yml/badge.svg)](https://github.com/Benoks/EShot/actions/workflows/build.yml)
+[![Platforms](https://img.shields.io/badge/platform-Windows%2010%2F11%20%7C%20Linux-4b8bbe)](#platform-support)
+[![Qt](https://img.shields.io/badge/Qt-6.x-41cd52)](https://www.qt.io/)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-<p align="center">
-  <img src="preview.png" alt="EShot preview" width="760">
-</p>
+EShot keeps the complete screenshot workflow in one compact tray application: select a region, annotate it, copy or save it, extract text, search the image, upload it, pin it above other windows, or record it as GIF/MP4.
 
-EShot is built for people who want a quick screenshot workflow without a heavy desktop app getting in the way. Capture an area, mark it up, copy it, save it, upload it, recognize text, search it with Google Lens, pin it as a reference, or record it as GIF/MP4 from one compact tray app.
+## Screenshots
 
-## Highlights
+| Windows | Linux — CachyOS / KDE Plasma 6 |
+| --- | --- |
+| <img src="image.png" alt="EShot on Windows" width="760"> | <img src="docs/images/cachyos-desktop.png" alt="EShot on CachyOS with KDE Plasma 6" width="760"> |
 
-- Region capture with multi-monitor and high-DPI support
-- Full-screen monitor capture by double-clicking a screen during selection
-- Clean annotation tools for fast markup
-- OCR powered by Tesseract with selectable language packs
-- Google Lens search for the selected area
-- Direct uploads to short-term and long-term image/file hosts
-- Pinned screenshots that stay above other windows
-- GIF recording for selected screen areas
-- MP4 video recording powered by FFmpeg
-- Desktop audio and microphone support for video recording
-- Customizable global, direct-capture, recording, and in-capture shortcuts
-- Toolbar visibility settings
-- Windows Print Screen conflict detection and fix helper
-- Native Linux capture path with X11 shortcuts and Wayland portal support
-- Start with the desktop through Windows Task Scheduler or XDG autostart
-- GitHub release update check
-- Import/export settings
+## Platform support
 
-## Capture Workflow
+| Platform | Status | Distribution |
+| --- | --- | --- |
+| Windows 10/11 x64 | Stable | Installer and portable ZIP |
+| Windows 11 ARM64 | Stable | Native ARM64 installer and portable ZIP |
+| Linux x86_64 — KDE Plasma 6 | **Experimental** | AppImage, `.deb`, and portable archive |
+| Other Linux desktops | Untested | No support guarantee yet |
 
-Start capture from the tray icon, global hotkey, command line, or direct action hotkeys. After selecting an area, EShot opens a compact toolbar where you can annotate, copy, save, upload, OCR, search with Google Lens, pin, or start GIF/video recording.
+> [!IMPORTANT]
+> Linux support is experimental and currently tested only on KDE Plasma 6, primarily on CachyOS/Arch with Wayland. GNOME, wlroots compositors, older Plasma versions, and other distributions may work through XDG Desktop Portal, but they are not considered supported until they have been tested properly.
 
-The selection UI adapts to tight screen space, keeps the dimension label anchored to the selected area, and supports locking the selection while editing.
+## Features
 
-## Annotation Tools
+- Region and monitor capture with multi-monitor and high-DPI handling
+- Compact selection overlay with configurable actions and shortcuts
+- Pen, arrow, line, rectangle, ellipse, text, highlighter, blur, counter, eraser, and eyedropper tools
+- Undo/redo, selection locking, color controls, and configurable toolbar visibility
+- Tesseract OCR with selectable language packs
+- Google Lens or Yandex Images visual search for the selected region
+- Screenshot uploads to Catbox, Uguu, Litterbox, TmpFiles.org, temp.sh, Allwebs, Radikal Cloud, Google Drive, and Yandex Disk
+- Always-on-top pinned captures
+- Selected-region GIF recording
+- MP4 recording with configurable FPS, quality, duration, desktop audio, and microphone audio
+- Real microphone-device selection on Linux and Windows
+- Global capture and direct screenshot/GIF/video hotkeys
+- Configurable pause, stop, and cancel recording shortcuts
+- Settings import/export and automatic release checks
+- Self-update support for installed AppImages
 
-EShot includes the tools most screenshot workflows need:
+## Capture workflow
 
-- Freehand pen
-- Arrow and line
-- Rectangle and ellipse
-- Semi-transparent rectangle
-- Multiline text with font and size controls
-- Highlighter
-- Mosaic blur with adjustable intensity
-- Counter/number markers
-- Eraser
-- Eyedropper color picker
-- Undo and redo
+Start a capture from the tray icon, `Print Screen`, a custom global shortcut, a direct-action shortcut, or the command line. Select a region and use the overlay toolbar to annotate, OCR, search, upload, pin, copy, save, or begin recording.
+
+Double-clicking a screen during selection captures that complete monitor. The overlay adapts to tight spaces and scaled multi-monitor layouts.
+
+## Install
+
+Download the latest build from [GitHub Releases](https://github.com/Benoks/EShot/releases/latest).
+
+### Windows
+
+1. Download `EShot_Setup_v<version>_x64.exe` or the ARM64 installer.
+2. Run the installer and choose the optional FFmpeg/OCR components you need.
+3. Launch EShot from the Start menu or system tray.
+
+Portable x64 and ARM64 ZIP archives are also attached to each release.
+
+### Linux — experimental KDE Plasma 6 build
+
+1. Download `EShot-v<version>-x86_64.AppImage`.
+2. Mark it executable if required:
+
+   ```bash
+   chmod +x EShot-v*-x86_64.AppImage
+   ```
+
+3. Open the AppImage.
+4. Complete the graphical first-run wizard. It can install FFmpeg/GStreamer, PipeWire portal components, Tesseract, selected OCR languages, and application-menu integration through the system package manager.
+5. Use **Activate Print Screen for EShot** if KDE currently assigns `Print Screen` to Spectacle.
+
+The AppImage bundles EShot and Qt. Optional media, OCR, and desktop-integration packages remain system packages. Skipped dependencies can be installed later from **Settings → Open Linux dependency setup**.
+
+Integrated AppImages are stored for the current user under `~/.local/opt/EShot`. When an update is available, EShot downloads the matching AppImage release asset, verifies its GitHub SHA-256 digest, replaces the installed AppImage, and restarts it. Native package builds should be updated through their package manager.
+
+### Linux runtime notes
+
+- Wayland screenshots and recordings use XDG Desktop Portal and PipeWire.
+- KDE global shortcuts use KGlobalAccel; non-KDE desktops may fall back to the Global Shortcuts portal or X11 grabs.
+- GIF recording uses GStreamer for portal capture and FFmpeg for final GIF encoding.
+- MP4 recording requires a GStreamer AAC encoder when audio is enabled.
+- Screen-sharing permission is requested by the desktop for each new portal recording session.
+
+## Visual search
+
+Choose **Google Lens** or **Yandex Images** in Settings. EShot uploads only the selected region to a temporary public image host and opens the chosen visual-search provider with that temporary URL.
+
+Do not use visual search for private or sensitive screenshots.
 
 ## OCR
 
-EShot can extract text from a selected area using Tesseract OCR. The installer can include the OCR engine and optional language packs.
+OCR is powered by Tesseract. The first-run wizard can install English, the system language, and additional language data. Missing languages remain visible but disabled so the missing dependency is clear.
 
-Supported OCR language options include:
+## Upload services
 
-- English
-- Turkish
-- Russian
-- German
-- French
-- Spanish
-- Italian
-- Portuguese
-- Polish
-- Dutch
-- Japanese
-- Korean
-- Simplified Chinese
-
-Missing language packs are shown disabled in the OCR dialog instead of silently disappearing.
-
-## Uploads
-
-Upload screenshots directly from the capture toolbar. EShot supports anonymous/simple hosts as well as OAuth-based storage providers.
-
-Supported services:
-
-- Catbox
-- Uguu
-- Litterbox
-- TmpFiles.org
-- temp.sh
-- Allwebs
-- Radikal Cloud
-- Google Drive
-
-For OAuth providers, EShot accepts either a raw access token or the full redirect URL and extracts the token automatically. The upload dialog includes provider-specific help links for token setup.
-
-Allwebs and Radikal Cloud use Chevereto API v1.1 and require an API key from the service account/API page. TmpFiles.org, temp.sh, Uguu, Litterbox, and anonymous Catbox uploads do not require a token.
+Anonymous providers work without credentials. Google Drive and Yandex Disk require OAuth access tokens; Allwebs and Radikal Cloud require service API keys. Tokens are stored in EShot settings on the local machine.
 
 ### Google Drive token setup
 
-Google Drive uploads need a short-lived OAuth `access_token`. The quickest setup path is Google OAuth 2.0 Playground:
-
 1. Open [Google OAuth 2.0 Playground](https://developers.google.com/oauthplayground).
-2. In the left panel, find **Drive API v3**.
-3. Select this scope:
+2. Select the Drive API v3 scope:
+
    ```text
    https://www.googleapis.com/auth/drive.file
    ```
-4. Click **Authorize APIs** and approve access with your Google account.
-5. Click **Exchange authorization code for tokens**.
-6. Copy only the `access_token` value. It usually starts with `ya29.`.
-7. Paste it into EShot's Google Drive token field and save it.
 
-You can also paste the full JSON response from OAuth Playground; EShot extracts the `access_token` automatically. Access tokens expire, so if Google Drive upload later returns HTTP 401, generate a fresh token in OAuth Playground and save it again.
+3. Authorize the scope and exchange the authorization code for tokens.
+4. Copy the `access_token`, or copy the complete JSON response.
+5. Paste it into EShot's Google Drive token field.
 
-## Google Lens
+OAuth Playground access tokens expire. Generate a new token if an upload later returns HTTP 401.
 
-The Google Lens button opens a visual search for the selected area. It is useful for finding matching images, identifying UI elements, checking product images, or searching from a cropped screenshot without saving it first.
-
-## GIF Recording
-
-Record a selected screen area as a GIF. You can configure:
-
-- FPS
-- Maximum duration
-- Loop behavior
-- Start delay
-- Output folder
-- Direct GIF recording hotkey
-
-## Video Recording
-
-Record a selected area as an MP4 video. Video recording uses FFmpeg and supports:
-
-- Configurable FPS
-- Configurable CRF quality
-- Optional duration limit
-- Desktop/system audio
-- Microphone audio
-- Audio volume controls
-- Microphone device selection
-- Pause, stop, and cancel hotkeys
-- Output folder
-
-## Pin to Screen
-
-Pinned screenshots stay above other windows. This is useful for reference images, snippets, UI comparison, notes, forms, and quick visual memory while working in another app.
-
-## Settings
-
-The settings window includes:
-
-- General behavior
-- Separate save folders for screenshots, GIFs, and videos
-- Filename pattern preview
-- Notification controls
-- Capture behavior
-- GIF and video recording settings
-- Audio recording controls
-- Appearance options
-- High contrast mode
-- Black tray icon option for light Windows themes
-- Interface and toolbar visibility
-- Global capture hotkey
-- Direct screenshot/GIF/video hotkeys
-- Recording control hotkeys
-- In-capture tool/action shortcuts
-- Settings export and import
-
-## Default Shortcuts
+## Default shortcuts
 
 Most shortcuts can be changed in Settings.
 
 | Shortcut | Action |
 | --- | --- |
-| `Print Screen` | Start capture |
-| Double-click screen | Capture that full monitor |
-| `Enter` | Copy selected capture |
-| `Ctrl+C` | Copy selected capture |
-| `Ctrl+S` | Save selected capture |
-| `Esc` | Cancel or close overlay |
-| `Shift+Enter` | New line while editing text |
+| `Print Screen` | Start region capture |
+| Double-click a screen | Capture the complete monitor |
+| `Enter` / `Ctrl+C` | Copy selection |
+| `Ctrl+S` | Save selection |
+| `Esc` | Cancel or close |
 | `P` | Pen |
 | `A` | Arrow |
 | `L` | Line |
@@ -192,127 +141,72 @@ Most shortcuts can be changed in Settings.
 | `X` | Eraser |
 | `D` | Semi-transparent rectangle |
 | `I` | Eyedropper |
-| `Ctrl+Z` | Undo |
-| `Ctrl+Shift+Z` | Redo |
+| `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo |
 
-## Install
-
-### Windows
-
-1. Download the latest Windows installer from the [Releases page](https://github.com/Benoks/EShot/releases/latest).
-2. Run the setup file.
-3. Select optional FFmpeg and OCR components if needed.
-4. Start EShot from the Start menu, desktop shortcut, or tray icon.
-
-If "Start with Windows" is enabled, EShot registers itself through Windows Task Scheduler.
-
-### Linux
-
-1. Download `EShot-v<version>-x86_64.AppImage` from the [Releases page](https://github.com/Benoks/EShot/releases/latest).
-2. Make it executable if your file manager requires it, then double-click the AppImage.
-3. In the graphical first-run wizard, choose the optional FFmpeg/GIF-video,
-   Tesseract/OCR language, and desktop portal features you want. The package
-   manager may request administrator approval; you can also skip this step.
-4. Approve EShot's preferred PrintScreen shortcut in the KDE/GNOME shortcut dialog.
-5. Start EShot from the application menu on later launches.
-
-The AppImage bundles EShot and Qt. Its first-run setup installs missing FFmpeg,
-Tesseract, GStreamer/PipeWire, and the KDE or GNOME portal backend through
-PolicyKit. The application itself is installed for the current user under
-`~/.local/opt/EShot`.
-
-Skipped optional features can be installed later from **Settings > Open Linux
-dependency setup**. EShot updates an AppImage in place: when a newer GitHub
-release is available, choose **Update now** in Settings or the tray menu. EShot
-downloads the exact `EShot-v<version>-x86_64.AppImage` release asset, requires
-its GitHub SHA-256 digest to match, replaces the AppImage identified by the
-`APPIMAGE` environment variable, and restarts it. Package-manager builds do not
-self-replace; update those through the package manager.
-
-On Wayland, screenshot, recording, and global-shortcut permissions are handled
-by the desktop portal. EShot also prefers the native GlobalShortcuts portal on
-KDE/GNOME X11 sessions and retains direct X11 grabs as a fallback.
-
-## Command Line
-
-Windows:
+## Command line
 
 ```powershell
+# Windows
 EShot.exe --capture
 EShot.exe --save "C:\path\to\capture.png"
 EShot.exe --silent
 ```
 
-Linux:
-
 ```bash
+# Linux
 EShot --capture
 EShot --save "$HOME/Pictures/capture.png"
 EShot --silent
-# deb installs also provide:
+
+# Native packages also install the lowercase launcher:
 eshot --capture
 ```
 
-## Build From Source
+## Build from source
 
-Requirements:
+Core requirements:
 
-- Qt 6
-- CMake
-- C++17 compatible compiler
+- CMake 3.16+
+- C++17 compiler
+- Qt 6 Core, GUI, Widgets, Network, and DBus on Linux
 
-Windows-only:
+### Linux
 
-- Windows 10 or Windows 11
-- Inno Setup, only for installer builds
-
-Linux-only:
-
-- X11 development headers for X11 global shortcuts
-- FFmpeg for X11 video recording
-- GStreamer with PipeWire plugins for Wayland GIF/video recording
-- `xdg-desktop-portal` and a desktop portal backend for Wayland capture
-
-```powershell
-mkdir build
-cd build
-cmake ..
-cmake --build . --config Release
-```
-
-Linux helper scripts:
+Ubuntu/Debian and CachyOS/Arch dependency helpers are included:
 
 ```bash
 ./scripts/linux/install-ubuntu-deps.sh
-# or on CachyOS/Arch:
+# or
 ./scripts/linux/install-cachyos-deps.sh
+
 ./scripts/linux/check-linux-runtime.sh
 ./scripts/linux/build-linux.sh
 ./dist-linux/bin/EShot
-# Build the release AppImage:
+```
+
+Build the AppImage:
+
+```bash
 ./scripts/linux/build-appimage.sh
 ```
 
-Installer:
+### Windows
+
+```powershell
+cmake -S . -B build -A x64
+cmake --build build --config Release --parallel
+```
+
+Build the installer with Inno Setup 6:
 
 ```powershell
 iscc EShot_Setup.iss
 ```
 
-## Third-Party Components
+## Third-party components
 
-EShot uses:
-
-- Qt for the desktop UI
-- Tesseract OCR for text recognition
-- Tesseract tessdata language files for OCR language support
-- FFmpeg for video recording
-- GStreamer and PipeWire for Wayland recording
-- xdg-desktop-portal for native Wayland capture permissions
-- Inno Setup for Windows installer packaging
-
-See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for details.
+EShot uses Qt, Tesseract OCR, FFmpeg, GStreamer, PipeWire, XDG Desktop Portal, and Inno Setup. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for licensing details.
 
 ## License
 
-EShot is released under the MIT License. See [LICENSE](LICENSE).
+EShot is released under the [MIT License](LICENSE).

@@ -36,7 +36,7 @@
     </release>
     <release version="3.1.0" date="2026-07-09">
       <description>
-        <p>Adds Linux build, packaging, and native desktop integration support.</p>
+        <p>Windows maintenance release preceding the experimental Linux port.</p>
       </description>
     </release>
   </releases>
