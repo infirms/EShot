@@ -41,6 +41,13 @@ private slots:
         QVERIFY(linuxSetupShouldShow(true, false));
         QVERIFY(!linuxSetupShouldShow(true, true));
     }
+    void removesOnlyPlainPrintFromKdeShortcutList() {
+        const int plainPrint = QKeyCombination(Qt::NoModifier, Qt::Key_Print).toCombined();
+        const int alternate = QKeyCombination(Qt::MetaModifier | Qt::ShiftModifier,
+                                              Qt::Key_S).toCombined();
+        QCOMPARE(kdeShortcutsWithoutPlainPrint({alternate, plainPrint}), QList<int>({alternate}));
+        QCOMPARE(kdeShortcutsWithoutPlainPrint({plainPrint}), QList<int>());
+    }
 };
 QTEST_MAIN(LinuxDependencySelectionTests)
 #include "LinuxDependencySelectionTests.moc"

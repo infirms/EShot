@@ -62,19 +62,5 @@ if [[ "${XDG_SESSION_TYPE:-}" == "wayland" ]] \
   export ESHOT_WAYLAND_XWAYLAND_OVERLAY=1
 fi
 
-if [[ "${ESHOT_SYSTEMD_CHILD:-0}" != "1" ]] \
-   && [[ -n "${APPIMAGE:-}" ]] \
-   && command -v systemd-run >/dev/null 2>&1; then
-  if systemctl --user is-active --quiet eshot.service 2>/dev/null; then
-    exit 0
-  fi
-  exec systemd-run --user --unit=eshot --collect --property=Type=exec \
-    --setenv=ESHOT_SYSTEMD_CHILD=1 \
-    --setenv=ESHOT_DESKTOP_LAUNCH=1 \
-    --setenv="QT_QPA_PLATFORM=${QT_QPA_PLATFORM:-}" \
-    --setenv="ESHOT_WAYLAND_XWAYLAND_OVERLAY=${ESHOT_WAYLAND_XWAYLAND_OVERLAY:-0}" \
-    "${APPIMAGE}" "$@"
-fi
-
 export ESHOT_APPDIR="${appdir}"
 exec "${appdir}/usr/bin/EShot" "$@"

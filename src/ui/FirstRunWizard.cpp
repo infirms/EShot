@@ -31,6 +31,8 @@
 #include <QProcess>
 #include <QCoreApplication>
 #include <QLocale>
+#include <QDBusInterface>
+#include <QDBusReply>
 #endif
 
 FirstRunWizard::FirstRunWizard(QWidget *parent)
@@ -257,6 +259,13 @@ void FirstRunWizard::setupUi()
     connect(m_printScreenFixButton, &QPushButton::clicked,
             this, &FirstRunWizard::onDisableWindowsPrintScreenSnipping);
     hkLayout->addWidget(m_printScreenFixButton);
+#ifdef Q_OS_LINUX
+    auto *activatePrintButton = new QPushButton(tr("Use Print Screen for EShot"));
+    activatePrintButton->setToolTip(tr("Removes only the plain Print Screen shortcut from Spectacle and assigns it to EShot. Spectacle keeps its other shortcuts."));
+    connect(activatePrintButton, &QPushButton::clicked,
+            this, &FirstRunWizard::onActivateLinuxPrintScreen);
+    hkLayout->addWidget(activatePrintButton);
+#endif
     mainLayout->addWidget(hkGroup);
 
     QGroupBox *pathGroup = new QGroupBox(TranslationManager::saveDir());
@@ -392,6 +401,56 @@ void FirstRunWizard::onDisableWindowsPrintScreenSnipping()
     updatePrintScreenConflictUi();
 }
 
+#ifdef Q_OS_LINUX
+void FirstRunWizard::onActivateLinuxPrintScreen()
+{
+    const QString desktop = qEnvironmentVariable("XDG_CURRENT_DESKTOP",
+                                                  qEnvironmentVariable("XDG_SESSION_DESKTOP"));
+    if (!desktop.contains(QStringLiteral("KDE"), Qt::CaseInsensitive)
+        && !desktop.contains(QStringLiteral("Plasma"), Qt::CaseInsensitive)) {
+        m_hotkeyStatusLabel->setText(tr("Automatic Print Screen activation is currently available on KDE Plasma."));
+        m_hotkeyStatusLabel->setStyleSheet("color: #ff9800; font-size: 12px;");
+        return;
+    }
+
+    QDBusInterface globalAccel(
+        QStringLiteral("org.kde.kglobalaccel"),
+        QStringLiteral("/kglobalaccel"),
+        QStringLiteral("org.kde.KGlobalAccel"),
+        QDBusConnection::sessionBus());
+    const QStringList spectacleLaunchId = {
+        QStringLiteral("org.kde.spectacle.desktop"),
+        QStringLiteral("_launch"),
+        QStringLiteral("Spectacle"),
+        QStringLiteral("Launch Spectacle")
+    };
+    const QDBusReply<QList<int>> currentReply = globalAccel.call(
+        QStringLiteral("shortcut"), spectacleLaunchId);
+    if (!globalAccel.isValid() || !currentReply.isValid()) {
+        m_hotkeyStatusLabel->setText(tr("Could not read KDE shortcuts. Open System Settings > Shortcuts and remove Print from Spectacle."));
+        m_hotkeyStatusLabel->setStyleSheet("color: #ff9800; font-size: 12px;");
+        return;
+    }
+
+    const QList<int> remaining = kdeShortcutsWithoutPlainPrint(currentReply.value());
+    const QDBusReply<void> setReply = globalAccel.call(
+        QStringLiteral("setForeignShortcut"),
+        spectacleLaunchId,
+        QVariant::fromValue(remaining));
+    if (!setReply.isValid()) {
+        m_hotkeyStatusLabel->setText(tr("KDE did not allow the shortcut change. Use System Settings > Shortcuts instead."));
+        m_hotkeyStatusLabel->setStyleSheet("color: #ff9800; font-size: 12px;");
+        return;
+    }
+
+    m_hotkeyEdit->setKeySequence(QKeySequence(Qt::Key_Print));
+    HotkeyManager::instance().reRegisterCaptureHotkey(0, VK_SNAPSHOT);
+    m_linuxAppImageIntegrationCheck->setChecked(true);
+    m_hotkeyStatusLabel->setText(tr("Print Screen activated for EShot. Spectacle's other shortcuts were kept."));
+    m_hotkeyStatusLabel->setStyleSheet("color: #4caf50; font-size: 12px;");
+}
+#endif
+
 void FirstRunWizard::onFinish()
 {
     QString savePath = m_savePathEdit->text().trimmed();
@@ -480,6 +539,28 @@ static bool selectedLinuxCapabilitiesAvailable(bool ffmpeg, bool ocr, bool integ
     return true;
 }
 
+static bool scheduleIntegratedAppRestart()
+{
+    const QString dataHome = qEnvironmentVariable(
+        "XDG_DATA_HOME", QDir::home().filePath(QStringLiteral(".local/share")));
+    const QString desktopFile = QDir(dataHome).filePath(
+        QStringLiteral("applications/io.github.benoks.EShot.desktop"));
+    const QString installedAppImage = QDir::home().filePath(
+        QStringLiteral(".local/opt/EShot/EShot.AppImage"));
+    if (!QFileInfo::exists(desktopFile) || !QFileInfo::exists(installedAppImage))
+        return false;
+
+    const QString script = QStringLiteral(
+        "pid=\"$1\"; desktop=\"$2\"; app=\"$3\"; "
+        "while kill -0 \"$pid\" 2>/dev/null; do sleep 0.1; done; "
+        "if command -v kioclient6 >/dev/null 2>&1; then exec kioclient6 exec \"$desktop\"; fi; "
+        "exec \"$app\" --silent");
+    return QProcess::startDetached(
+        QStringLiteral("/bin/sh"),
+        {QStringLiteral("-c"), script, QStringLiteral("eshot-restart"),
+         QString::number(QCoreApplication::applicationPid()), desktopFile, installedAppImage});
+}
+
 void FirstRunWizard::startLinuxDependencyInstaller()
 {
     QStringList languages;
@@ -520,7 +601,13 @@ void FirstRunWizard::startLinuxDependencyInstaller()
                 m_linuxInstallerProcess->deleteLater(); m_linuxInstallerProcess = nullptr;
                 return;
             }
-            markLinuxSetupCompleted(); m_linuxInstallStatus->setText(tr("Selected optional components installed successfully.")); accept(); return;
+            markLinuxSetupCompleted();
+            m_linuxInstallStatus->setText(tr("Selected optional components installed successfully."));
+            const bool restartFromDesktop = integration && scheduleIntegratedAppRestart();
+            accept();
+            if (restartFromDesktop)
+                QTimer::singleShot(0, qApp, &QCoreApplication::quit);
+            return;
         }
         const QString detail = QString::fromUtf8(m_linuxInstallerProcess->readAllStandardError()).trimmed();
         m_linuxInstallStatus->setText(tr("Installation failed or authorization was cancelled. Check your package manager, then click Finish to retry, or choose Skip. %1").arg(detail));

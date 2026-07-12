@@ -30,6 +30,9 @@ private slots:
     void onFinish();
     void onHotkeyChanged();
     void onDisableWindowsPrintScreenSnipping();
+#ifdef Q_OS_LINUX
+    void onActivateLinuxPrintScreen();
+#endif
 
 private:
     void setupUi();

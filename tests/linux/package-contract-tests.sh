@@ -42,6 +42,10 @@ grep -F 'export NO_STRIP=1' "${build_script}" >/dev/null
 grep -F 'qmake-appimage-wrapper.sh' "${build_script}" >/dev/null
 grep -F 'qt-plugin-dir.sh' "${build_script}" >/dev/null
 grep -F 'install -Dm755 "${repo_root}/scripts/linux/qmake-appimage-wrapper.sh" "${qmake_wrapper}"' "${build_script}" >/dev/null
+if grep -F 'systemd-run --user --unit=eshot' "${repo_root}/packaging/linux/AppRun" >/dev/null; then
+  echo 'AppRun must preserve the desktop-launch application identity for portals' >&2
+  exit 1
+fi
 if grep -F '/usr/lib/qt6/plugins' "${build_script}" >/dev/null; then
   echo 'AppImage build hardcodes an Arch-only Qt plugin path' >&2
   exit 1

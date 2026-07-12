@@ -61,3 +61,11 @@ bool linuxSetupShouldShow(bool completionKeyExists, bool completed)
 {
     return !completionKeyExists || !completed;
 }
+
+QList<int> kdeShortcutsWithoutPlainPrint(const QList<int> &shortcuts)
+{
+    const int plainPrint = QKeyCombination(Qt::NoModifier, Qt::Key_Print).toCombined();
+    QList<int> filtered = shortcuts;
+    filtered.removeAll(plainPrint);
+    return filtered;
+}
