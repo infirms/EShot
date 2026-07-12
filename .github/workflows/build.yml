@@ -70,7 +70,8 @@ jobs:
             tesseract-ocr \
             tesseract-ocr-eng \
             xdg-desktop-portal \
-            xdg-desktop-portal-gtk
+            xdg-desktop-portal-gtk \
+            xvfb
 
       - name: Validate Linux desktop metadata
         run: |
@@ -113,7 +114,7 @@ jobs:
           ESHOT_SKIP_RUNTIME_SETUP: '1'
         run: |
           mkdir -p appimage-test-home
-          HOME="$PWD/appimage-test-home" packages/EShot-v${APP_VERSION}-x86_64.AppImage --appimage-extract-and-run --test-gif
+          xvfb-run -a env HOME="$PWD/appimage-test-home" packages/EShot-v${APP_VERSION}-x86_64.AppImage --appimage-extract-and-run --test-gif
 
       - name: Inspect Linux packages
         run: |

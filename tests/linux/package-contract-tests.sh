@@ -25,6 +25,7 @@ grep -F 'release-assets/EShot-Setup-arm64/*.exe' "${workflow}" >/dev/null
 grep -F 'if: startsWith(github.ref, '"'"'refs/tags/v'"'"')' "${workflow}" >/dev/null
 grep -F 'scripts/linux/apply-release-version.sh' "${workflow}" >/dev/null
 grep -F 'libqt6svg6' "${workflow}" >/dev/null
+grep -F 'xvfb-run -a env HOME=' "${workflow}" >/dev/null
 grep -F 'libqt6svg6' "${ubuntu_deps}" >/dev/null
 grep -F 'libqt6svg6' "${linux_package_script}" >/dev/null
 
