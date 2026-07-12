@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(EShot VERSION 4.0.0 LANGUAGES CXX)
+project(EShot VERSION 4.0.1 LANGUAGES CXX)
 
 include(CTest)
 
@@ -41,6 +41,7 @@ set(SOURCES
     src/core/UguuUploader.cpp
     src/core/UpdateManager.cpp
     src/capture/CaptureGeometry.cpp
+    src/capture/CaptureInteractionPolicy.cpp
     src/capture/CaptureOverlay.cpp
     src/capture/PinnedWindow.cpp
     src/capture/PinManager.cpp
@@ -74,6 +75,7 @@ set(HEADERS
     src/core/UguuUploader.h
     src/core/UpdateManager.h
     src/capture/CaptureGeometry.h
+    src/capture/CaptureInteractionPolicy.h
     src/capture/CaptureOverlay.h
     src/capture/PinnedWindow.h
     src/capture/PinManager.h
@@ -212,6 +214,15 @@ if(BUILD_TESTING)
     target_include_directories(eshot_capture_geometry_tests PRIVATE src)
     target_link_libraries(eshot_capture_geometry_tests PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME capture_geometry COMMAND eshot_capture_geometry_tests)
+
+    qt_add_executable(eshot_capture_interaction_policy_tests
+        tests/CaptureInteractionPolicyTests.cpp
+        src/capture/CaptureInteractionPolicy.cpp
+        src/capture/CaptureInteractionPolicy.h
+    )
+    target_include_directories(eshot_capture_interaction_policy_tests PRIVATE src)
+    target_link_libraries(eshot_capture_interaction_policy_tests PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME capture_interaction_policy COMMAND eshot_capture_interaction_policy_tests)
 
     qt_add_executable(eshot_update_asset_tests
         tests/UpdateAssetSelectorTests.cpp

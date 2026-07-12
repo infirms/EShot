@@ -44,6 +44,9 @@ grep -F 'install-user.sh' "${desktop_launcher}" >/dev/null
 grep -F 'ESHOT_WAYLAND_XWAYLAND_OVERLAY=1' "${installed_launcher}" >/dev/null
 grep -F 'Terminal=false' "${source_desktop_entry}" >/dev/null
 grep -F 'StartupNotify=false' "${source_desktop_entry}" >/dev/null
+grep -F 'Icon=io.github.benoks.EShot' "${repo_root}/packaging/linux/io.github.benoks.EShot.desktop" >/dev/null
+grep -F '"${pixmap_dir}/io.github.benoks.EShot.svg"' "${repo_root}/scripts/linux/install-user.sh" >/dev/null
+grep -F 'kbuildsycoca6 --noincremental' "${repo_root}/scripts/linux/install-user.sh" >/dev/null
 grep -F 'X-KDE-StartupNotify=false' "${source_desktop_entry}" >/dev/null
 grep -F 'export NO_STRIP=1' "${build_script}" >/dev/null
 grep -F 'qmake-appimage-wrapper.sh' "${build_script}" >/dev/null

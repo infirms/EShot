@@ -971,6 +971,13 @@ QWidget* SettingsDialog::createCaptureTab()
     m_instantCopyAfterSelectionCheck->setToolTip(uiLabel("Varsayilan kapali. Aciksa alan secimini bitirdigin anda goruntu panoya kopyalanir.", "Off by default. When enabled, the image is copied as soon as you finish selecting a region."));
     capLayout->addRow(m_closeAfterCopyCheck);
     capLayout->addRow(m_instantCopyAfterSelectionCheck);
+    m_rememberLastAnnotationToolCheck = new QCheckBox(uiLabel(
+        "Son kullanilan anotasyon aracini hatirla",
+        "Remember the last annotation tool"));
+    m_rememberLastAnnotationToolCheck->setToolTip(uiLabel(
+        "Varsayilan kapali. Aciksa yeni yakalama son kullandigin aracla baslar.",
+        "Off by default. When enabled, new captures start with the last tool you used."));
+    capLayout->addRow(m_rememberLastAnnotationToolCheck);
     layout->addWidget(capGroup);
 
     layout->addStretch();
@@ -1981,6 +1988,8 @@ void SettingsDialog::loadSettings()
     m_closeAfterCopyCheck->setChecked(m_settings->value("closeAfterCopy", true).toBool());
     if (m_instantCopyAfterSelectionCheck)
         m_instantCopyAfterSelectionCheck->setChecked(m_settings->value("instantCopyAfterSelection", false).toBool());
+    if (m_rememberLastAnnotationToolCheck)
+        m_rememberLastAnnotationToolCheck->setChecked(m_settings->value("rememberLastAnnotationTool", false).toBool());
 
     if (m_recordingFpsSpin)
         m_recordingFpsSpin->setValue(m_settings->value("recordingFps", 10).toInt());
@@ -2355,6 +2364,8 @@ void SettingsDialog::onSave()
     m_settings->setValue("closeAfterCopy",     m_closeAfterCopyCheck->isChecked());
     m_settings->setValue("instantCopyAfterSelection",
                          m_instantCopyAfterSelectionCheck ? m_instantCopyAfterSelectionCheck->isChecked() : false);
+    m_settings->setValue("rememberLastAnnotationTool",
+                         m_rememberLastAnnotationToolCheck ? m_rememberLastAnnotationToolCheck->isChecked() : false);
 
     m_settings->setValue("darkMode",           m_darkModeCheck->isChecked());
     m_settings->setValue("overlayOpacity",     m_opacitySlider->value());
@@ -2483,6 +2494,7 @@ void SettingsDialog::onExportSettings()
     obj["copyAfterCapture"] = false;
     obj["closeAfterCopy"] = m_closeAfterCopyCheck->isChecked();
     obj["instantCopyAfterSelection"] = m_instantCopyAfterSelectionCheck ? m_instantCopyAfterSelectionCheck->isChecked() : false;
+    obj["rememberLastAnnotationTool"] = m_rememberLastAnnotationToolCheck ? m_rememberLastAnnotationToolCheck->isChecked() : false;
     obj["darkMode"] = m_darkModeCheck->isChecked();
     obj["overlayOpacity"] = m_opacitySlider->value();
     obj["crosshairStyle"] = m_crosshairStyleCombo->currentData().toString();
@@ -2622,6 +2634,8 @@ void SettingsDialog::onImportSettings()
     if (obj.contains("closeAfterCopy")) m_closeAfterCopyCheck->setChecked(obj["closeAfterCopy"].toBool());
     if (m_instantCopyAfterSelectionCheck && obj.contains("instantCopyAfterSelection"))
         m_instantCopyAfterSelectionCheck->setChecked(obj["instantCopyAfterSelection"].toBool());
+    if (m_rememberLastAnnotationToolCheck && obj.contains("rememberLastAnnotationTool"))
+        m_rememberLastAnnotationToolCheck->setChecked(obj["rememberLastAnnotationTool"].toBool());
     if (obj.contains("darkMode")) m_darkModeCheck->setChecked(obj["darkMode"].toBool());
     if (obj.contains("overlayOpacity")) m_opacitySlider->setValue(obj["overlayOpacity"].toInt());
     if (obj.contains("crosshairStyle")) {
