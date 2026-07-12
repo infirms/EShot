@@ -30,7 +30,6 @@ set(SOURCES
     src/core/HotkeyManager.cpp
     src/core/OcrEngine.cpp
     src/core/LinuxPortalGlobalShortcuts.cpp
-    src/core/LinuxKGlobalAccelShortcuts.cpp
     src/core/LinuxPortalScreenCast.cpp
     src/core/LinuxPortalScreenshot.cpp
     src/core/ImageUploader.cpp
@@ -64,7 +63,6 @@ set(HEADERS
     src/core/PlatformHotkey.h
     src/core/OcrEngine.h
     src/core/LinuxPortalGlobalShortcuts.h
-    src/core/LinuxKGlobalAccelShortcuts.h
     src/core/LinuxPortalScreenCast.h
     src/core/LinuxPortalScreenshot.h
     src/core/ImageUploader.h
@@ -96,6 +94,11 @@ set(HEADERS
 set(RESOURCES
     resources/icons.qrc
 )
+
+if(UNIX AND NOT APPLE)
+    list(APPEND SOURCES src/core/LinuxKGlobalAccelShortcuts.cpp)
+    list(APPEND HEADERS src/core/LinuxKGlobalAccelShortcuts.h)
+endif()
 
 # Embed admin manifest into the executable (MSVC auto-embeds .manifest files
 # listed as sources; for MinGW we use a .rc file)
@@ -237,22 +240,22 @@ if(BUILD_TESTING)
     target_link_libraries(eshot_linux_dependency_selection_tests PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME linux_dependency_selection COMMAND eshot_linux_dependency_selection_tests)
 
-    qt_add_executable(eshot_linux_portal_shortcut_tests
-        tests/LinuxPortalShortcutTests.cpp
-        src/core/LinuxPortalGlobalShortcuts.cpp
-        src/core/LinuxPortalGlobalShortcuts.h
-        src/core/LinuxKGlobalAccelShortcuts.cpp
-        src/core/LinuxKGlobalAccelShortcuts.h
-        src/core/LinuxPortalScreenCast.cpp
-        src/core/LinuxPortalScreenCast.h
-        src/core/PlatformHotkey.h
-    )
-    target_include_directories(eshot_linux_portal_shortcut_tests PRIVATE src)
-    target_link_libraries(eshot_linux_portal_shortcut_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Test)
     if(UNIX AND NOT APPLE)
+        qt_add_executable(eshot_linux_portal_shortcut_tests
+            tests/LinuxPortalShortcutTests.cpp
+            src/core/LinuxPortalGlobalShortcuts.cpp
+            src/core/LinuxPortalGlobalShortcuts.h
+            src/core/LinuxKGlobalAccelShortcuts.cpp
+            src/core/LinuxKGlobalAccelShortcuts.h
+            src/core/LinuxPortalScreenCast.cpp
+            src/core/LinuxPortalScreenCast.h
+            src/core/PlatformHotkey.h
+        )
+        target_include_directories(eshot_linux_portal_shortcut_tests PRIVATE src)
+        target_link_libraries(eshot_linux_portal_shortcut_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Test)
         target_link_libraries(eshot_linux_portal_shortcut_tests PRIVATE Qt6::DBus)
+        add_test(NAME linux_portal_shortcut COMMAND eshot_linux_portal_shortcut_tests)
     endif()
-    add_test(NAME linux_portal_shortcut COMMAND eshot_linux_portal_shortcut_tests)
 
     qt_add_executable(eshot_linux_recording_support_tests
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/LinuxRecordingSupportTests.cpp

@@ -71,7 +71,8 @@ jobs:
             tesseract-ocr-eng \
             xdg-desktop-portal \
             xdg-desktop-portal-gtk \
-            xvfb
+            xvfb \
+            xauth
 
       - name: Validate Linux desktop metadata
         run: |

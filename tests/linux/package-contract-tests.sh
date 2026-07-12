@@ -26,8 +26,10 @@ grep -F 'if: startsWith(github.ref, '"'"'refs/tags/v'"'"')' "${workflow}" >/dev/
 grep -F 'scripts/linux/apply-release-version.sh' "${workflow}" >/dev/null
 grep -F 'libqt6svg6' "${workflow}" >/dev/null
 grep -F 'xvfb-run -a env HOME=' "${workflow}" >/dev/null
+grep -F 'xauth' "${workflow}" >/dev/null
 grep -F 'libqt6svg6' "${ubuntu_deps}" >/dev/null
 grep -F 'libqt6svg6' "${linux_package_script}" >/dev/null
+grep -F 'list(APPEND SOURCES src/core/LinuxKGlobalAccelShortcuts.cpp)' "${repo_root}/CMakeLists.txt" >/dev/null
 
 version_fixture="$(mktemp)"
 trap 'rm -f "${version_fixture}"' EXIT
