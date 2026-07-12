@@ -1,6 +1,7 @@
 #include <QtTest>
 
 #include "core/LinuxPortalGlobalShortcuts.h"
+#include "core/LinuxPortalScreenCast.h"
 
 class LinuxPortalShortcutTests : public QObject {
     Q_OBJECT
@@ -29,6 +30,16 @@ private slots:
                  LinuxHotkeyBackend::X11);
         QCOMPARE(LinuxPortalGlobalShortcuts::preferredBackend(false, false),
                  LinuxHotkeyBackend::Unavailable);
+    }
+
+    void detectsWaylandBehindXwayland()
+    {
+        QVERIFY(LinuxPortalScreenCast::isWaylandSessionType(QStringLiteral("wayland"),
+                                                             QStringLiteral("xcb")));
+        QVERIFY(LinuxPortalScreenCast::isWaylandSessionType(QString(),
+                                                             QStringLiteral("wayland")));
+        QVERIFY(!LinuxPortalScreenCast::isWaylandSessionType(QStringLiteral("x11"),
+                                                              QStringLiteral("xcb")));
     }
 };
 

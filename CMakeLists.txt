@@ -237,10 +237,12 @@ if(BUILD_TESTING)
         tests/LinuxPortalShortcutTests.cpp
         src/core/LinuxPortalGlobalShortcuts.cpp
         src/core/LinuxPortalGlobalShortcuts.h
+        src/core/LinuxPortalScreenCast.cpp
+        src/core/LinuxPortalScreenCast.h
         src/core/PlatformHotkey.h
     )
     target_include_directories(eshot_linux_portal_shortcut_tests PRIVATE src)
-    target_link_libraries(eshot_linux_portal_shortcut_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Test)
+    target_link_libraries(eshot_linux_portal_shortcut_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Test)
     if(UNIX AND NOT APPLE)
         target_link_libraries(eshot_linux_portal_shortcut_tests PRIVATE Qt6::DBus)
     endif()

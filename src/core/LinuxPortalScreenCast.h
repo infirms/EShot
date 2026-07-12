@@ -28,6 +28,7 @@ public:
     explicit LinuxPortalScreenCast(QObject *parent = nullptr);
 
     static bool isWaylandSession();
+    static bool isWaylandSessionType(const QString &sessionType, const QString &platformName);
     static bool isAvailable();
     static Stream selectStream(QWidget *parent = nullptr, int timeoutMs = 120000);
 

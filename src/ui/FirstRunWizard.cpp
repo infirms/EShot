@@ -51,7 +51,12 @@ FirstRunWizard::~FirstRunWizard() {}
 bool FirstRunWizard::shouldShow()
 {
     QSettings s("EShot", "EShot");
+#ifdef Q_OS_LINUX
+    return linuxSetupShouldShow(s.contains(QStringLiteral("linuxSetupCompleted")),
+                                s.value(QStringLiteral("linuxSetupCompleted"), false).toBool());
+#else
     return !s.value("wizardCompleted", false).toBool();
+#endif
 }
 
 static QKeySequence win32ToKeySequence(UINT modifiers, UINT vkey)
@@ -462,8 +467,14 @@ void FirstRunWizard::startLinuxDependencyInstaller()
     QStringList args = linuxDependencyArguments(m_linuxFfmpegCheck->isChecked(), m_linuxOcrCheck->isChecked(), languages, m_linuxDesktopCheck->isChecked());
     const bool integrate = m_linuxAppImageIntegrationCheck->isChecked() && !qEnvironmentVariable("APPIMAGE").isEmpty();
     if (integrate) args << QStringLiteral("--integrate-appimage");
-    if (m_linuxExplicitSkip) { QSettings("EShot", "EShot").setValue("wizardCompleted", true); accept(); return; }
-    if (args.isEmpty() && !integrate) { QSettings("EShot", "EShot").setValue("wizardCompleted", true); accept(); return; }
+    auto markLinuxSetupCompleted = [] {
+        QSettings settings("EShot", "EShot");
+        settings.setValue(QStringLiteral("wizardCompleted"), true);
+        settings.setValue(QStringLiteral("linuxSetupCompleted"), true);
+        settings.sync();
+    };
+    if (m_linuxExplicitSkip) { markLinuxSetupCompleted(); accept(); return; }
+    if (args.isEmpty() && !integrate) { markLinuxSetupCompleted(); accept(); return; }
     const QString script = linuxInstallerPath();
     if (!QFileInfo::exists(script)) { m_linuxInstallStatus->setText(tr("Installer script was not found. Retry after reinstalling EShot, or skip optional setup.")); return; }
     m_finishButton->setEnabled(false); m_linuxInstallStatus->setText(tr("Installing selected dependencies…"));
@@ -478,7 +489,7 @@ void FirstRunWizard::startLinuxDependencyInstaller()
         m_linuxInstallStatus->setText(tr("Could not start optional setup. Click Finish to retry, or choose Skip."));
         m_linuxInstallerProcess->deleteLater(); m_linuxInstallerProcess = nullptr;
     });
-    connect(m_linuxInstallerProcess, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus status) {
+    connect(m_linuxInstallerProcess, &QProcess::finished, this, [this, markLinuxSetupCompleted](int exitCode, QProcess::ExitStatus status) {
         if (!m_linuxInstallerProcess) return;
         qInfo() << "[FirstRunWizard] Optional setup exit status:" << exitCode << status;
         m_finishButton->setEnabled(true);
@@ -489,7 +500,7 @@ void FirstRunWizard::startLinuxDependencyInstaller()
                 m_linuxInstallerProcess->deleteLater(); m_linuxInstallerProcess = nullptr;
                 return;
             }
-            QSettings("EShot", "EShot").setValue("wizardCompleted", true); m_linuxInstallStatus->setText(tr("Selected optional components installed successfully.")); accept(); return;
+            markLinuxSetupCompleted(); m_linuxInstallStatus->setText(tr("Selected optional components installed successfully.")); accept(); return;
         }
         const QString detail = QString::fromUtf8(m_linuxInstallerProcess->readAllStandardError()).trimmed();
         m_linuxInstallStatus->setText(tr("Installation failed or authorization was cancelled. Check your package manager, then click Finish to retry, or choose Skip. %1").arg(detail));

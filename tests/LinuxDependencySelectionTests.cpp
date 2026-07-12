@@ -35,6 +35,12 @@ private slots:
             QVERIFY(defaults.contains("eng"));
         }
     }
+    void legacyWizardCompletionDoesNotSkipLinuxSetup() {
+        QVERIFY(linuxSetupShouldShow(false, false));
+        QVERIFY(linuxSetupShouldShow(false, true));
+        QVERIFY(linuxSetupShouldShow(true, false));
+        QVERIFY(!linuxSetupShouldShow(true, true));
+    }
 };
 QTEST_MAIN(LinuxDependencySelectionTests)
 #include "LinuxDependencySelectionTests.moc"

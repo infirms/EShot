@@ -41,6 +41,7 @@ grep -F 'X-KDE-StartupNotify=false' "${source_desktop_entry}" >/dev/null
 grep -F 'export NO_STRIP=1' "${build_script}" >/dev/null
 grep -F 'qmake-appimage-wrapper.sh' "${build_script}" >/dev/null
 grep -F 'qt-plugin-dir.sh' "${build_script}" >/dev/null
+grep -F 'install -Dm755 "${repo_root}/scripts/linux/qmake-appimage-wrapper.sh" "${qmake_wrapper}"' "${build_script}" >/dev/null
 if grep -F '/usr/lib/qt6/plugins' "${build_script}" >/dev/null; then
   echo 'AppImage build hardcodes an Arch-only Qt plugin path' >&2
   exit 1

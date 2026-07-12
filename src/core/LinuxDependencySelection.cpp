@@ -56,3 +56,8 @@ QStringList linuxDependencyArguments(bool ffmpeg, bool ocr,
     if (desktop) args << "--desktop";
     return args;
 }
+
+bool linuxSetupShouldShow(bool completionKeyExists, bool completed)
+{
+    return !completionKeyExists || !completed;
+}

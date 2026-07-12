@@ -28,8 +28,22 @@ LinuxPortalScreenCast::LinuxPortalScreenCast(QObject *parent)
 bool LinuxPortalScreenCast::isWaylandSession()
 {
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
-    return QGuiApplication::platformName().contains(QStringLiteral("wayland"), Qt::CaseInsensitive);
+    return isWaylandSessionType(qEnvironmentVariable("XDG_SESSION_TYPE"),
+                                QGuiApplication::platformName());
 #else
+    return false;
+#endif
+}
+
+bool LinuxPortalScreenCast::isWaylandSessionType(const QString &sessionType,
+                                                 const QString &platformName)
+{
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    return sessionType.compare(QStringLiteral("wayland"), Qt::CaseInsensitive) == 0
+        || platformName.contains(QStringLiteral("wayland"), Qt::CaseInsensitive);
+#else
+    Q_UNUSED(sessionType);
+    Q_UNUSED(platformName);
     return false;
 #endif
 }

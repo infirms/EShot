@@ -38,6 +38,7 @@ linuxdeploy="${tools_dir}/linuxdeploy-x86_64.AppImage"
 qt_plugin_image="${tools_dir}/linuxdeploy-plugin-qt-x86_64.AppImage"
 qt_plugin="${tools_dir}/linuxdeploy-plugin-qt"
 appimagetool="${tools_dir}/appimagetool-x86_64.AppImage"
+qmake_wrapper="${tools_dir}/qmake-appimage-wrapper"
 qt_plugin_dir="${build_dir}/qt-plugins"
 system_qt_plugin_dir="$(bash "${repo_root}/scripts/linux/qt-plugin-dir.sh")"
 [[ -d "${system_qt_plugin_dir}" ]] || { printf 'Qt plugin directory not found: %s\n' "${system_qt_plugin_dir}" >&2; exit 1; }
@@ -47,6 +48,7 @@ download_verified "${qt_plugin_url}" "${qt_plugin_sha256}" "${qt_plugin_image}"
 download_verified "${appimagetool_url}" "${appimagetool_sha256}" "${appimagetool}"
 cp -f -- "${qt_plugin_image}" "${qt_plugin}"
 chmod 0755 "${qt_plugin}"
+install -Dm755 "${repo_root}/scripts/linux/qmake-appimage-wrapper.sh" "${qmake_wrapper}"
 
 rm -rf "${appdir}"
 cmake -S "${repo_root}" -B "${build_dir}" -G Ninja \
@@ -83,7 +85,7 @@ export APPIMAGE_EXTRACT_AND_RUN=1
 export NO_STRIP=1
 export ESHOT_REAL_QMAKE="$(command -v qmake6)"
 export ESHOT_QT_PLUGIN_DIR="${qt_plugin_dir}"
-export QMAKE="${repo_root}/scripts/linux/qmake-appimage-wrapper.sh"
+export QMAKE="${qmake_wrapper}"
 export PATH="${tools_dir}:${PATH}"
 "${linuxdeploy}" --appdir "${appdir}" --plugin qt
 install -Dm755 "${repo_root}/packaging/linux/AppRun" "${appdir}/AppRun"
