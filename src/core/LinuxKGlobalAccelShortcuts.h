@@ -1,0 +1,33 @@
+#pragma once
+
+#include <QObject>
+#include <QHash>
+#include <QPair>
+#include <QStringList>
+
+#include "PlatformHotkey.h"
+
+class LinuxKGlobalAccelShortcuts : public QObject {
+    Q_OBJECT
+public:
+    explicit LinuxKGlobalAccelShortcuts(QObject *parent = nullptr);
+
+    bool isAvailable() const;
+    bool setShortcuts(const QHash<int, QPair<UINT, UINT>> &shortcuts);
+    static bool isKdeDesktop(const QString &desktop);
+    static QStringList actionId(int id);
+
+signals:
+    void shortcutActivated(int id);
+
+private slots:
+    void onGlobalShortcutPressed(const QString &componentUnique,
+                                 const QString &shortcutUnique,
+                                 qlonglong timestamp);
+
+private:
+    bool ensureSignalConnection();
+    bool m_available = false;
+    QString m_componentPath;
+    QHash<QString, int> m_ids;
+};

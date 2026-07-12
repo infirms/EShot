@@ -291,7 +291,7 @@ void FirstRunWizard::setupUi()
     m_linuxDesktopCheck->setToolTip(tr("Installs PipeWire and desktop portal components used for secure screen sharing and recording on Wayland desktops such as KDE Plasma 6."));
     m_linuxAppImageIntegrationCheck->setToolTip(tr("Copies this AppImage to your user applications folder and adds EShot to the application menu. No system-wide installation is performed."));
     m_linuxFfmpegCheck->setChecked(true); m_linuxOcrCheck->setChecked(true);
-    m_linuxDesktopCheck->setChecked(false);
+    m_linuxDesktopCheck->setChecked(defaultLinuxPortalSelection(qEnvironmentVariable("XDG_SESSION_TYPE")));
     m_linuxAppImageIntegrationCheck->setChecked(!qEnvironmentVariable("APPIMAGE").isEmpty());
     depsLayout->addWidget(m_linuxFfmpegCheck); depsLayout->addWidget(m_linuxOcrCheck); depsLayout->addWidget(m_linuxDesktopCheck); depsLayout->addWidget(m_linuxAppImageIntegrationCheck);
     QGridLayout *languages = new QGridLayout();
@@ -348,7 +348,8 @@ void FirstRunWizard::loadDefaults()
 #ifdef Q_OS_LINUX
     m_linuxFfmpegCheck->setChecked(s.value("linuxSetupFfmpeg", true).toBool());
     m_linuxOcrCheck->setChecked(s.value("linuxSetupOcr", true).toBool());
-    m_linuxDesktopCheck->setChecked(s.value("linuxSetupPortal", false).toBool());
+    m_linuxDesktopCheck->setChecked(s.value("linuxSetupPortal",
+        defaultLinuxPortalSelection(qEnvironmentVariable("XDG_SESSION_TYPE"))).toBool());
     m_linuxAppImageIntegrationCheck->setChecked(s.value("linuxSetupAppImageIntegration", !qEnvironmentVariable("APPIMAGE").isEmpty()).toBool());
     const QStringList selectedLanguages = s.value("linuxSetupOcrLanguages", defaultOcrLanguageCodes(QLocale::system().name())).toStringList();
     for (auto *check : m_linuxLanguageChecks) check->setChecked(selectedLanguages.contains(check->property("ocrCode").toString()));
@@ -413,6 +414,13 @@ void FirstRunWizard::onActivateLinuxPrintScreen()
         return;
     }
 
+    m_hotkeyEdit->setKeySequence(QKeySequence(Qt::Key_Print));
+    if (!HotkeyManager::instance().reRegisterCaptureHotkey(0, VK_SNAPSHOT)) {
+        m_hotkeyStatusLabel->setText(tr("EShot could not register Print Screen with KDE. Spectacle was not changed."));
+        m_hotkeyStatusLabel->setStyleSheet("color: #ff9800; font-size: 12px;");
+        return;
+    }
+
     QDBusInterface globalAccel(
         QStringLiteral("org.kde.kglobalaccel"),
         QStringLiteral("/kglobalaccel"),
@@ -443,8 +451,6 @@ void FirstRunWizard::onActivateLinuxPrintScreen()
         return;
     }
 
-    m_hotkeyEdit->setKeySequence(QKeySequence(Qt::Key_Print));
-    HotkeyManager::instance().reRegisterCaptureHotkey(0, VK_SNAPSHOT);
     m_linuxAppImageIntegrationCheck->setChecked(true);
     m_hotkeyStatusLabel->setText(tr("Print Screen activated for EShot. Spectacle's other shortcuts were kept."));
     m_hotkeyStatusLabel->setStyleSheet("color: #4caf50; font-size: 12px;");
@@ -622,7 +628,8 @@ void FirstRunWizard::showLinuxDependencySetup(QWidget *parent)
     QVBoxLayout layout(&dialog);
     auto *ffmpeg = new QCheckBox(QObject::tr("FFmpeg (video and GIF recording)")); ffmpeg->setChecked(true);
     auto *ocr = new QCheckBox(QObject::tr("Tesseract OCR")); ocr->setChecked(true);
-    auto *desktop = new QCheckBox(QObject::tr("Wayland recording and desktop portal packages")); desktop->setChecked(false);
+    auto *desktop = new QCheckBox(QObject::tr("Wayland recording and desktop portal packages"));
+    desktop->setChecked(defaultLinuxPortalSelection(qEnvironmentVariable("XDG_SESSION_TYPE")));
     ffmpeg->setToolTip(QObject::tr("Installs the media encoder used to save MP4 videos and GIF recordings."));
     ocr->setToolTip(QObject::tr("Installs text recognition and the selected OCR language data."));
     desktop->setToolTip(QObject::tr("Installs PipeWire and desktop portal components for secure screen recording on Wayland."));

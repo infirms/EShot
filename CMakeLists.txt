@@ -30,6 +30,7 @@ set(SOURCES
     src/core/HotkeyManager.cpp
     src/core/OcrEngine.cpp
     src/core/LinuxPortalGlobalShortcuts.cpp
+    src/core/LinuxKGlobalAccelShortcuts.cpp
     src/core/LinuxPortalScreenCast.cpp
     src/core/LinuxPortalScreenshot.cpp
     src/core/ImageUploader.cpp
@@ -62,6 +63,7 @@ set(HEADERS
     src/core/PlatformHotkey.h
     src/core/OcrEngine.h
     src/core/LinuxPortalGlobalShortcuts.h
+    src/core/LinuxKGlobalAccelShortcuts.h
     src/core/LinuxPortalScreenCast.h
     src/core/LinuxPortalScreenshot.h
     src/core/ImageUploader.h
@@ -237,6 +239,8 @@ if(BUILD_TESTING)
         tests/LinuxPortalShortcutTests.cpp
         src/core/LinuxPortalGlobalShortcuts.cpp
         src/core/LinuxPortalGlobalShortcuts.h
+        src/core/LinuxKGlobalAccelShortcuts.cpp
+        src/core/LinuxKGlobalAccelShortcuts.h
         src/core/LinuxPortalScreenCast.cpp
         src/core/LinuxPortalScreenCast.h
         src/core/PlatformHotkey.h

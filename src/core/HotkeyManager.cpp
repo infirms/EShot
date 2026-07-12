@@ -1,5 +1,6 @@
 #include "HotkeyManager.h"
 #include "LinuxPortalGlobalShortcuts.h"
+#include "LinuxKGlobalAccelShortcuts.h"
 #include <QApplication>
 #include <QSettings>
 #include <QDebug>
@@ -93,20 +94,30 @@ HotkeyManager::HotkeyManager(QObject *parent) : QObject(parent)
     qApp->installNativeEventFilter(this);
 
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    const QString desktop = qEnvironmentVariable("XDG_CURRENT_DESKTOP",
+                                                  qEnvironmentVariable("XDG_SESSION_DESKTOP"));
+    if (LinuxKGlobalAccelShortcuts::isKdeDesktop(desktop)) {
+        m_kdeShortcuts = new LinuxKGlobalAccelShortcuts(this);
+        if (m_kdeShortcuts->isAvailable()) {
+            connect(m_kdeShortcuts, &LinuxKGlobalAccelShortcuts::shortcutActivated,
+                    this, &HotkeyManager::emitHotkey);
+        }
+    }
     m_portalShortcuts = new LinuxPortalGlobalShortcuts(this);
-    const bool portalAvailable = m_portalShortcuts->isAvailable();
+    const bool kdeAvailable = m_kdeShortcuts && m_kdeShortcuts->isAvailable();
+    const bool portalAvailable = !kdeAvailable && m_portalShortcuts->isAvailable();
     bool x11Available = false;
 #if defined(ESHOT_HAVE_X11)
     const bool useX11Hotkeys = QGuiApplication::platformName().contains(
         QStringLiteral("xcb"), Qt::CaseInsensitive);
-    if (!portalAvailable && useX11Hotkeys)
+    if (!kdeAvailable && !portalAvailable && useX11Hotkeys)
         m_x11Display = XOpenDisplay(nullptr);
     x11Available = m_x11Display != nullptr;
 #endif
 
     const LinuxHotkeyBackend backend = LinuxPortalGlobalShortcuts::preferredBackend(
         portalAvailable, x11Available);
-    if (backend == LinuxHotkeyBackend::Portal) {
+    if (!kdeAvailable && backend == LinuxHotkeyBackend::Portal) {
         connect(m_portalShortcuts, &LinuxPortalGlobalShortcuts::shortcutActivated,
                 this, &HotkeyManager::emitHotkey);
     }
@@ -144,7 +155,7 @@ HotkeyManager::HotkeyManager(QObject *parent) : QObject(parent)
         pollTimer->start();
     }
 #endif
-    if (backend == LinuxHotkeyBackend::Unavailable)
+    if (!kdeAvailable && backend == LinuxHotkeyBackend::Unavailable)
         qWarning() << "[HotkeyManager] GlobalShortcuts portal and X11 fallback are unavailable; global hotkeys are disabled.";
 #endif
 
@@ -223,6 +234,15 @@ bool HotkeyManager::registerHotkey(int id, UINT modifiers, UINT virtualKey)
     }
     return false;
 #elif defined(ESHOT_HAVE_X11)
+    if (m_kdeShortcuts && m_kdeShortcuts->isAvailable()) {
+        const auto previous = m_registeredHotkeyDefs;
+        if (!m_registeredHotkeys.contains(id)) m_registeredHotkeys.append(id);
+        m_registeredHotkeyDefs.insert(id, qMakePair(modifiers, virtualKey));
+        if (m_kdeShortcuts->setShortcuts(m_registeredHotkeyDefs)) return true;
+        m_registeredHotkeyDefs = previous;
+        m_registeredHotkeys.removeAll(id);
+        return false;
+    }
     Display *display = static_cast<Display *>(m_x11Display);
     if (!display || m_x11RootWindow == 0) {
         if (m_portalShortcuts && m_portalShortcuts->isAvailable()) {
@@ -254,6 +274,15 @@ bool HotkeyManager::registerHotkey(int id, UINT modifiers, UINT virtualKey)
     m_registeredHotkeyDefs.insert(id, qMakePair(modifiers, virtualKey));
     return true;
 #elif defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    if (m_kdeShortcuts && m_kdeShortcuts->isAvailable()) {
+        const auto previous = m_registeredHotkeyDefs;
+        if (!m_registeredHotkeys.contains(id)) m_registeredHotkeys.append(id);
+        m_registeredHotkeyDefs.insert(id, qMakePair(modifiers, virtualKey));
+        if (m_kdeShortcuts->setShortcuts(m_registeredHotkeyDefs)) return true;
+        m_registeredHotkeyDefs = previous;
+        m_registeredHotkeys.removeAll(id);
+        return false;
+    }
     if (!m_portalShortcuts || !m_portalShortcuts->isAvailable())
         return false;
     if (!m_registeredHotkeys.contains(id))
@@ -335,6 +364,8 @@ void HotkeyManager::unregisterHotkey(int id)
 #endif
     m_registeredHotkeys.removeAll(id);
     m_registeredHotkeyDefs.remove(id);
+    if (m_kdeShortcuts && m_kdeShortcuts->isAvailable())
+        m_kdeShortcuts->setShortcuts(m_registeredHotkeyDefs);
     refreshPortalShortcuts();
 }
 
@@ -484,6 +515,7 @@ void HotkeyManager::emitHotkey(int id)
 
 void HotkeyManager::refreshPortalShortcuts()
 {
-    if (m_portalShortcuts && m_portalShortcuts->isAvailable())
+    if ((!m_kdeShortcuts || !m_kdeShortcuts->isAvailable())
+        && m_portalShortcuts && m_portalShortcuts->isAvailable())
         m_portalShortcuts->setShortcuts(m_registeredHotkeyDefs);
 }

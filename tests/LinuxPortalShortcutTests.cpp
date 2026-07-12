@@ -1,6 +1,7 @@
 #include <QtTest>
 
 #include "core/LinuxPortalGlobalShortcuts.h"
+#include "core/LinuxKGlobalAccelShortcuts.h"
 #include "core/LinuxPortalScreenCast.h"
 
 class LinuxPortalShortcutTests : public QObject {
@@ -40,6 +41,22 @@ private slots:
                                                              QStringLiteral("wayland")));
         QVERIFY(!LinuxPortalScreenCast::isWaylandSessionType(QStringLiteral("x11"),
                                                               QStringLiteral("xcb")));
+    }
+
+    void detectsKdeDesktop()
+    {
+        QVERIFY(LinuxKGlobalAccelShortcuts::isKdeDesktop(QStringLiteral("KDE")));
+        QVERIFY(LinuxKGlobalAccelShortcuts::isKdeDesktop(QStringLiteral("plasma:KDE")));
+        QVERIFY(!LinuxKGlobalAccelShortcuts::isKdeDesktop(QStringLiteral("GNOME")));
+    }
+
+    void usesStableKdeActionIds()
+    {
+        const QStringList id = LinuxKGlobalAccelShortcuts::actionId(1);
+        QCOMPARE(id.value(0), QStringLiteral("io.github.benoks.EShot"));
+        QCOMPARE(id.value(1), QStringLiteral("eshot_capture"));
+        QCOMPARE(id.value(2), QStringLiteral("EShot"));
+        QCOMPARE(id.value(3), QStringLiteral("Capture"));
     }
 };
 

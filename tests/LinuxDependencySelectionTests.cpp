@@ -48,6 +48,12 @@ private slots:
         QCOMPARE(kdeShortcutsWithoutPlainPrint({alternate, plainPrint}), QList<int>({alternate}));
         QCOMPARE(kdeShortcutsWithoutPlainPrint({plainPrint}), QList<int>());
     }
+    void selectsPortalPackagesByDefaultOnWayland() {
+        QVERIFY(defaultLinuxPortalSelection("wayland"));
+        QVERIFY(defaultLinuxPortalSelection("WAYLAND"));
+        QVERIFY(!defaultLinuxPortalSelection("x11"));
+        QVERIFY(!defaultLinuxPortalSelection(""));
+    }
 };
 QTEST_MAIN(LinuxDependencySelectionTests)
 #include "LinuxDependencySelectionTests.moc"

@@ -9,6 +9,7 @@
 #include "PlatformHotkey.h"
 
 class LinuxPortalGlobalShortcuts;
+class LinuxKGlobalAccelShortcuts;
 
 class HotkeyManager : public QObject, public QAbstractNativeEventFilter {
     Q_OBJECT
@@ -68,6 +69,7 @@ private:
     void *m_x11Display = nullptr;
     unsigned long m_x11RootWindow = 0;
     LinuxPortalGlobalShortcuts *m_portalShortcuts = nullptr;
+    LinuxKGlobalAccelShortcuts *m_kdeShortcuts = nullptr;
 
     void emitHotkey(int id);
     void refreshPortalShortcuts();

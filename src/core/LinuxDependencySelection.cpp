@@ -69,3 +69,8 @@ QList<int> kdeShortcutsWithoutPlainPrint(const QList<int> &shortcuts)
     filtered.removeAll(plainPrint);
     return filtered;
 }
+
+bool defaultLinuxPortalSelection(const QString &sessionType)
+{
+    return sessionType.compare(QStringLiteral("wayland"), Qt::CaseInsensitive) == 0;
+}
