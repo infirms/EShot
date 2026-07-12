@@ -8,6 +8,8 @@ desktop_launcher="${repo_root}/scripts/linux/desktop-launch.sh"
 installed_launcher="${repo_root}/scripts/linux/eshot-launcher"
 source_desktop_entry="${repo_root}/EShot-Linux.desktop"
 release_version_script="${repo_root}/scripts/linux/apply-release-version.sh"
+ubuntu_deps="${repo_root}/scripts/linux/install-ubuntu-deps.sh"
+linux_package_script="${repo_root}/scripts/linux/package-linux.sh"
 
 grep -F 'EShot-v${version}-x86_64.AppImage' "${build_script}" >/dev/null
 grep -F 'linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage' "${build_script}" >/dev/null
@@ -22,6 +24,9 @@ grep -F 'release-assets/EShot-Setup-x64/*.exe' "${workflow}" >/dev/null
 grep -F 'release-assets/EShot-Setup-arm64/*.exe' "${workflow}" >/dev/null
 grep -F 'if: startsWith(github.ref, '"'"'refs/tags/v'"'"')' "${workflow}" >/dev/null
 grep -F 'scripts/linux/apply-release-version.sh' "${workflow}" >/dev/null
+grep -F 'libqt6svg6' "${workflow}" >/dev/null
+grep -F 'libqt6svg6' "${ubuntu_deps}" >/dev/null
+grep -F 'libqt6svg6' "${linux_package_script}" >/dev/null
 
 version_fixture="$(mktemp)"
 trap 'rm -f "${version_fixture}"' EXIT

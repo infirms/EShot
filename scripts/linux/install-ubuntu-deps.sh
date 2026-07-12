@@ -11,6 +11,7 @@ sudo apt-get install -y \
   qt6-base-dev-tools \
   qt6-qpa-plugins \
   qt6-wayland \
+  libqt6svg6 \
   libx11-dev \
   libgl1-mesa-dev \
   libxcb-cursor0 \
