@@ -1086,6 +1086,12 @@ int main(int argc, char *argv[])
     // First-run wizard
     if (!silent && FirstRunWizard::shouldShow()) {
         QTimer::singleShot(100, &app, []() {
+#ifdef Q_OS_LINUX
+            // The Linux setup is a fresh onboarding flow even when an older
+            // Windows configuration was carried over. Start it in English;
+            // the user can choose another application language in the wizard.
+            TranslationManager::setLanguage(TranslationManager::English);
+#endif
             auto *wizard = new FirstRunWizard();
             wizard->setAttribute(Qt::WA_DeleteOnClose);
             wizard->show();

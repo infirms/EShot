@@ -226,6 +226,7 @@ void FirstRunWizard::setupUi()
     m_langCombo->addItem(QString::fromUtf8("日本語"), "ja");
     m_langCombo->addItem(QString::fromUtf8("中文"), "zh");
     m_langCombo->addItem(QString::fromUtf8("Русский"), "ru");
+    m_langCombo->setToolTip(tr("Language used by EShot after setup. The setup screen starts in English."));
     langLayout->addWidget(m_langCombo);
     mainLayout->addWidget(langGroup);
 
@@ -276,6 +277,10 @@ void FirstRunWizard::setupUi()
     m_linuxOcrCheck = new QCheckBox(tr("Tesseract OCR"));
     m_linuxDesktopCheck = new QCheckBox(tr("Wayland recording and desktop portal packages"));
     m_linuxAppImageIntegrationCheck = new QCheckBox(tr("Add EShot to the application menu and install shortcuts"));
+    m_linuxFfmpegCheck->setToolTip(tr("Installs the media encoder used to save MP4 videos and GIF recordings. Screenshots work without it."));
+    m_linuxOcrCheck->setToolTip(tr("Installs text recognition so EShot can read and copy text from screenshots. Select OCR languages below."));
+    m_linuxDesktopCheck->setToolTip(tr("Installs PipeWire and desktop portal components used for secure screen sharing and recording on Wayland desktops such as KDE Plasma 6."));
+    m_linuxAppImageIntegrationCheck->setToolTip(tr("Copies this AppImage to your user applications folder and adds EShot to the application menu. No system-wide installation is performed."));
     m_linuxFfmpegCheck->setChecked(true); m_linuxOcrCheck->setChecked(true);
     m_linuxDesktopCheck->setChecked(false);
     m_linuxAppImageIntegrationCheck->setChecked(!qEnvironmentVariable("APPIMAGE").isEmpty());
@@ -284,10 +289,11 @@ void FirstRunWizard::setupUi()
     const auto names = ocrLanguageDisplayNames();
     const auto defaults = defaultOcrLanguageCodes(QLocale::system().name());
     int languageIndex = 0;
-    for (const QString &code : supportedOcrLanguageCodes()) { auto *check = new QCheckBox(names.value(code)); check->setProperty("ocrCode", code); check->setChecked(defaults.contains(code)); languages->addWidget(check, languageIndex / 2, languageIndex % 2); m_linuxLanguageChecks << check; ++languageIndex; }
+    for (const QString &code : supportedOcrLanguageCodes()) { auto *check = new QCheckBox(names.value(code)); check->setProperty("ocrCode", code); check->setChecked(defaults.contains(code)); check->setToolTip(tr("OCR language data for recognizing text written in %1. This does not change the EShot interface language.").arg(names.value(code))); languages->addWidget(check, languageIndex / 2, languageIndex % 2); m_linuxLanguageChecks << check; ++languageIndex; }
     depsLayout->addLayout(languages);
     connect(m_linuxOcrCheck, &QCheckBox::toggled, depsGroup, [this](bool enabled) { for (auto *check : m_linuxLanguageChecks) check->setEnabled(enabled); });
     QPushButton *skipDeps = new QPushButton(tr("Skip optional dependency setup"));
+    skipDeps->setToolTip(tr("Starts EShot without installing optional recording or OCR components. You can reopen this setup from Settings later."));
     connect(skipDeps, &QPushButton::clicked, depsGroup, [this] { m_linuxExplicitSkip = true; m_linuxFfmpegCheck->setChecked(false); m_linuxOcrCheck->setChecked(false); m_linuxDesktopCheck->setChecked(false); m_linuxAppImageIntegrationCheck->setChecked(false); m_linuxInstallStatus->setText(tr("Optional setup will be skipped. Click Finish to continue.")); });
     depsLayout->addWidget(skipDeps);
     m_linuxInstallStatus = new QLabel(); m_linuxInstallStatus->setWordWrap(true); depsLayout->addWidget(m_linuxInstallStatus);
@@ -530,13 +536,16 @@ void FirstRunWizard::showLinuxDependencySetup(QWidget *parent)
     auto *ffmpeg = new QCheckBox(QObject::tr("FFmpeg (video and GIF recording)")); ffmpeg->setChecked(true);
     auto *ocr = new QCheckBox(QObject::tr("Tesseract OCR")); ocr->setChecked(true);
     auto *desktop = new QCheckBox(QObject::tr("Wayland recording and desktop portal packages")); desktop->setChecked(false);
+    ffmpeg->setToolTip(QObject::tr("Installs the media encoder used to save MP4 videos and GIF recordings."));
+    ocr->setToolTip(QObject::tr("Installs text recognition and the selected OCR language data."));
+    desktop->setToolTip(QObject::tr("Installs PipeWire and desktop portal components for secure screen recording on Wayland."));
     const auto defaults = defaultOcrLanguageCodes(QLocale::system().name());
     layout.addWidget(ffmpeg); layout.addWidget(ocr);
     QList<QCheckBox *> languageChecks;
     const auto names = ocrLanguageDisplayNames();
     QGridLayout languageLayout;
     int languageIndex = 0;
-    for (const QString &code : supportedOcrLanguageCodes()) { auto *check = new QCheckBox(names.value(code)); check->setProperty("ocrCode", code); check->setChecked(defaults.contains(code)); languageLayout.addWidget(check, languageIndex / 4, languageIndex % 4); languageChecks << check; ++languageIndex; }
+    for (const QString &code : supportedOcrLanguageCodes()) { auto *check = new QCheckBox(names.value(code)); check->setProperty("ocrCode", code); check->setChecked(defaults.contains(code)); check->setToolTip(QObject::tr("OCR language data for recognizing text written in %1.").arg(names.value(code))); languageLayout.addWidget(check, languageIndex / 4, languageIndex % 4); languageChecks << check; ++languageIndex; }
     layout.addLayout(&languageLayout); layout.addWidget(desktop);
     QObject::connect(ocr, &QCheckBox::toggled, &dialog, [&languageChecks](bool enabled) { for (auto *check : languageChecks) check->setEnabled(enabled); });
     QHBoxLayout buttons; auto *cancel = new QPushButton(QObject::tr("Cancel")); auto *install = new QPushButton(QObject::tr("Install selected")); buttons.addStretch(); buttons.addWidget(cancel); buttons.addWidget(install); layout.addLayout(&buttons);
