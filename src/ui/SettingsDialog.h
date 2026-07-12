@@ -14,10 +14,7 @@
 #include <QKeySequenceEdit>
 #include <QPushButton>
 #include <QMap>
-
-#ifdef Q_OS_WIN
-#include <windows.h>
-#endif
+#include "../core/PlatformHotkey.h"
 
 class QNetworkAccessManager;
 class QNetworkReply;
@@ -45,6 +42,7 @@ private slots:
     void onDeselectAllTools();
     void onHotkeyChanged(const QKeySequence &seq);
     void onDisableWindowsPrintScreenSnipping();
+    void onRequestLinuxPrintScreenBinding();
     void onExportSettings();
     void onImportSettings();
     void onThemeChanged();
@@ -52,6 +50,9 @@ private slots:
     void onDeleteSelectedOcr();
     void onTesseractComponentAction();
     void onFfmpegComponentAction();
+#ifdef Q_OS_LINUX
+    void onOpenLinuxDependencySetup();
+#endif
 
 private:
     void loadSettings();
@@ -145,6 +146,7 @@ private:
     // UI - Tool visibility
     QListWidget *m_toolVisibilityList = nullptr;
     QListWidget *m_toolbarControlVisibilityList = nullptr;
+    QComboBox *m_visualSearchProviderCombo = nullptr;
 
     // Shortcut
     QKeySequenceEdit *m_hotkeyEdit = nullptr;
@@ -158,6 +160,7 @@ private:
     QLabel *m_hotkeyStatusLabel = nullptr;
     QLabel *m_printScreenConflictLabel = nullptr;
     QPushButton *m_printScreenFixButton = nullptr;
+    QPushButton *m_linuxPrintScreenBindingButton = nullptr;
 
     // Recording
     QSpinBox *m_recordingFpsSpin = nullptr;

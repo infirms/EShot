@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+bindir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# KDE/Wayland exposes the complete multi-monitor XWayland desktop as one
+# coordinate space. EShot's compatibility overlay relies on that behaviour.
+if [[ "${XDG_SESSION_TYPE:-}" == "wayland" ]] \
+   && [[ "${XDG_CURRENT_DESKTOP:-${XDG_SESSION_DESKTOP:-}}" == *KDE* ]]; then
+  export QT_QPA_PLATFORM=xcb
+  export ESHOT_WAYLAND_XWAYLAND_OVERLAY=1
+fi
+
+if [[ "${ESHOT_SYSTEMD_CHILD:-0}" != "1" ]] && command -v systemd-run >/dev/null 2>&1; then
+  if systemctl --user is-active --quiet eshot.service 2>/dev/null; then
+    exit 0
+  fi
+  exec systemd-run --user --unit=eshot --collect --property=Type=exec \
+    --setenv=ESHOT_SYSTEMD_CHILD=1 \
+    --setenv="QT_QPA_PLATFORM=${QT_QPA_PLATFORM:-}" \
+    --setenv="ESHOT_WAYLAND_XWAYLAND_OVERLAY=${ESHOT_WAYLAND_XWAYLAND_OVERLAY:-0}" \
+    "${bindir}/EShot" "$@"
+fi
+
+exec "${bindir}/EShot" "$@"

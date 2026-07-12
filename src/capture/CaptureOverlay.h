@@ -2,6 +2,7 @@
 #define CAPTUREOVERLAY_H
 
 #include <QWidget>
+#include "core/VisualSearch.h"
 #include <QPixmap>
 #include <QPoint>
 #include <QRect>
@@ -9,6 +10,15 @@
 #include <QList>
 #include <QTextEdit>
 #include <QPointer>
+
+#include "CaptureGeometry.h"
+
+#ifdef Q_OS_WIN
+#include <windows.h>
+using EShotNativeWindowHandle = HWND;
+#else
+using EShotNativeWindowHandle = void *;
+#endif
 
 class AnnotationToolbar;
 class AnnotationEngine;
@@ -22,6 +32,7 @@ class QCheckBox;
 class QPropertyAnimation;
 class QLabel;
 class ImageUploader;
+class QScreen;
 
 
 class CaptureOverlay : public QWidget {
@@ -83,7 +94,9 @@ private:
     QPoint m_moveOffset;
 
     QRect m_virtualDesktopRect;
+    QScreen *m_captureScreen = nullptr;
     QPoint m_physicalVirtualDesktopTopLeft;
+    QVector<CaptureMonitorGeometry> m_captureMonitors;
     // Device-pixel ratio bridging the overlay's logical coordinate system
     // (window geometry, mouse, selection) to the physical-pixel m_screenSnapshot.
     qreal m_dpr = 1.0;
@@ -106,6 +119,8 @@ private:
     QWidget *m_actionPanel;
     AnnotationEngine *m_annotationEngine;
     ImageUploader *m_googleLensUploader = nullptr;
+    VisualSearchOperationState m_visualSearchOperations;
+    QString m_visualSearchImagePath;
 
     // Text editing — multi-line support
     QTextEdit *m_textEdit;
@@ -168,7 +183,7 @@ private:
     bool m_textEditing;
 
     // Active window title (for %T)
-    HWND m_foregroundHwnd;
+    EShotNativeWindowHandle m_foregroundHwnd = nullptr;
 
     QTimer *m_captureDelayTimer;
 

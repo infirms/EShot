@@ -37,7 +37,6 @@ private:
     void downloadInstaller();
     void finishDownload();
     void launchInstaller(const QString &installerPath);
-    QString selectInstallerUrl(const class QJsonArray &assets, QString *assetName, qint64 *assetSize) const;
     QString updateCacheDir() const;
 
     QNetworkAccessManager *m_network = nullptr;
@@ -54,6 +53,7 @@ private:
     QString m_releaseUrl;
     QString m_installerUrl;
     QString m_installerName;
+    QString m_installerSha256;
     QString m_statusText;
     qint64 m_installerSize = 0;
 };

@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 project(EShot VERSION 3.1.0 LANGUAGES CXX)
 
+include(CTest)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
@@ -13,16 +15,32 @@ configure_file(
     @ONLY
 )
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network)
+set(ESHOT_QT_COMPONENTS Core Gui Widgets Network)
+if(UNIX AND NOT APPLE)
+    list(APPEND ESHOT_QT_COMPONENTS DBus)
+endif()
+find_package(Qt6 REQUIRED COMPONENTS ${ESHOT_QT_COMPONENTS})
+find_package(Threads REQUIRED)
+if(UNIX AND NOT APPLE)
+    find_package(X11)
+endif()
 
 set(SOURCES
     src/main.cpp
     src/core/HotkeyManager.cpp
     src/core/OcrEngine.cpp
+    src/core/LinuxPortalGlobalShortcuts.cpp
+    src/core/LinuxPortalScreenCast.cpp
+    src/core/LinuxPortalScreenshot.cpp
     src/core/ImageUploader.cpp
+    src/core/VisualSearch.cpp
+    src/core/UpdateAssetSelector.cpp
+    src/core/LinuxUpdateScript.cpp
+    src/core/LinuxDependencySelection.cpp
     src/core/CatboxUploader.cpp
     src/core/UguuUploader.cpp
     src/core/UpdateManager.cpp
+    src/capture/CaptureGeometry.cpp
     src/capture/CaptureOverlay.cpp
     src/capture/PinnedWindow.cpp
     src/capture/PinManager.cpp
@@ -41,11 +59,20 @@ set(SOURCES
 
 set(HEADERS
     src/core/HotkeyManager.h
+    src/core/PlatformHotkey.h
     src/core/OcrEngine.h
+    src/core/LinuxPortalGlobalShortcuts.h
+    src/core/LinuxPortalScreenCast.h
+    src/core/LinuxPortalScreenshot.h
     src/core/ImageUploader.h
+    src/core/VisualSearch.h
+    src/core/UpdateAssetSelector.h
+    src/core/LinuxUpdateScript.h
+    src/core/LinuxDependencySelection.h
     src/core/CatboxUploader.h
     src/core/UguuUploader.h
     src/core/UpdateManager.h
+    src/capture/CaptureGeometry.h
     src/capture/CaptureOverlay.h
     src/capture/PinnedWindow.h
     src/capture/PinManager.h
@@ -81,25 +108,47 @@ elseif(MSVC)
     list(APPEND SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/app.rc)
 endif()
 
-qt_add_executable(${PROJECT_NAME} WIN32
+if(WIN32)
+    set(ESHOT_EXECUTABLE_OPTIONS WIN32)
+endif()
+
+qt_add_executable(${PROJECT_NAME} ${ESHOT_EXECUTABLE_OPTIONS}
     ${SOURCES}
     ${HEADERS}
     ${RESOURCES}
 )
 
-set_target_properties(${PROJECT_NAME} PROPERTIES
-    WIN32_EXECUTABLE TRUE
-)
+if(WIN32)
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        WIN32_EXECUTABLE TRUE
+    )
+endif()
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets
     Qt6::Network
-    User32
-    Gdi32
-    Shell32
+    Threads::Threads
 )
+
+if(UNIX AND NOT APPLE)
+    target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::DBus)
+endif()
+
+if(WIN32)
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+        User32
+        Gdi32
+        Shell32
+    )
+endif()
+
+if(UNIX AND NOT APPLE AND X11_FOUND)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE ESHOT_HAVE_X11=1)
+    target_include_directories(${PROJECT_NAME} PRIVATE ${X11_INCLUDE_DIR})
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${X11_LIBRARIES})
+endif()
 
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -120,7 +169,7 @@ endif()
 
 # Bundle FFmpeg for MP4 screen recording when a local binary is provided.
 # Expected layout: third_party/ffmpeg/bin/ffmpeg.exe
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ffmpeg/bin/ffmpeg.exe)
+if(WIN32 AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ffmpeg/bin/ffmpeg.exe)
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ffmpeg/bin
@@ -137,10 +186,92 @@ install(TARGETS ${PROJECT_NAME}
     RUNTIME DESTINATION bin
 )
 
+if(BUILD_TESTING)
+    find_package(Qt6 REQUIRED COMPONENTS Test)
+    qt_add_executable(eshot_visual_search_tests
+        tests/VisualSearchTests.cpp
+        src/core/VisualSearch.cpp
+        src/core/VisualSearch.h
+    )
+    target_include_directories(eshot_visual_search_tests PRIVATE src)
+    target_link_libraries(eshot_visual_search_tests PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME visual_search COMMAND eshot_visual_search_tests)
+
+    qt_add_executable(eshot_capture_geometry_tests
+        tests/CaptureGeometryTests.cpp
+        src/capture/CaptureGeometry.cpp
+        src/capture/CaptureGeometry.h
+    )
+    target_include_directories(eshot_capture_geometry_tests PRIVATE src)
+    target_link_libraries(eshot_capture_geometry_tests PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME capture_geometry COMMAND eshot_capture_geometry_tests)
+
+    qt_add_executable(eshot_update_asset_tests
+        tests/UpdateAssetSelectorTests.cpp
+        src/core/UpdateAssetSelector.cpp
+        src/core/UpdateAssetSelector.h
+    )
+    target_include_directories(eshot_update_asset_tests PRIVATE src)
+    target_link_libraries(eshot_update_asset_tests PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME update_asset COMMAND eshot_update_asset_tests)
+
+    qt_add_executable(eshot_linux_update_script_tests
+        tests/LinuxUpdateScriptTests.cpp
+        src/core/LinuxUpdateScript.cpp
+        src/core/LinuxUpdateScript.h
+    )
+    target_include_directories(eshot_linux_update_script_tests PRIVATE src)
+    target_link_libraries(eshot_linux_update_script_tests PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME linux_update_script COMMAND eshot_linux_update_script_tests)
+
+    qt_add_executable(eshot_linux_dependency_selection_tests
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/LinuxDependencySelectionTests.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/LinuxDependencySelection.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/LinuxDependencySelection.h
+    )
+    target_include_directories(eshot_linux_dependency_selection_tests PRIVATE src)
+    target_link_libraries(eshot_linux_dependency_selection_tests PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME linux_dependency_selection COMMAND eshot_linux_dependency_selection_tests)
+
+    qt_add_executable(eshot_linux_portal_shortcut_tests
+        tests/LinuxPortalShortcutTests.cpp
+        src/core/LinuxPortalGlobalShortcuts.cpp
+        src/core/LinuxPortalGlobalShortcuts.h
+        src/core/PlatformHotkey.h
+    )
+    target_include_directories(eshot_linux_portal_shortcut_tests PRIVATE src)
+    target_link_libraries(eshot_linux_portal_shortcut_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Test)
+    if(UNIX AND NOT APPLE)
+        target_link_libraries(eshot_linux_portal_shortcut_tests PRIVATE Qt6::DBus)
+    endif()
+    add_test(NAME linux_portal_shortcut COMMAND eshot_linux_portal_shortcut_tests)
+endif()
+
+if(UNIX AND NOT APPLE)
+    install(PROGRAMS scripts/linux/eshot-launcher
+        DESTINATION bin
+    )
+    install(CODE "execute_process(COMMAND \${CMAKE_COMMAND} -E create_symlink eshot-launcher \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/eshot\")")
+    install(FILES packaging/linux/io.github.benoks.EShot.desktop
+        DESTINATION share/applications
+    )
+    install(FILES packaging/linux/io.github.benoks.EShot.svg
+        DESTINATION share/icons/hicolor/scalable/apps
+    )
+    install(FILES packaging/linux/io.github.benoks.EShot.metainfo.xml
+        DESTINATION share/metainfo
+    )
+    install(PROGRAMS
+        scripts/linux/runtime-common.sh
+        scripts/linux/install-runtime-deps.sh
+        DESTINATION lib/eshot
+    )
+endif()
+
 # Bundle Tesseract OCR (third_party/tesseract/) next to the executable so the
 # app can find tesseract.exe + tessdata at runtime without requiring a system
 # install. Skip silently if the folder is missing.
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tesseract/tesseract.exe)
+if(WIN32 AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tesseract/tesseract.exe)
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tesseract

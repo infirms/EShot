@@ -5,6 +5,8 @@
 #include "ui/OcrDialog.h"
 #include "ui/UploadDialog.h"
 #include "core/ImageUploader.h"
+#include "core/LinuxPortalScreenshot.h"
+#include "core/VisualSearch.h"
 
 #include "../core/TranslationManager.h"
 
@@ -12,7 +14,10 @@
 #include <QPainterPath>
 #include <QLinearGradient>
 #include <QScreen>
+#include <QApplication>
 #include <QGuiApplication>
+#include <QCursor>
+#include <QWindow>
 #include <QClipboard>
 #include <QMouseEvent>
 #include <QKeyEvent>
@@ -43,10 +48,13 @@
 #include <QCoreApplication>
 #include <QMessageBox>
 #include <QFileInfo>
+#include <QFile>
+#include <QTemporaryFile>
 #include <QProcess>
 #include <QDesktopServices>
 #include <QUrl>
 #include <QUrlQuery>
+#include <QHash>
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -56,6 +64,23 @@
 #endif
 
 namespace {
+#ifdef Q_OS_WIN
+BOOL CALLBACK collectPhysicalMonitorGeometries(HMONITOR monitor, HDC, LPRECT, LPARAM data)
+{
+    auto *geometries = reinterpret_cast<QHash<QString, QRect> *>(data);
+    MONITORINFOEXW info = {};
+    info.cbSize = sizeof(info);
+    if (GetMonitorInfoW(monitor, &info)) {
+        const RECT &rect = info.rcMonitor;
+        geometries->insert(QString::fromWCharArray(info.szDevice),
+                           QRect(rect.left, rect.top,
+                                 rect.right - rect.left,
+                                 rect.bottom - rect.top));
+    }
+    return TRUE;
+}
+#endif
+
 class SideTabButton : public QPushButton
 {
 public:
@@ -119,6 +144,8 @@ QString defaultSaveDirectory()
     return QDir(picturesPath).filePath(QStringLiteral("EShot"));
 }
 
+QStringList dshowAudioDevices();
+
 #ifdef Q_OS_WIN
 void appendDeviceProperty(IPropertyStore *store, const PROPERTYKEY &key, QStringList &devices)
 {
@@ -136,17 +163,27 @@ void appendDeviceProperty(IPropertyStore *store, const PROPERTYKEY &key, QString
 QString localFfmpegPath()
 {
     const QString appDir = QCoreApplication::applicationDirPath();
-    const QStringList candidates = {
+    QStringList candidates = {
         QDir(appDir).filePath(QStringLiteral("ffmpeg/ffmpeg.exe")),
         QDir(appDir).filePath(QStringLiteral("ffmpeg.exe")),
+#ifndef Q_OS_WIN
+        QDir(appDir).filePath(QStringLiteral("ffmpeg/ffmpeg")),
+        QDir(appDir).filePath(QStringLiteral("ffmpeg")),
+#endif
         QDir(appDir).filePath(QStringLiteral("../third_party/ffmpeg/bin/ffmpeg.exe")),
+#ifndef Q_OS_WIN
+        QDir(appDir).filePath(QStringLiteral("../third_party/ffmpeg/bin/ffmpeg")),
+#endif
         QDir::current().filePath(QStringLiteral("third_party/ffmpeg/bin/ffmpeg.exe"))
     };
+#ifndef Q_OS_WIN
+    candidates << QDir::current().filePath(QStringLiteral("third_party/ffmpeg/bin/ffmpeg"));
+#endif
     for (const QString &path : candidates) {
         if (QFileInfo::exists(path))
             return QFileInfo(path).absoluteFilePath();
     }
-    return QString();
+    return QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));
 }
 
 QStringList windowsAudioInputDevices()
@@ -189,6 +226,33 @@ QStringList windowsAudioInputDevices()
         CoUninitialize();
 #endif
     return devices;
+}
+
+QString defaultDesktopAudioDevice()
+{
+#ifdef Q_OS_WIN
+    return QStringLiteral("__wasapi__");
+#else
+    return QStringLiteral("@DEFAULT_SINK@.monitor");
+#endif
+}
+
+QStringList desktopAudioDevices()
+{
+#ifdef Q_OS_WIN
+    return dshowAudioDevices();
+#else
+    return {QStringLiteral("@DEFAULT_SINK@.monitor")};
+#endif
+}
+
+QStringList microphoneAudioDevices()
+{
+#ifdef Q_OS_WIN
+    return windowsAudioInputDevices();
+#else
+    return {QStringLiteral("default"), QStringLiteral("@DEFAULT_SOURCE@")};
+#endif
 }
 
 QStringList dshowAudioDevices()
@@ -262,6 +326,8 @@ CaptureOverlay::CaptureOverlay(QWidget *parent)
     , m_eyedropperActive(false)
     , m_selectionLocked(false)
 {
+    if (qEnvironmentVariableIntValue("ESHOT_WAYLAND_XWAYLAND_OVERLAY") == 1)
+        setWindowFlag(Qt::X11BypassWindowManagerHint, true);
     setAttribute(Qt::WA_TranslucentBackground, false);
     setAttribute(Qt::WA_DeleteOnClose, false);
     setMouseTracking(true);
@@ -538,8 +604,12 @@ CaptureOverlay::CaptureOverlay(QWidget *parent)
 
 CaptureOverlay::~CaptureOverlay()
 {
-    if (m_googleLensUploader)
+    if (m_googleLensUploader) {
+        m_googleLensUploader->disconnect(this);
         m_googleLensUploader->cancel();
+    }
+    if (!m_visualSearchImagePath.isEmpty())
+        QFile::remove(m_visualSearchImagePath);
 }
 
 void CaptureOverlay::setupToolSettingsDrawer()
@@ -784,13 +854,14 @@ void CaptureOverlay::setupToolSettingsDrawer()
     addAudioVolumeRow(m_quickMicrophoneCheck, m_quickMicrophoneVolumeSlider, m_quickMicrophoneVolumeLabel,
                       TranslationManager::audioMicrophone(), "videoMicrophoneEnabled", "videoMicrophoneVolume");
 
-    const QStringList audioDevices = dshowAudioDevices();
-    const QStringList activeInputDevices = windowsAudioInputDevices();
+    const QStringList audioDevices = desktopAudioDevices();
+    const QStringList activeInputDevices = microphoneAudioDevices();
     auto *desktopDeviceRow = new QHBoxLayout();
     desktopDeviceRow->addWidget(new QLabel(TranslationManager::audioSource(), m_toolSettingsDrawer));
     m_quickDesktopAudioDeviceCombo = new QComboBox(m_toolSettingsDrawer);
     bool hasDesktopCandidate = true;
-    m_quickDesktopAudioDeviceCombo->addItem(TranslationManager::audioSystemLoopback(), QStringLiteral("__wasapi__"));
+    m_quickDesktopAudioDeviceCombo->addItem(TranslationManager::audioSystemLoopback(), defaultDesktopAudioDevice());
+#ifdef Q_OS_WIN
     for (const QString &device : audioDevices) {
         const QString lower = device.toLower();
         const bool looksLikeDesktop = lower.contains(QStringLiteral("virtual-audio-capturer")) ||
@@ -803,6 +874,9 @@ void CaptureOverlay::setupToolSettingsDrawer()
         hasDesktopCandidate = true;
         m_quickDesktopAudioDeviceCombo->addItem(device, device);
     }
+#else
+    Q_UNUSED(hasDesktopCandidate);
+#endif
     desktopDeviceRow->addWidget(m_quickDesktopAudioDeviceCombo);
     drawerLayout->addLayout(desktopDeviceRow);
     if (m_quickDesktopAudioCheck)
@@ -1039,7 +1113,7 @@ void CaptureOverlay::setToolSettingsDrawerVisible(bool visible)
         }
         if (m_quickDesktopAudioDeviceCombo) {
             QSignalBlocker blocker(m_quickDesktopAudioDeviceCombo);
-            int idx = m_quickDesktopAudioDeviceCombo->findData(s.value("videoDesktopAudioDevice", "__wasapi__").toString());
+            int idx = m_quickDesktopAudioDeviceCombo->findData(s.value("videoDesktopAudioDevice", defaultDesktopAudioDevice()).toString());
             if (idx < 0) idx = 0;
             m_quickDesktopAudioDeviceCombo->setCurrentIndex(idx);
             const bool hasDevice = !m_quickDesktopAudioDeviceCombo->currentData().toString().isEmpty();
@@ -1226,7 +1300,11 @@ void CaptureOverlay::startCapture()
     hideToolbar();
 
     // Save foreground window before overlay (for %T filename variable)
+#ifdef Q_OS_WIN
     m_foregroundHwnd = GetForegroundWindow();
+#else
+    m_foregroundHwnd = nullptr;
+#endif
 
     // Load settings
     QSettings s("EShot", "EShot");
@@ -1284,8 +1362,23 @@ void CaptureOverlay::performCapture()
         m_annotationEngine->setSnapshotScale(m_dpr);
     }
 
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    const bool isWayland = QGuiApplication::platformName().contains(
+        QStringLiteral("wayland"), Qt::CaseInsensitive);
+    if (isWayland && m_captureScreen) {
+        winId();
+        if (QWindow *window = windowHandle())
+            window->setScreen(m_captureScreen);
+        setGeometry(m_captureScreen->geometry());
+        showFullScreen();
+    } else {
+        setGeometry(m_virtualDesktopRect);
+        show();
+    }
+#else
     setGeometry(m_virtualDesktopRect);
     show();
+#endif
 
 #ifdef Q_OS_WIN
     // Force the overlay to the very top of the z-order, even above elevated windows.
@@ -1305,6 +1398,7 @@ void CaptureOverlay::performCapture()
 
 void CaptureOverlay::captureAllScreens()
 {
+    m_captureScreen = nullptr;
 #ifdef Q_OS_WIN
     int vx = GetSystemMetrics(SM_XVIRTUALSCREEN);
     int vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
@@ -1314,6 +1408,22 @@ void CaptureOverlay::captureAllScreens()
 
     QScreen *primary = QGuiApplication::primaryScreen();
     m_dpr = primary ? primary->devicePixelRatio() : 1.0;
+
+    QHash<QString, QRect> physicalByName;
+    EnumDisplayMonitors(nullptr, nullptr, collectPhysicalMonitorGeometries,
+                        reinterpret_cast<LPARAM>(&physicalByName));
+    m_captureMonitors.clear();
+    for (QScreen *screen : QGuiApplication::screens()) {
+        const QRect logical = screen->geometry();
+        const qreal scale = screen->devicePixelRatio();
+        QRect physical = physicalByName.value(screen->name());
+        if (!physical.isValid()) {
+            physical = QRect(logical.topLeft(),
+                             QSize(qRound(logical.width() * scale),
+                                   qRound(logical.height() * scale)));
+        }
+        m_captureMonitors.append({logical, physical, scale});
+    }
 
     if (vw <= 0 || vh <= 0) {
         if (primary) {
@@ -1365,26 +1475,114 @@ void CaptureOverlay::captureAllScreens()
     DeleteDC(hMem);
     ReleaseDC(nullptr, hScreen);
 #else
-    QRect vr;
+    const bool useXwaylandVirtualOverlay =
+        qEnvironmentVariableIntValue("ESHOT_WAYLAND_XWAYLAND_OVERLAY") == 1
+        && QGuiApplication::platformName().contains(QStringLiteral("xcb"), Qt::CaseInsensitive);
+    if (useXwaylandVirtualOverlay) {
+        QRect logicalRect;
+        QRect physicalRect;
+        m_captureMonitors.clear();
+        for (QScreen *screen : QGuiApplication::screens()) {
+            const QRect logical = screen->geometry();
+            const qreal scale = screen->devicePixelRatio();
+            const QRect physical = physicalRectFromLogical(logical, scale);
+            logicalRect = logicalRect.united(logical);
+            physicalRect = physicalRect.united(physical);
+            m_captureMonitors.append({logical, physical, scale});
+        }
+
+        QPixmap portalSnapshot = LinuxPortalScreenshot::grab(this);
+        if (!portalSnapshot.isNull()) {
+            portalSnapshot.setDevicePixelRatio(1.0);
+            m_screenSnapshot = portalSnapshot;
+            m_virtualDesktopRect = logicalRect;
+            m_physicalVirtualDesktopTopLeft = physicalRect.topLeft();
+            m_dpr = logicalRect.width() > 0
+                ? portalSnapshot.width() / static_cast<qreal>(logicalRect.width())
+                : 1.0;
+            return;
+        }
+    }
+
+    const bool isWayland = QGuiApplication::platformName().contains(QStringLiteral("wayland"), Qt::CaseInsensitive);
+    if (isWayland) {
+        QScreen *screen = QGuiApplication::screenAt(QCursor::pos());
+        if (!screen)
+            screen = QGuiApplication::primaryScreen();
+        if (!screen)
+            return;
+        m_captureScreen = screen;
+
+        const QRect logical = screen->geometry();
+        const qreal scale = screen->devicePixelRatio();
+        const QRect physical = physicalRectFromLogical(logical, scale);
+        m_dpr = scale;
+        m_virtualDesktopRect = logical;
+        m_physicalVirtualDesktopTopLeft = physical.topLeft();
+        m_captureMonitors = {{logical, physical, scale}};
+
+        m_screenSnapshot = LinuxPortalScreenshot::grabScreen(screen, this);
+        m_screenSnapshot.setDevicePixelRatio(1.0);
+        if (!m_screenSnapshot.isNull())
+            return;
+
+        QPixmap portalSnapshot = LinuxPortalScreenshot::grab(this);
+        if (!portalSnapshot.isNull()) {
+            QRect virtualPhysical;
+            for (QScreen *candidate : QGuiApplication::screens())
+                virtualPhysical = virtualPhysical.united(
+                    physicalRectFromLogical(candidate->geometry(), candidate->devicePixelRatio()));
+            const QRect crop = portalCropRect(physical, virtualPhysical);
+            if (portalSnapshot.rect().contains(crop))
+                portalSnapshot = portalSnapshot.copy(crop);
+            portalSnapshot.setDevicePixelRatio(1.0);
+            m_screenSnapshot = portalSnapshot;
+        }
+        return;
+    }
+
+    QRect logicalRect;
+    QRect physicalRect;
     auto screens = QGuiApplication::screens();
+    m_dpr = QGuiApplication::primaryScreen() ? QGuiApplication::primaryScreen()->devicePixelRatio() : 1.0;
     for (auto *s : screens) {
         auto g = s->geometry();
-        qreal d = s->devicePixelRatio();
-        vr = vr.united(QRect(g.x()*d, g.y()*d, g.width()*d, g.height()*d));
+        const qreal d = s->devicePixelRatio();
+        logicalRect = logicalRect.united(g);
+        physicalRect = physicalRect.united(QRect(qRound(g.x() * d),
+                                                 qRound(g.y() * d),
+                                                 qRound(g.width() * d),
+                                                 qRound(g.height() * d)));
     }
-    m_virtualDesktopRect = vr;
-    m_physicalVirtualDesktopTopLeft = vr.topLeft();
-    m_screenSnapshot = QPixmap(vr.size());
+    m_virtualDesktopRect = logicalRect;
+    m_physicalVirtualDesktopTopLeft = physicalRect.topLeft();
+    m_screenSnapshot = QPixmap(physicalRect.size());
     m_screenSnapshot.setDevicePixelRatio(1.0);
     m_screenSnapshot.fill(Qt::black);
     QPainter p(&m_screenSnapshot);
+    bool grabbedAnyScreen = false;
     for (auto *s : screens) {
         auto grab = s->grabWindow(0);
+        if (grab.isNull())
+            continue;
+        grabbedAnyScreen = true;
         auto g = s->geometry();
-        qreal d = s->devicePixelRatio();
-        p.drawPixmap(g.x()*d - vr.x(), g.y()*d - vr.y(), grab);
+        const qreal d = s->devicePixelRatio();
+        p.drawPixmap(qRound(g.x() * d) - physicalRect.x(),
+                     qRound(g.y() * d) - physicalRect.y(),
+                     grab);
     }
     p.end();
+    if (!grabbedAnyScreen || m_screenSnapshot.isNull()) {
+        QPixmap portalSnapshot = LinuxPortalScreenshot::grab(this);
+        if (!portalSnapshot.isNull()) {
+            portalSnapshot.setDevicePixelRatio(1.0);
+            m_screenSnapshot = portalSnapshot;
+            m_virtualDesktopRect = QRect(QPoint(0, 0), portalSnapshot.size());
+            m_physicalVirtualDesktopTopLeft = QPoint(0, 0);
+            m_dpr = 1.0;
+        }
+    }
 #endif
 }
 
@@ -2399,35 +2597,74 @@ void CaptureOverlay::onGoogleLensRequested()
     if (pix.isNull()) return;
 
     if (m_googleLensUploader) {
+        m_googleLensUploader->disconnect(this);
         m_googleLensUploader->cancel();
         m_googleLensUploader->deleteLater();
+        m_googleLensUploader = nullptr;
+    }
+    if (!m_visualSearchImagePath.isEmpty()) {
+        QFile::remove(m_visualSearchImagePath);
+        m_visualSearchImagePath.clear();
+    }
+
+    const quint64 generation = m_visualSearchOperations.begin();
+    QImage uploadImage = pix.toImage();
+    const QSize uploadSize = visualSearchUploadSize(uploadImage.size());
+    if (uploadSize != uploadImage.size())
+        uploadImage = uploadImage.scaled(uploadSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    QTemporaryFile uploadFile(QDir::tempPath() + QStringLiteral("/eshot_visual_search_XXXXXX.jpg"));
+    uploadFile.setAutoRemove(false);
+    if (!uploadFile.open()) {
+        QMessageBox::warning(this, tr("Visual search failed"), tr("Could not create the temporary image for visual search."));
+        return;
+    }
+    m_visualSearchImagePath = uploadFile.fileName();
+    uploadFile.close();
+    if (!uploadImage.save(m_visualSearchImagePath, "JPEG", 88)) {
+        QFile::remove(m_visualSearchImagePath);
+        m_visualSearchImagePath.clear();
+        QMessageBox::warning(this, tr("Visual search failed"), tr("Could not prepare the selected image for visual search."));
+        return;
     }
 
     m_googleLensUploader = ImageUploader::create(ImageUploader::Provider::Litterbox, this);
-    if (!m_googleLensUploader)
+    if (!m_googleLensUploader) {
+        QFile::remove(m_visualSearchImagePath);
+        m_visualSearchImagePath.clear();
+        QMessageBox::warning(this, tr("Visual search failed"), tr("Could not create the temporary image uploader."));
         return;
+    }
+
+    ImageUploader *uploader = m_googleLensUploader;
+    QSettings settings(QStringLiteral("EShot"), QStringLiteral("EShot"));
+    const VisualSearchProvider provider = visualSearchProviderFromSettings(
+        settings.value("visualSearchProvider", QStringLiteral("google")).toString());
 
     QPointer<CaptureOverlay> self(this);
-    connect(m_googleLensUploader, &ImageUploader::succeeded, this, [this, self](const QString &url, const QString &) {
-        if (!self) return;
-        QUrl lens(QStringLiteral("https://lens.google.com/uploadbyurl"));
-        QUrlQuery query;
-        query.addQueryItem(QStringLiteral("url"), url);
-        lens.setQuery(query);
-        QDesktopServices::openUrl(lens);
-        m_googleLensUploader->deleteLater();
+    connect(uploader, &ImageUploader::succeeded, this, [this, self, uploader, generation, provider](const QString &url, const QString &) {
+        if (!self || !m_visualSearchOperations.isCurrent(generation) || m_googleLensUploader != uploader)
+            return;
+        const bool browserOpened = QDesktopServices::openUrl(visualSearchResultUrl(provider, QUrl(url)));
+        if (!browserOpened)
+            QMessageBox::warning(this, TranslationManager::visualSearchBrowserLaunchTitle(), TranslationManager::visualSearchBrowserLaunchError());
+        uploader->deleteLater();
         m_googleLensUploader = nullptr;
+        QFile::remove(m_visualSearchImagePath);
+        m_visualSearchImagePath.clear();
     });
-    connect(m_googleLensUploader, &ImageUploader::failed, this, [this, self](const QString &reason) {
-        if (!self) return;
+    connect(uploader, &ImageUploader::failed, this, [this, self, uploader, generation](const QString &reason) {
+        if (!self || !m_visualSearchOperations.isCurrent(generation) || m_googleLensUploader != uploader)
+            return;
         QMessageBox::warning(this, TranslationManager::uploadFailed(), reason);
-        m_googleLensUploader->deleteLater();
+        uploader->deleteLater();
         m_googleLensUploader = nullptr;
+        QFile::remove(m_visualSearchImagePath);
+        m_visualSearchImagePath.clear();
     });
     hide();
     hideToolbar();
-    m_googleLensUploader->setImage(pix);
-    m_googleLensUploader->upload();
+    uploader->setImagePath(m_visualSearchImagePath);
+    uploader->upload();
 }
 
 void CaptureOverlay::onGifRequested()
@@ -2448,12 +2685,13 @@ void CaptureOverlay::onVideoRequested()
 {
     QRect selRect = normalizedSelectionRect();
     if (selRect.isEmpty()) return;
+    QRect captureRect = selectedCaptureRect();
     QRect displayRect = selectedDisplayRect();
     hide();
     m_selectionComplete = false;
     m_isSelecting = false;
     hideToolbar();
-    emit videoCaptureRequested(displayRect, displayRect);
+    emit videoCaptureRequested(captureRect, displayRect);
 }
 
 QRect CaptureOverlay::normalizedSelectionRect() const
@@ -2469,6 +2707,11 @@ QRect CaptureOverlay::selectedCaptureRect() const
 
 QRect CaptureOverlay::selectedDisplayRect() const
 {
+#ifdef Q_OS_WIN
+    const QRect displayRect = displayRectFromPhysical(selectedCaptureRect(), m_captureMonitors);
+    if (displayRect.isValid())
+        return displayRect;
+#endif
     return normalizedSelectionRect().translated(m_virtualDesktopRect.topLeft());
 }
 
@@ -2497,12 +2740,11 @@ QRect CaptureOverlay::monitorRectAt(const QPoint &pos) const
 #else
     for (QScreen *screen : QGuiApplication::screens()) {
         QRect geometry = screen->geometry();
-        qreal dpr = screen->devicePixelRatio();
         QRect localRect(
-            qRound(geometry.x() * dpr) - m_virtualDesktopRect.x(),
-            qRound(geometry.y() * dpr) - m_virtualDesktopRect.y(),
-            qRound(geometry.width() * dpr),
-            qRound(geometry.height() * dpr)
+            geometry.x() - m_virtualDesktopRect.x(),
+            geometry.y() - m_virtualDesktopRect.y(),
+            geometry.width(),
+            geometry.height()
         );
         if (localRect.contains(pos))
             return localRect.intersected(rect());

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.benoks.EShot</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <name>EShot</name>
+  <developer id="io.github.benoks">
+    <name>Benoks</name>
+  </developer>
+  <summary>Screenshot, annotation, OCR, upload, GIF and video capture tool</summary>
+  <icon type="stock">io.github.benoks.EShot</icon>
+  <description>
+    <p>
+      EShot is a native desktop screenshot workflow tool for Windows and Linux.
+      It captures regions, annotates images, copies or saves output, uploads
+      screenshots, extracts text with OCR, pins references, and records GIF or
+      MP4 captures.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.benoks.EShot.desktop</launchable>
+  <provides>
+    <binary>EShot</binary>
+  </provides>
+  <categories>
+    <category>Utility</category>
+    <category>Graphics</category>
+    <category>Photography</category>
+  </categories>
+  <url type="homepage">https://github.com/Benoks/EShot</url>
+  <url type="bugtracker">https://github.com/Benoks/EShot/issues</url>
+  <releases>
+    <release version="3.1.0" date="2026-07-09">
+      <description>
+        <p>Adds Linux build, packaging, and native desktop integration support.</p>
+      </description>
+    </release>
+  </releases>
+  <content_rating type="oars-1.1" />
+</component>

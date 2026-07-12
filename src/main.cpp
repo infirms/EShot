@@ -53,6 +53,23 @@
 #include <windows.h>
 #endif
 
+QString localizedRecordingFailureReason(const QString &reason)
+{
+    if (reason == QStringLiteral("ffmpeg.exe not found") || reason == QStringLiteral("ffmpeg not found"))
+        return TranslationManager::videoFfmpegMissing();
+    if (reason == QStringLiteral("gstreamer not found"))
+        return TranslationManager::videoGstreamerMissing();
+    if (reason == QStringLiteral("Wayland ScreenCast portal is not available"))
+        return TranslationManager::videoWaylandPortalMissing();
+    if (reason == QStringLiteral("Wayland screen recording permission was not granted"))
+        return TranslationManager::videoWaylandPermissionDenied();
+    if (reason == QStringLiteral("cannot start gstreamer"))
+        return TranslationManager::videoGstreamerStartFailed();
+    if (reason == QStringLiteral("Wayland PipeWire remote could not be opened"))
+        return TranslationManager::videoPipeWireRemoteFailed();
+    return reason;
+}
+
 class EShotApp : public QObject {
     Q_OBJECT
 
@@ -140,7 +157,7 @@ public slots:
         if (m_pendingMode == 2) {
             onRecordGifSelected(captureRect, displayRect);
         } else if (m_pendingMode == 3) {
-            onRecordVideoSelected(displayRect, displayRect);
+            onRecordVideoSelected(captureRect, displayRect);
         }
         m_pendingMode = 0;
     }
@@ -161,7 +178,11 @@ public slots:
                 dir = fi.absoluteDir().absolutePath();
             if (!dir.isEmpty() && QDir(dir).exists()) {
                 if (!QDesktopServices::openUrl(QUrl::fromLocalFile(dir)))
+#ifdef Q_OS_WIN
                     QProcess::startDetached(QStringLiteral("explorer.exe"), {QDir::toNativeSeparators(dir)});
+#else
+                    QProcess::startDetached(QStringLiteral("xdg-open"), {dir});
+#endif
             }
         }
     }
@@ -333,7 +354,13 @@ public slots:
         const int crf = s.value("videoRecordingCrf", 24).toInt();
         const bool desktopAudio = s.value("videoDesktopAudioEnabled", false).toBool();
         const int desktopVolume = s.value("videoDesktopAudioVolume", 80).toInt();
-        const QString desktopDevice = s.value("videoDesktopAudioDevice", "__wasapi__").toString();
+        const QString desktopDevice = s.value("videoDesktopAudioDevice",
+#ifdef Q_OS_WIN
+                                            "__wasapi__"
+#else
+                                            "@DEFAULT_SINK@.monitor"
+#endif
+                                            ).toString();
         const bool microphoneAudio = s.value("videoMicrophoneEnabled", false).toBool();
         const int microphoneVolume = s.value("videoMicrophoneVolume", 80).toInt();
         const QString microphoneDevice = s.value("videoMicrophoneDevice", "default").toString();
@@ -414,6 +441,7 @@ public slots:
     {
         if (m_recordingIndicator) { m_recordingIndicator->stop(); m_recordingIndicator = nullptr; }
         m_lastNotificationPath.clear();
+        reason = localizedRecordingFailureReason(reason);
         if (m_trayIcon) m_trayIcon->showMessage(TranslationManager::notifCaptureTitle(),
                                                 TranslationManager::recordingFailed() + QStringLiteral(": ") + reason,
                                                 QSystemTrayIcon::Warning, 3000);
@@ -460,8 +488,7 @@ public slots:
     {
         if (m_recordingIndicator) { m_recordingIndicator->stop(); m_recordingIndicator = nullptr; }
         m_lastNotificationPath.clear();
-        if (reason == QStringLiteral("ffmpeg.exe not found"))
-            reason = TranslationManager::videoFfmpegMissing();
+        reason = localizedRecordingFailureReason(reason);
         if (m_trayIcon) m_trayIcon->showMessage(TranslationManager::notifCaptureTitle(),
                                                 TranslationManager::videoFailed() + QStringLiteral(": ") + reason,
                                                 QSystemTrayIcon::Warning, 5000);
@@ -948,6 +975,9 @@ int main(int argc, char *argv[])
     app.setApplicationName("EShot");
     app.setApplicationVersion(ESHOT_VERSION_STRING);
     app.setOrganizationName("EShot");
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    app.setDesktopFileName(QStringLiteral("io.github.benoks.EShot"));
+#endif
     app.setQuitOnLastWindowClosed(false);
     app.setStyle("Fusion");
     app.setWindowIcon(QIcon(":/icons/pen.svg"));
@@ -1025,7 +1055,7 @@ int main(int argc, char *argv[])
     }
 
     if (!QSystemTrayIcon::isSystemTrayAvailable()) {
-        qWarning() << "[EShot] System tray is not available yet; keeping the app alive for Windows startup.";
+        qWarning() << "[EShot] System tray is not available yet; keeping the app alive for startup.";
     }
 
     const QString instanceName = QStringLiteral("EShot.SingleInstance");

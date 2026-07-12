@@ -38,6 +38,13 @@ Build/
 build_test/
 build_release/
 build_v*/
+build-linux/
+build-appimage/
+build-appimage-tools/
+dist-linux/
+linux-root/
+EShot.AppDir/
+appimage-test-home/
 bin/
 lib/
 
@@ -75,6 +82,7 @@ Desktop.ini
 *.orig
 *.rej
 installer_output/
+packages/
 EShot_Release/
 EShot_Release*_staging/
 EShot_new.exe

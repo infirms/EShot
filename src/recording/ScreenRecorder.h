@@ -5,6 +5,7 @@
 #include <QTimer>
 #include <QRect>
 #include <QImage>
+#include <QProcess>
 #include <QSize>
 #include <QString>
 #include <QDateTime>
@@ -42,6 +43,7 @@ signals:
 
 private slots:
     void captureFrame();
+    void onPortalProcessFinished(int exitCode, QProcess::ExitStatus status);
 
 private:
     void finishRecording();
@@ -52,8 +54,11 @@ private:
     QSize boundedOutputSize(const QSize &sourceSize) const;
     bool initCaptureResources();
     void releaseCaptureResources();
+    bool startWaylandPortalRecording(const QRect &captureRect);
+    QString gstLaunchPath() const;
 
     GifEncoder *m_encoder = nullptr;
+    QProcess *m_process = nullptr;
     QTimer *m_frameTimer = nullptr;
     QTimer *m_countdownTimer = nullptr;
     QRect m_captureRect;
@@ -64,6 +69,7 @@ private:
     int m_frameCount = 0;
     int m_delayCs = 10;
     bool m_recording = false;
+    bool m_portalRecording = false;
     bool m_hasPendingFrame = false;
     QImage m_pendingFrame;
     int m_pendingDelayCs = 0;

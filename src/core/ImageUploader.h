@@ -17,6 +17,10 @@ public:
         Litterbox,
         YandexDisk,
         GoogleDrive,
+        TmpFiles,
+        TempSh,
+        Allwebs,
+        RadikalCloud,
     };
 
     struct Result {

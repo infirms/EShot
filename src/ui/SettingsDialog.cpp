@@ -2,6 +2,9 @@
 #include "../core/HotkeyManager.h"
 #include "../core/OcrEngine.h"
 #include "../core/TranslationManager.h"
+#ifdef Q_OS_LINUX
+#include "FirstRunWizard.h"
+#endif
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -91,7 +94,7 @@ QVector<OverlayShortcutDef> overlayShortcutDefaults()
         {"actionPin", TranslationManager::actionPin(), "Ctrl+P"},
         {"actionOcr", TranslationManager::actionOcr(), "Ctrl+O"},
         {"actionUpload", TranslationManager::uploadToService(), "Ctrl+U"},
-        {"actionGoogleLens", QStringLiteral("Google Lens"), "Ctrl+L"},
+        {"actionGoogleLens", TranslationManager::visualSearchAction(), "Ctrl+L"},
         {"actionGif", TranslationManager::recordingStartTitle(), "Ctrl+G"},
         {"actionVideo", TranslationManager::videoRecordingTitle(), "Ctrl+Shift+V"}
     };
@@ -167,6 +170,24 @@ QStringList windowsAudioInputDevices()
         CoUninitialize();
 #endif
     return devices;
+}
+
+QString defaultDesktopAudioDevice()
+{
+#ifdef Q_OS_WIN
+    return QStringLiteral("__wasapi__");
+#else
+    return QStringLiteral("@DEFAULT_SINK@.monitor");
+#endif
+}
+
+QStringList microphoneAudioDevices()
+{
+#ifdef Q_OS_WIN
+    return windowsAudioInputDevices();
+#else
+    return {QStringLiteral("default"), QStringLiteral("@DEFAULT_SOURCE@")};
+#endif
 }
 }
 
@@ -257,8 +278,38 @@ QString packageSourceUrl(const QString &code)
 QString bundledTesseractDir()
 {
     const QString appTesseractDir = QCoreApplication::applicationDirPath() + QStringLiteral("/tesseract");
-    const QString exe = QDir(appTesseractDir).filePath(QStringLiteral("tesseract.exe"));
-    return QFileInfo::exists(exe) ? appTesseractDir : QString();
+    const QStringList names = {
+        QStringLiteral("tesseract.exe"),
+        QStringLiteral("tesseract")
+    };
+    for (const QString &name : names) {
+        if (QFileInfo::exists(QDir(appTesseractDir).filePath(name)))
+            return appTesseractDir;
+    }
+    return QString();
+}
+
+QString bundledFfmpegDir()
+{
+    const QString appFfmpegDir = QCoreApplication::applicationDirPath() + QStringLiteral("/ffmpeg");
+    const QStringList names = {
+        QStringLiteral("ffmpeg.exe"),
+        QStringLiteral("ffmpeg")
+    };
+    for (const QString &name : names) {
+        if (QFileInfo::exists(QDir(appFfmpegDir).filePath(name)))
+            return appFfmpegDir;
+    }
+    return QString();
+}
+
+QString componentExeName(const QString &base)
+{
+#ifdef Q_OS_WIN
+    return base + QStringLiteral(".exe");
+#else
+    return base;
+#endif
 }
 
 QString psQuote(QString value)
@@ -284,7 +335,6 @@ QString SettingsDialog::resolvePatternPreview(const QString &pattern) const
 
 bool SettingsDialog::keySequenceToWin32(const QKeySequence &seq, UINT &modifiers, UINT &vkey)
 {
-#ifdef Q_OS_WIN
     if (seq.isEmpty()) return false;
 
     QKeyCombination combo = seq[0];
@@ -356,10 +406,6 @@ bool SettingsDialog::keySequenceToWin32(const QKeySequence &seq, UINT &modifiers
         return true;
     }
     return false;
-#else
-    Q_UNUSED(seq); Q_UNUSED(modifiers); Q_UNUSED(vkey);
-    return false;
-#endif
 }
 
 static QKeySequence win32ToKeySequence(UINT modifiers, UINT vkey)
@@ -369,7 +415,6 @@ static QKeySequence win32ToKeySequence(UINT modifiers, UINT vkey)
         return QKeySequence();
     }
     Qt::KeyboardModifiers qtMod = Qt::NoModifier;
-#ifdef Q_OS_WIN
     if (modifiers & MOD_SHIFT)   qtMod |= Qt::ShiftModifier;
     if (modifiers & MOD_CONTROL) qtMod |= Qt::ControlModifier;
     if (modifiers & MOD_ALT)     qtMod |= Qt::AltModifier;
@@ -414,9 +459,6 @@ static QKeySequence win32ToKeySequence(UINT modifiers, UINT vkey)
     if (vkey == VK_MULTIPLY) return QKeySequence(QKeyCombination(qtMod | Qt::KeypadModifier, Qt::Key_Asterisk));
     if (vkey == VK_DIVIDE)   return QKeySequence(QKeyCombination(qtMod | Qt::KeypadModifier, Qt::Key_Slash));
     if (vkey == VK_DECIMAL)  return QKeySequence(QKeyCombination(qtMod | Qt::KeypadModifier, Qt::Key_Period));
-#else
-    Q_UNUSED(modifiers); Q_UNUSED(vkey);
-#endif
     return QKeySequence(Qt::Key_Print);
 }
 
@@ -441,7 +483,13 @@ bool SettingsDialog::isAutoStartEnabled()
     QString appPath = QCoreApplication::applicationFilePath().replace('/', '\\');
     return xml.contains(appPath, Qt::CaseInsensitive);
 #else
-    return false;
+    const QString path = QDir(QStandardPaths::writableLocation(QStandardPaths::ConfigLocation))
+        .filePath(QStringLiteral("autostart/io.github.benoks.EShot.desktop"));
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return false;
+    const QString text = QString::fromUtf8(file.readAll());
+    return text.contains(QCoreApplication::applicationFilePath());
 #endif
 }
 
@@ -478,8 +526,47 @@ static bool setAutoStartTask(bool enabled)
                               QStringLiteral("-WindowStyle"), QStringLiteral("Hidden"),
                               QStringLiteral("-Command"), script}) == 0;
 #else
-    Q_UNUSED(enabled);
-    return true;
+    const QString autostartDir = QDir(QStandardPaths::writableLocation(QStandardPaths::ConfigLocation))
+        .filePath(QStringLiteral("autostart"));
+    const QString desktopPath = QDir(autostartDir).filePath(QStringLiteral("io.github.benoks.EShot.desktop"));
+    if (!enabled)
+        return !QFileInfo::exists(desktopPath) || QFile::remove(desktopPath);
+
+    QDir dir(autostartDir);
+    if (!dir.exists() && !dir.mkpath(QStringLiteral(".")))
+        return false;
+
+    QString appPath = QCoreApplication::applicationFilePath();
+    appPath.replace(QStringLiteral("\\"), QStringLiteral("\\\\"));
+    appPath.replace(QStringLiteral("\""), QStringLiteral("\\\""));
+    QString execLine = QStringLiteral("\"") + appPath + QStringLiteral("\" --silent");
+    const QString sessionType = qEnvironmentVariable("XDG_SESSION_TYPE");
+    const QString desktopName = qEnvironmentVariable("XDG_CURRENT_DESKTOP",
+                                                       qEnvironmentVariable("XDG_SESSION_DESKTOP"));
+    if (sessionType.compare(QStringLiteral("wayland"), Qt::CaseInsensitive) == 0
+        && desktopName.contains(QStringLiteral("KDE"), Qt::CaseInsensitive)) {
+        execLine.prepend(QStringLiteral(
+            "/usr/bin/env QT_QPA_PLATFORM=xcb ESHOT_WAYLAND_XWAYLAND_OVERLAY=1 "));
+    }
+    const QString desktop = QStringLiteral(
+        "[Desktop Entry]\n"
+        "Type=Application\n"
+        "Name=EShot\n"
+        "Comment=Start EShot in the system tray\n"
+        "Exec=%1\n"
+        "Icon=io.github.benoks.EShot\n"
+        "Terminal=false\n"
+        "StartupNotify=false\n"
+        "X-KDE-StartupNotify=false\n"
+        "X-GNOME-Autostart-enabled=true\n")
+        .arg(execLine);
+
+    QFile file(desktopPath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
+        return false;
+    file.write(desktop.toUtf8());
+    file.close();
+    return file.error() == QFile::NoError;
 #endif
 }
 
@@ -734,7 +821,13 @@ QWidget* SettingsDialog::createPackagesTab()
     QGridLayout *componentsLayout = new QGridLayout(componentsGroup);
     const bool tesseractInstalled = QFileInfo::exists(OcrEngine::tesseractPath());
     const bool tesseractBundled = !bundledTesseractDir().isEmpty();
-    const bool ffmpegBundled = QFileInfo::exists(QCoreApplication::applicationDirPath() + QStringLiteral("/ffmpeg/ffmpeg.exe"));
+    const bool ffmpegBundled = !bundledFfmpegDir().isEmpty();
+    const bool ffmpegInstalled = ffmpegBundled || !QStandardPaths::findExecutable(QStringLiteral("ffmpeg")).isEmpty();
+#ifdef Q_OS_WIN
+    const bool canDownloadComponents = true;
+#else
+    const bool canDownloadComponents = false;
+#endif
     auto addComponentRow = [&](int row, const QString &name, const QString &status, bool canDelete,
                                QLabel **statusPtr, QPushButton **buttonPtr, const QObject *receiver, const char *slot) {
         QLabel *nameLabel = new QLabel(name, componentsGroup);
@@ -752,11 +845,16 @@ QWidget* SettingsDialog::createPackagesTab()
         componentsLayout->addWidget(deleteButton, row, 2);
     };
     addComponentRow(0, QStringLiteral("Tesseract OCR:"), tesseractInstalled ? uiLabel("Kurulu", "Installed") : uiLabel("Eksik", "Missing"),
-                    true, &m_tesseractStatusLabel, &m_tesseractDeleteButton, this, SLOT(onTesseractComponentAction()));
-    addComponentRow(1, QStringLiteral("FFmpeg:"), ffmpegBundled ? uiLabel("Kurulu", "Installed") : uiLabel("Eksik", "Missing"),
-                    true, &m_ffmpegStatusLabel, &m_ffmpegDeleteButton, this, SLOT(onFfmpegComponentAction()));
+                    tesseractBundled, &m_tesseractStatusLabel, &m_tesseractDeleteButton, this, SLOT(onTesseractComponentAction()));
+    addComponentRow(1, QStringLiteral("FFmpeg:"), ffmpegInstalled ? uiLabel("Kurulu", "Installed") : uiLabel("Eksik", "Missing"),
+                    ffmpegBundled, &m_ffmpegStatusLabel, &m_ffmpegDeleteButton, this, SLOT(onFfmpegComponentAction()));
     componentsLayout->setColumnStretch(1, 1);
     layout->addWidget(componentsGroup);
+#ifdef Q_OS_LINUX
+    QPushButton *linuxSetupButton = new QPushButton(uiLabel("Linux bağımlılık kurulumunu aç", "Open Linux dependency setup"), tab);
+    connect(linuxSetupButton, &QPushButton::clicked, this, &SettingsDialog::onOpenLinuxDependencySetup);
+    layout->addWidget(linuxSetupButton);
+#endif
 
     QGroupBox *ocrGroup = new QGroupBox(uiLabel("OCR dil paketleri", "OCR language packs"));
     QVBoxLayout *ocrLayout = new QVBoxLayout(ocrGroup);
@@ -808,6 +906,14 @@ QWidget* SettingsDialog::createPackagesTab()
     refreshPackageStatus();
     return tab;
 }
+
+#ifdef Q_OS_LINUX
+void SettingsDialog::onOpenLinuxDependencySetup()
+{
+    FirstRunWizard::showLinuxDependencySetup(this);
+    refreshPackageStatus();
+}
+#endif
 
 QWidget* SettingsDialog::createCaptureTab()
 {
@@ -1011,8 +1117,11 @@ QWidget* SettingsDialog::createRecordingTab()
 
     m_videoMicrophoneDeviceCombo = new QComboBox(videoGroup);
     m_videoMicrophoneDeviceCombo->addItem(QStringLiteral("Default"), QStringLiteral("default"));
-    for (const QString &device : windowsAudioInputDevices())
+    for (const QString &device : microphoneAudioDevices()) {
+        if (device == QStringLiteral("default"))
+            continue;
         m_videoMicrophoneDeviceCombo->addItem(device, device);
+    }
     m_videoMicrophoneDeviceCombo->setToolTip(uiLabel("Video kaydinda kullanilacak mikrofon kaynagi.", "Microphone source used for video recording."));
     videoForm->addRow(TranslationManager::audioMicrophoneDevice(), m_videoMicrophoneDeviceCombo);
 
@@ -1059,6 +1168,18 @@ QWidget* SettingsDialog::createInterfaceTab()
     QVBoxLayout *layout = new QVBoxLayout(tab);
     layout->setContentsMargins(10, 10, 10, 10);
     layout->setSpacing(8);
+
+    QGroupBox *visualSearchGroup = new QGroupBox(TranslationManager::visualSearchTitle());
+    QFormLayout *visualSearchLayout = new QFormLayout(visualSearchGroup);
+    m_visualSearchProviderCombo = new QComboBox(visualSearchGroup);
+    m_visualSearchProviderCombo->addItem(TranslationManager::visualSearchGoogleLens(), QStringLiteral("google"));
+    m_visualSearchProviderCombo->addItem(TranslationManager::visualSearchYandexImages(), QStringLiteral("yandex"));
+    visualSearchLayout->addRow(TranslationManager::visualSearchProvider(), m_visualSearchProviderCombo);
+    QLabel *visualSearchPrivacy = new QLabel(tr("Privacy: visual search uploads the selected image to a temporary public image host, then sends that public URL to Google Lens or Yandex Images."), visualSearchGroup);
+    visualSearchPrivacy->setWordWrap(true);
+    visualSearchPrivacy->setStyleSheet("color: #aaa; font-size: 12px;");
+    visualSearchLayout->addRow(visualSearchPrivacy);
+    layout->addWidget(visualSearchGroup);
 
     QGroupBox *toolsGroup = new QGroupBox(TranslationManager::toolbarVisibility());
     QVBoxLayout *toolsLayout = new QVBoxLayout(toolsGroup);
@@ -1135,7 +1256,7 @@ QWidget* SettingsDialog::createInterfaceTab()
         {"Redo",          TranslationManager::toolRedo(),                     ":/icons/redo.svg"},
         {"Ocr",           TranslationManager::actionOcr(),                    ":/icons/ocr.svg"},
         {"Upload",        TranslationManager::uploadToService(),              ":/icons/upload.svg"},
-        {"GoogleLens",    QStringLiteral("Google Lens"),                     ":/icons/search.svg"},
+        {"GoogleLens",    TranslationManager::visualSearchAction(),           ":/icons/search.svg"},
         {"Gif",           TranslationManager::recordingStartTitle(),          ":/icons/gif.svg"},
         {"Video",         TranslationManager::videoRecordingTitle(),          ":/icons/video.svg"},
     };
@@ -1246,6 +1367,14 @@ QWidget* SettingsDialog::createHotkeyTab()
             this, &SettingsDialog::onDisableWindowsPrintScreenSnipping);
     gl->addWidget(m_printScreenFixButton);
 
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    m_linuxPrintScreenBindingButton = new QPushButton(
+        uiLabel("PrintScreen kisayolunu KDE ile yeniden ayarla", "Reconfigure PrintScreen shortcut in KDE"));
+    connect(m_linuxPrintScreenBindingButton, &QPushButton::clicked,
+            this, &SettingsDialog::onRequestLinuxPrintScreenBinding);
+    gl->addWidget(m_linuxPrintScreenBindingButton);
+#endif
+
     QPushButton *resetHkBtn = new QPushButton(TranslationManager::hotkeyReset());
     resetHkBtn->setStyleSheet("color: #aaa;");
     connect(resetHkBtn, &QPushButton::clicked, [this]() {
@@ -1341,7 +1470,13 @@ void SettingsDialog::refreshPackageStatus()
     const bool busy = m_packageReply != nullptr || !m_pendingOcrDownloads.isEmpty();
     const bool tesseractInstalled = QFileInfo::exists(OcrEngine::tesseractPath());
     const bool tesseractBundled = !bundledTesseractDir().isEmpty();
-    const bool ffmpegBundled = QFileInfo::exists(QCoreApplication::applicationDirPath() + QStringLiteral("/ffmpeg/ffmpeg.exe"));
+    const bool ffmpegBundled = !bundledFfmpegDir().isEmpty();
+    const bool ffmpegInstalled = ffmpegBundled || !QStandardPaths::findExecutable(QStringLiteral("ffmpeg")).isEmpty();
+#ifdef Q_OS_WIN
+    const bool canDownloadComponents = true;
+#else
+    const bool canDownloadComponents = false;
+#endif
     auto setComponentStatus = [](QLabel *label, QPushButton *button, bool installed, bool canUse, bool downloadWhenMissing = false) {
         if (label) {
             label->setText(installed ? uiLabel("Kurulu", "Installed") : uiLabel("Eksik", "Missing"));
@@ -1354,8 +1489,8 @@ void SettingsDialog::refreshPackageStatus()
             button->setEnabled(canUse || (!installed && downloadWhenMissing));
         }
     };
-    setComponentStatus(m_tesseractStatusLabel, m_tesseractDeleteButton, tesseractInstalled, !busy && tesseractBundled, !busy);
-    setComponentStatus(m_ffmpegStatusLabel, m_ffmpegDeleteButton, ffmpegBundled, ffmpegBundled && !busy, !busy);
+    setComponentStatus(m_tesseractStatusLabel, m_tesseractDeleteButton, tesseractInstalled, !busy && tesseractBundled, !busy && canDownloadComponents);
+    setComponentStatus(m_ffmpegStatusLabel, m_ffmpegDeleteButton, ffmpegInstalled, ffmpegBundled && !busy, !busy && canDownloadComponents);
 
     m_packageList->clear();
     m_packageList->setEnabled(tesseractInstalled);
@@ -1539,16 +1674,25 @@ void SettingsDialog::onTesseractComponentAction()
 
 void SettingsDialog::downloadTesseractComponent()
 {
-    downloadReleaseComponent(QStringLiteral("tesseract"), QStringLiteral("tesseract.exe"), uiLabel("OCR bileşeni", "OCR component"));
+    downloadReleaseComponent(QStringLiteral("tesseract"), componentExeName(QStringLiteral("tesseract")), uiLabel("OCR bileşeni", "OCR component"));
 }
 
 void SettingsDialog::downloadFfmpegComponent()
 {
-    downloadReleaseComponent(QStringLiteral("ffmpeg"), QStringLiteral("ffmpeg.exe"), QStringLiteral("FFmpeg"));
+    downloadReleaseComponent(QStringLiteral("ffmpeg"), componentExeName(QStringLiteral("ffmpeg")), QStringLiteral("FFmpeg"));
 }
 
 void SettingsDialog::downloadReleaseComponent(const QString &componentDir, const QString &exeName, const QString &statusPrefix)
 {
+#ifndef Q_OS_WIN
+    Q_UNUSED(componentDir);
+    Q_UNUSED(exeName);
+    Q_UNUSED(statusPrefix);
+    QMessageBox::information(this, TranslationManager::errTitle(),
+                             uiLabel("Linux'ta bileşenler sistem paket yöneticisinden veya ileride eklenecek Linux paketinden kurulacak.",
+                                     "On Linux, components should be installed through the system package manager or a future Linux package."));
+    return;
+#endif
     if (m_packageReply)
         return;
     m_packageOperationStatus = QStringLiteral("%1: %2").arg(
@@ -1679,6 +1823,15 @@ void SettingsDialog::downloadComponentArchive(const QString &url, const QString 
 void SettingsDialog::extractComponentArchive(const QString &archivePath, const QString &componentDir,
                                              const QString &exeName, const QString &statusPrefix)
 {
+#ifndef Q_OS_WIN
+    Q_UNUSED(archivePath);
+    Q_UNUSED(componentDir);
+    Q_UNUSED(exeName);
+    Q_UNUSED(statusPrefix);
+    m_packageOperationStatus.clear();
+    refreshPackageStatus();
+    return;
+#endif
     m_packageOperationStatus = QStringLiteral("%1: %2").arg(statusPrefix, uiLabel("kuruluyor...", "installing..."));
     refreshPackageStatus();
 
@@ -1721,7 +1874,7 @@ void SettingsDialog::onFfmpegComponentAction()
     if (m_packageReply)
         return;
     const QString dirPath = QCoreApplication::applicationDirPath() + QStringLiteral("/ffmpeg");
-    if (!QFileInfo::exists(QDir(dirPath).filePath(QStringLiteral("ffmpeg.exe")))) {
+    if (bundledFfmpegDir().isEmpty()) {
         downloadFfmpegComponent();
         return;
     }
@@ -1897,6 +2050,11 @@ void SettingsDialog::loadSettings()
     m_highContrastCheck->setChecked(m_settings->value("highContrast", false).toBool());
     if (m_blackTrayIconCheck)
         m_blackTrayIconCheck->setChecked(m_settings->value("blackTrayIcon", false).toBool());
+    if (m_visualSearchProviderCombo) {
+        const int index = m_visualSearchProviderCombo->findData(
+            m_settings->value("visualSearchProvider", QStringLiteral("google")).toString());
+        m_visualSearchProviderCombo->setCurrentIndex(index >= 0 ? index : 0);
+    }
 
     QStringList visibleTools = m_settings->value("visibleTools", defaultAnnotationTools()).toStringList();
     QStringList visibleToolbarControls = m_settings->value("visibleToolbarControls", defaultToolbarControls()).toStringList();
@@ -2008,6 +2166,18 @@ void SettingsDialog::onDisableWindowsPrintScreenSnipping()
         this,
         printScreenConflictTitle(),
         TranslationManager::printScreenConflictDisabled());
+}
+
+void SettingsDialog::onRequestLinuxPrintScreenBinding()
+{
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    HotkeyManager::instance().requestLinuxPortalShortcutRebind();
+    if (!QProcess::startDetached(QStringLiteral("kcmshell6"), {QStringLiteral("kcm_keys")})) {
+        QMessageBox::warning(this, QStringLiteral("EShot"),
+                             uiLabel("KDE kisayol ayarlari acilamadi.",
+                                     "KDE shortcut settings could not be opened."));
+    }
+#endif
 }
 
 void SettingsDialog::onFilenamePatternChanged(const QString &text)
@@ -2190,6 +2360,8 @@ void SettingsDialog::onSave()
     m_settings->setValue("crosshairStyle",     m_crosshairStyleCombo->currentData().toString());
     m_settings->setValue("highContrast",       m_highContrastCheck->isChecked());
     m_settings->setValue("blackTrayIcon",      m_blackTrayIconCheck ? m_blackTrayIconCheck->isChecked() : false);
+    if (m_visualSearchProviderCombo)
+        m_settings->setValue("visualSearchProvider", m_visualSearchProviderCombo->currentData().toString());
 
     QStringList visibleTools;
     QStringList visibleToolbarControls;
@@ -2251,6 +2423,7 @@ void SettingsDialog::onSave()
     m_settings->setValue("videoMicrophoneEnabled", microphoneAudio);
     m_settings->setValue("videoDesktopAudioVolume", m_videoDesktopVolumeSpin ? m_videoDesktopVolumeSpin->value() : 80);
     m_settings->setValue("videoMicrophoneVolume", m_videoMicrophoneVolumeSpin ? m_videoMicrophoneVolumeSpin->value() : 80);
+    m_settings->setValue("videoDesktopAudioDevice", defaultDesktopAudioDevice());
     m_settings->setValue("videoMicrophoneDevice",
                          m_videoMicrophoneDeviceCombo ? m_videoMicrophoneDeviceCombo->currentData().toString() : QStringLiteral("default"));
     m_settings->setValue("videoAudioMode", desktopAudio && microphoneAudio ? QStringLiteral("both")

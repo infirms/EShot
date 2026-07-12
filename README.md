@@ -1,9 +1,9 @@
 # EShot
 
-Fast, lightweight Windows screenshot tool with annotations, OCR, uploads, pinned captures, GIF recording, and MP4 screen recording.
+Fast, lightweight native screenshot tool for Windows and Linux with annotations, OCR, uploads, pinned captures, GIF recording, and MP4 screen recording.
 
 [![Latest release](https://img.shields.io/github/v/release/Benoks/EShot?label=release)](https://github.com/Benoks/EShot/releases/latest)
-[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey.svg)](#)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20%7C%20Linux-lightgrey.svg)](#)
 [![Qt](https://img.shields.io/badge/Qt-6.x-green.svg)](https://www.qt.io/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -28,7 +28,8 @@ EShot is built for people who want a quick screenshot workflow without a heavy d
 - Customizable global, direct-capture, recording, and in-capture shortcuts
 - Toolbar visibility settings
 - Windows Print Screen conflict detection and fix helper
-- Start with Windows through Task Scheduler
+- Native Linux capture path with X11 shortcuts and Wayland portal support
+- Start with the desktop through Windows Task Scheduler or XDG autostart
 - GitHub release update check
 - Import/export settings
 
@@ -85,10 +86,32 @@ Supported services:
 - Catbox
 - Uguu
 - Litterbox
-- Yandex Disk
+- TmpFiles.org
+- temp.sh
+- Allwebs
+- Radikal Cloud
 - Google Drive
 
 For OAuth providers, EShot accepts either a raw access token or the full redirect URL and extracts the token automatically. The upload dialog includes provider-specific help links for token setup.
+
+Allwebs and Radikal Cloud use Chevereto API v1.1 and require an API key from the service account/API page. TmpFiles.org, temp.sh, Uguu, Litterbox, and anonymous Catbox uploads do not require a token.
+
+### Google Drive token setup
+
+Google Drive uploads need a short-lived OAuth `access_token`. The quickest setup path is Google OAuth 2.0 Playground:
+
+1. Open [Google OAuth 2.0 Playground](https://developers.google.com/oauthplayground).
+2. In the left panel, find **Drive API v3**.
+3. Select this scope:
+   ```text
+   https://www.googleapis.com/auth/drive.file
+   ```
+4. Click **Authorize APIs** and approve access with your Google account.
+5. Click **Exchange authorization code for tokens**.
+6. Copy only the `access_token` value. It usually starts with `ya29.`.
+7. Paste it into EShot's Google Drive token field and save it.
+
+You can also paste the full JSON response from OAuth Playground; EShot extracts the `access_token` automatically. Access tokens expire, so if Google Drive upload later returns HTTP 401, generate a fresh token in OAuth Playground and save it again.
 
 ## Google Lens
 
@@ -174,14 +197,45 @@ Most shortcuts can be changed in Settings.
 
 ## Install
 
-1. Download the latest installer from the [Releases page](https://github.com/Benoks/EShot/releases/latest).
+### Windows
+
+1. Download the latest Windows installer from the [Releases page](https://github.com/Benoks/EShot/releases/latest).
 2. Run the setup file.
 3. Select optional FFmpeg and OCR components if needed.
 4. Start EShot from the Start menu, desktop shortcut, or tray icon.
 
 If "Start with Windows" is enabled, EShot registers itself through Windows Task Scheduler.
 
+### Linux
+
+1. Download `EShot-v<version>-x86_64.AppImage` from the [Releases page](https://github.com/Benoks/EShot/releases/latest).
+2. Make it executable if your file manager requires it, then double-click the AppImage.
+3. In the graphical first-run wizard, choose the optional FFmpeg/GIF-video,
+   Tesseract/OCR language, and desktop portal features you want. The package
+   manager may request administrator approval; you can also skip this step.
+4. Approve EShot's preferred PrintScreen shortcut in the KDE/GNOME shortcut dialog.
+5. Start EShot from the application menu on later launches.
+
+The AppImage bundles EShot and Qt. Its first-run setup installs missing FFmpeg,
+Tesseract, GStreamer/PipeWire, and the KDE or GNOME portal backend through
+PolicyKit. The application itself is installed for the current user under
+`~/.local/opt/EShot`.
+
+Skipped optional features can be installed later from **Settings > Open Linux
+dependency setup**. EShot updates an AppImage in place: when a newer GitHub
+release is available, choose **Update now** in Settings or the tray menu. EShot
+downloads the exact `EShot-v<version>-x86_64.AppImage` release asset, requires
+its GitHub SHA-256 digest to match, replaces the AppImage identified by the
+`APPIMAGE` environment variable, and restarts it. Package-manager builds do not
+self-replace; update those through the package manager.
+
+On Wayland, screenshot, recording, and global-shortcut permissions are handled
+by the desktop portal. EShot also prefers the native GlobalShortcuts portal on
+KDE/GNOME X11 sessions and retains direct X11 grabs as a fallback.
+
 ## Command Line
+
+Windows:
 
 ```powershell
 EShot.exe --capture
@@ -189,21 +243,54 @@ EShot.exe --save "C:\path\to\capture.png"
 EShot.exe --silent
 ```
 
+Linux:
+
+```bash
+EShot --capture
+EShot --save "$HOME/Pictures/capture.png"
+EShot --silent
+# deb installs also provide:
+eshot --capture
+```
+
 ## Build From Source
 
 Requirements:
 
-- Windows 10 or Windows 11
 - Qt 6
 - CMake
 - C++17 compatible compiler
+
+Windows-only:
+
+- Windows 10 or Windows 11
 - Inno Setup, only for installer builds
+
+Linux-only:
+
+- X11 development headers for X11 global shortcuts
+- FFmpeg for X11 video recording
+- GStreamer with PipeWire plugins for Wayland GIF/video recording
+- `xdg-desktop-portal` and a desktop portal backend for Wayland capture
 
 ```powershell
 mkdir build
 cd build
 cmake ..
 cmake --build . --config Release
+```
+
+Linux helper scripts:
+
+```bash
+./scripts/linux/install-ubuntu-deps.sh
+# or on CachyOS/Arch:
+./scripts/linux/install-cachyos-deps.sh
+./scripts/linux/check-linux-runtime.sh
+./scripts/linux/build-linux.sh
+./dist-linux/bin/EShot
+# Build the release AppImage:
+./scripts/linux/build-appimage.sh
 ```
 
 Installer:
@@ -220,7 +307,9 @@ EShot uses:
 - Tesseract OCR for text recognition
 - Tesseract tessdata language files for OCR language support
 - FFmpeg for video recording
-- Inno Setup for installer packaging
+- GStreamer and PipeWire for Wayland recording
+- xdg-desktop-portal for native Wayland capture permissions
+- Inno Setup for Windows installer packaging
 
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for details.
 

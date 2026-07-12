@@ -3,11 +3,12 @@
 
 #include <QObject>
 #include <QAbstractNativeEventFilter>
+#include <QHash>
 #include <QList>
+#include <QPair>
+#include "PlatformHotkey.h"
 
-#if defined(Q_OS_WIN) || defined(_WIN32)
-#include <windows.h>
-#endif
+class LinuxPortalGlobalShortcuts;
 
 class HotkeyManager : public QObject, public QAbstractNativeEventFilter {
     Q_OBJECT
@@ -24,6 +25,7 @@ public:
     bool reRegisterActionHotkeys(UINT instantModifiers, UINT instantVirtualKey,
                                  UINT gifModifiers, UINT gifVirtualKey,
                                  UINT videoModifiers, UINT videoVirtualKey);
+    bool requestLinuxPortalShortcutRebind();
     UINT captureModifiers() const { return m_captureModifiers; }
     UINT captureVirtualKey() const { return m_captureVirtualKey; }
     static bool isPlainPrintScreen(UINT modifiers, UINT virtualKey);
@@ -48,6 +50,7 @@ private:
     HotkeyManager& operator=(const HotkeyManager&) = delete;
 
     QList<int> m_registeredHotkeys;
+    QHash<int, QPair<UINT, UINT>> m_registeredHotkeyDefs;
     UINT m_captureModifiers = 0;
     UINT m_captureVirtualKey = VK_SNAPSHOT;
     UINT m_recordingPauseModifiers = MOD_CONTROL | MOD_ALT;
@@ -62,6 +65,12 @@ private:
     UINT m_gifCaptureVirtualKey = 0;
     UINT m_videoCaptureModifiers = 0;
     UINT m_videoCaptureVirtualKey = 0;
+    void *m_x11Display = nullptr;
+    unsigned long m_x11RootWindow = 0;
+    LinuxPortalGlobalShortcuts *m_portalShortcuts = nullptr;
+
+    void emitHotkey(int id);
+    void refreshPortalShortcuts();
 
 public:
     static constexpr int HOTKEY_CAPTURE = 1;

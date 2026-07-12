@@ -1,4 +1,5 @@
 #include "VideoRecorder.h"
+#include "core/LinuxPortalScreenCast.h"
 
 #include <QCoreApplication>
 #include <QGuiApplication>
@@ -7,6 +8,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QProcessEnvironment>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QRegularExpression>
@@ -18,6 +20,10 @@
 #include <tlhelp32.h>
 #include <mmdeviceapi.h>
 #include <audioclient.h>
+#endif
+
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+#include <fcntl.h>
 #endif
 
 namespace {
@@ -61,18 +67,46 @@ QStringList dshowAudioDevices(const QString &ffmpegPath)
     return devices;
 }
 
-bool ffmpegSupportsFormat(const QString &ffmpegPath, const QString &format)
+QStringList platformAudioDevices(const QString &ffmpegPath)
 {
-    QProcess process;
-    process.setProgram(ffmpegPath);
-    process.setArguments({QStringLiteral("-hide_banner"), QStringLiteral("-formats")});
-    process.setProcessChannelMode(QProcess::MergedChannels);
-    process.start();
-    if (!process.waitForFinished(1800))
-        process.kill();
-    const QString output = QString::fromLocal8Bit(process.readAll());
-    return output.contains(QRegularExpression(QStringLiteral("\\b%1\\b").arg(QRegularExpression::escape(format))));
+#ifdef Q_OS_WIN
+    return dshowAudioDevices(ffmpegPath);
+#else
+    Q_UNUSED(ffmpegPath);
+    QStringList devices;
+    devices << QStringLiteral("default")
+            << QStringLiteral("@DEFAULT_SOURCE@")
+            << QStringLiteral("@DEFAULT_SINK@.monitor");
+    return devices;
+#endif
 }
+
+QString ffmpegMissingReason()
+{
+#ifdef Q_OS_WIN
+    return QStringLiteral("ffmpeg.exe not found");
+#else
+    return QStringLiteral("ffmpeg not found");
+#endif
+}
+
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+bool configurePipeWireRemote(QProcess *process, int fd)
+{
+    if (!process || fd < 0)
+        return false;
+
+    const int flags = fcntl(fd, F_GETFD);
+    if (flags < 0)
+        return false;
+    if (fcntl(fd, F_SETFD, flags & ~FD_CLOEXEC) < 0)
+        return false;
+
+    // ponytail: leave the portal PipeWire fd inheritable; add fd allowlisting
+    // only if a supported Qt floor gives us it on every Linux target.
+    return true;
+}
+#endif
 
 #ifdef Q_OS_WIN
 void writeLe16(QFile &file, quint16 value)
@@ -199,12 +233,16 @@ void VideoRecorder::start(const QRect &captureRect, int fps, int maxSeconds, int
         return;
     }
 
+#ifdef Q_OS_WIN
     m_ffmpegPath = ffmpegPath();
     if (m_ffmpegPath.isEmpty()) {
-        emit recordingFailed(QStringLiteral("ffmpeg.exe not found"));
+        emit recordingFailed(ffmpegMissingReason());
         return;
     }
-    const QStringList audioDevices = dshowAudioDevices(m_ffmpegPath);
+    const QStringList audioDevices = platformAudioDevices(m_ffmpegPath);
+#else
+    const QStringList audioDevices = platformAudioDevices(QString());
+#endif
 
     m_captureRect = captureRect;
     m_displayRect = displayRect;
@@ -214,19 +252,32 @@ void VideoRecorder::start(const QRect &captureRect, int fps, int maxSeconds, int
     m_desktopAudioEnabled = desktopAudioEnabled;
     m_desktopVolume = qBound(0, desktopVolume, 100);
     m_desktopAudioDevice = desktopAudioDevice.trimmed();
+#ifdef Q_OS_WIN
     if (m_desktopAudioDevice.isEmpty() || m_desktopAudioDevice == QStringLiteral("virtual-audio-capturer"))
         m_desktopAudioDevice = QStringLiteral("__wasapi__");
     m_systemAudioLoopback = m_desktopAudioEnabled && m_desktopAudioDevice == QStringLiteral("__wasapi__");
     if (m_desktopAudioEnabled && m_desktopAudioDevice != QStringLiteral("__wasapi__") && !containsDevice(audioDevices, m_desktopAudioDevice))
         m_desktopAudioEnabled = false;
+#else
+    m_systemAudioLoopback = false;
+    if (m_desktopAudioDevice.isEmpty() || m_desktopAudioDevice == QStringLiteral("__wasapi__"))
+        m_desktopAudioDevice = QStringLiteral("@DEFAULT_SINK@.monitor");
+    if (m_desktopAudioEnabled && !containsDevice(audioDevices, m_desktopAudioDevice))
+        m_desktopAudioEnabled = false;
+#endif
     m_microphoneEnabled = microphoneEnabled;
     m_microphoneVolume = qBound(0, microphoneVolume, 100);
     m_microphoneDevice = microphoneDevice.trimmed();
     if (m_microphoneDevice.isEmpty() || m_microphoneDevice == QStringLiteral("default")) {
         m_microphoneDevice = audioDevices.isEmpty() ? QString() : audioDevices.first();
     }
+#ifdef Q_OS_WIN
     if (m_microphoneEnabled && (m_microphoneDevice.isEmpty() || !containsDevice(audioDevices, m_microphoneDevice)))
         m_microphoneEnabled = false;
+#else
+    if (m_microphoneEnabled && (m_microphoneDevice.isEmpty() || !containsDevice(audioDevices, m_microphoneDevice)))
+        m_microphoneEnabled = false;
+#endif
     m_lastElapsedSeconds = -1;
     m_outputPath = outputPath.trimmed().isEmpty() ? makeDefaultOutputPath() : outputPath;
     m_pausedMs = 0;
@@ -234,6 +285,7 @@ void VideoRecorder::start(const QRect &captureRect, int fps, int maxSeconds, int
     m_paused = false;
     m_stopping = false;
     m_canceling = false;
+    m_usesGStreamer = false;
 
     QDir dir(QFileInfo(m_outputPath).absolutePath());
     if (!dir.exists() && !dir.mkpath(QStringLiteral("."))) {
@@ -242,6 +294,22 @@ void VideoRecorder::start(const QRect &captureRect, int fps, int maxSeconds, int
     }
     m_videoOnlyPath.clear();
     m_audioPath.clear();
+
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    if (LinuxPortalScreenCast::isWaylandSession()) {
+        startWaylandPortalRecording(captureRect);
+        return;
+    }
+#endif
+
+#ifndef Q_OS_WIN
+    m_ffmpegPath = ffmpegPath();
+    if (m_ffmpegPath.isEmpty()) {
+        emit recordingFailed(ffmpegMissingReason());
+        return;
+    }
+#endif
+
     QString ffmpegOutputPath = m_outputPath;
     if (m_systemAudioLoopback) {
         const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_hhmmss_zzz"));
@@ -257,14 +325,25 @@ void VideoRecorder::start(const QRect &captureRect, int fps, int maxSeconds, int
     QStringList args;
     args << QStringLiteral("-y")
          << QStringLiteral("-hide_banner")
-         << QStringLiteral("-loglevel") << QStringLiteral("error")
-         << QStringLiteral("-f") << QStringLiteral("gdigrab")
+         << QStringLiteral("-loglevel") << QStringLiteral("error");
+#ifdef Q_OS_WIN
+    args << QStringLiteral("-f") << QStringLiteral("gdigrab")
          << QStringLiteral("-draw_mouse") << QStringLiteral("1")
          << QStringLiteral("-framerate") << QString::number(m_fps)
          << QStringLiteral("-offset_x") << QString::number(captureRect.x())
          << QStringLiteral("-offset_y") << QString::number(captureRect.y())
          << QStringLiteral("-video_size") << QStringLiteral("%1x%2").arg(captureRect.width()).arg(captureRect.height())
          << QStringLiteral("-i") << QStringLiteral("desktop");
+#else
+    QString display = QProcessEnvironment::systemEnvironment().value(QStringLiteral("DISPLAY"));
+    if (display.trimmed().isEmpty())
+        display = QStringLiteral(":0.0");
+    args << QStringLiteral("-f") << QStringLiteral("x11grab")
+         << QStringLiteral("-draw_mouse") << QStringLiteral("1")
+         << QStringLiteral("-framerate") << QString::number(m_fps)
+         << QStringLiteral("-video_size") << QStringLiteral("%1x%2").arg(captureRect.width()).arg(captureRect.height())
+         << QStringLiteral("-i") << QStringLiteral("%1+%2,%3").arg(display).arg(captureRect.x()).arg(captureRect.y());
+#endif
 
     struct AudioInput {
         int inputIndex;
@@ -273,6 +352,7 @@ void VideoRecorder::start(const QRect &captureRect, int fps, int maxSeconds, int
     QVector<AudioInput> audioInputs;
     int nextInputIndex = 1;
     if (m_desktopAudioEnabled && !m_systemAudioLoopback && m_desktopVolume > 0) {
+#ifdef Q_OS_WIN
         if (m_desktopAudioDevice == QStringLiteral("__wasapi__")) {
             args << QStringLiteral("-f") << QStringLiteral("wasapi")
                  << QStringLiteral("-i") << QStringLiteral("default");
@@ -281,11 +361,22 @@ void VideoRecorder::start(const QRect &captureRect, int fps, int maxSeconds, int
                  << QStringLiteral("-i") << QStringLiteral("audio=%1").arg(m_desktopAudioDevice);
         }
         audioInputs.append({nextInputIndex++, m_desktopVolume});
+#else
+        args << QStringLiteral("-f") << QStringLiteral("pulse")
+             << QStringLiteral("-i") << m_desktopAudioDevice;
+        audioInputs.append({nextInputIndex++, m_desktopVolume});
+#endif
     }
     if (m_microphoneEnabled && m_microphoneVolume > 0) {
+#ifdef Q_OS_WIN
         args << QStringLiteral("-f") << QStringLiteral("dshow")
              << QStringLiteral("-i") << QStringLiteral("audio=%1").arg(m_microphoneDevice);
         audioInputs.append({nextInputIndex++, m_microphoneVolume});
+#else
+        args << QStringLiteral("-f") << QStringLiteral("pulse")
+             << QStringLiteral("-i") << m_microphoneDevice;
+        audioInputs.append({nextInputIndex++, m_microphoneVolume});
+#endif
     }
 
     args
@@ -460,7 +551,8 @@ void VideoRecorder::onProcessFinished(int exitCode, QProcess::ExitStatus status)
         if (!m_audioPath.isEmpty())
             QFile::remove(m_audioPath);
         cleanupProcess();
-        emit recordingFailed(stderrText.isEmpty() ? QStringLiteral("ffmpeg exited with code %1").arg(exitCode) : stderrText);
+        const QString processName = m_usesGStreamer ? QStringLiteral("gstreamer") : QStringLiteral("ffmpeg");
+        emit recordingFailed(stderrText.isEmpty() ? QStringLiteral("%1 exited with code %2").arg(processName).arg(exitCode) : stderrText);
         return;
     }
 
@@ -539,20 +631,244 @@ bool VideoRecorder::muxSystemAudio()
     return QFileInfo::exists(m_outputPath);
 }
 
+bool VideoRecorder::startWaylandPortalRecording(const QRect &captureRect)
+{
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    const QString gst = gstLaunchPath();
+    if (gst.isEmpty()) {
+        emit recordingFailed(QStringLiteral("gstreamer not found"));
+        return false;
+    }
+    if (!LinuxPortalScreenCast::isAvailable()) {
+        emit recordingFailed(QStringLiteral("Wayland ScreenCast portal is not available"));
+        return false;
+    }
+
+    LinuxPortalScreenCast::Stream stream = LinuxPortalScreenCast::selectStream();
+    if (!stream.isValid()) {
+        emit recordingFailed(QStringLiteral("Wayland screen recording permission was not granted"));
+        return false;
+    }
+
+    const QSize streamSize = stream.size.isValid() ? stream.size : captureRect.size();
+    const QRect relativeRect = captureRect.translated(-stream.position);
+    const int left = qBound(0, relativeRect.x(), qMax(0, streamSize.width() - 1));
+    const int top = qBound(0, relativeRect.y(), qMax(0, streamSize.height() - 1));
+    const int right = qMax(0, streamSize.width() - left - captureRect.width());
+    const int bottom = qMax(0, streamSize.height() - top - captureRect.height());
+    const QSize outputSize(qMax(8, qMin(captureRect.width(), streamSize.width() - left)),
+                           qMax(8, qMin(captureRect.height(), streamSize.height() - top)));
+
+    const QString targetObject = stream.pipewireSerial > 0
+        ? QString::number(stream.pipewireSerial)
+        : QString::number(stream.nodeId);
+    const int pipewireFd = stream.remoteFd();
+
+    QStringList args;
+    const bool wantDesktopAudio = m_desktopAudioEnabled && m_desktopVolume > 0 && !m_desktopAudioDevice.isEmpty();
+    const bool wantMicrophoneAudio = m_microphoneEnabled && m_microphoneVolume > 0 && !m_microphoneDevice.isEmpty();
+    args << QStringLiteral("-e")
+         << QStringLiteral("mp4mux")
+         << QStringLiteral("name=mux")
+         << QStringLiteral("!")
+         << QStringLiteral("filesink")
+         << QStringLiteral("location=%1").arg(m_outputPath)
+         << QStringLiteral("pipewiresrc")
+         << QStringLiteral("fd=%1").arg(pipewireFd)
+         << QStringLiteral("target-object=%1").arg(targetObject)
+         << QStringLiteral("do-timestamp=true")
+         << QStringLiteral("!")
+         << QStringLiteral("queue")
+         << QStringLiteral("!")
+         << QStringLiteral("videoconvert")
+         << QStringLiteral("!")
+         << QStringLiteral("videocrop")
+         << QStringLiteral("left=%1").arg(left)
+         << QStringLiteral("right=%1").arg(right)
+         << QStringLiteral("top=%1").arg(top)
+         << QStringLiteral("bottom=%1").arg(bottom)
+         << QStringLiteral("!")
+         << QStringLiteral("videoscale")
+         << QStringLiteral("!")
+         << QStringLiteral("videorate")
+         << QStringLiteral("!")
+         << QStringLiteral("video/x-raw,width=%1,height=%2,framerate=%3/1")
+                .arg(outputSize.width())
+                .arg(outputSize.height())
+                .arg(m_fps)
+         << QStringLiteral("!")
+         << QStringLiteral("x264enc")
+         << QStringLiteral("speed-preset=veryfast")
+         << QStringLiteral("tune=zerolatency")
+         << QStringLiteral("pass=qual")
+         << QStringLiteral("quantizer=%1").arg(qBound(18, m_crf, 32))
+         << QStringLiteral("!")
+         << QStringLiteral("h264parse")
+         << QStringLiteral("!")
+         << QStringLiteral("queue")
+         << QStringLiteral("!")
+         << QStringLiteral("mux.");
+
+    auto appendAudioEncoder = [&args](int volume) {
+        args << QStringLiteral("!")
+             << QStringLiteral("audioconvert")
+             << QStringLiteral("!")
+             << QStringLiteral("audioresample")
+             << QStringLiteral("!")
+             << QStringLiteral("volume")
+             << QStringLiteral("volume=%1").arg(QString::number(qBound(0, volume, 100) / 100.0, 'f', 2))
+             << QStringLiteral("!")
+             << QStringLiteral("voaacenc")
+             << QStringLiteral("bitrate=160000")
+             << QStringLiteral("!")
+             << QStringLiteral("queue")
+             << QStringLiteral("!")
+             << QStringLiteral("mux.");
+    };
+
+    if (wantDesktopAudio && !wantMicrophoneAudio) {
+        args << QStringLiteral("pulsesrc")
+             << QStringLiteral("device=%1").arg(m_desktopAudioDevice);
+        appendAudioEncoder(m_desktopVolume);
+    } else if (!wantDesktopAudio && wantMicrophoneAudio) {
+        args << QStringLiteral("pulsesrc")
+             << QStringLiteral("device=%1").arg(m_microphoneDevice);
+        appendAudioEncoder(m_microphoneVolume);
+    } else if (wantDesktopAudio && wantMicrophoneAudio) {
+        args << QStringLiteral("audiomixer")
+             << QStringLiteral("name=mix")
+             << QStringLiteral("!")
+             << QStringLiteral("audioconvert")
+             << QStringLiteral("!")
+             << QStringLiteral("audioresample")
+             << QStringLiteral("!")
+             << QStringLiteral("voaacenc")
+             << QStringLiteral("bitrate=160000")
+             << QStringLiteral("!")
+             << QStringLiteral("queue")
+             << QStringLiteral("!")
+             << QStringLiteral("mux.")
+             << QStringLiteral("pulsesrc")
+             << QStringLiteral("device=%1").arg(m_desktopAudioDevice)
+             << QStringLiteral("!")
+             << QStringLiteral("volume")
+             << QStringLiteral("volume=%1").arg(QString::number(qBound(0, m_desktopVolume, 100) / 100.0, 'f', 2))
+             << QStringLiteral("!")
+             << QStringLiteral("queue")
+             << QStringLiteral("!")
+             << QStringLiteral("mix.")
+             << QStringLiteral("pulsesrc")
+             << QStringLiteral("device=%1").arg(m_microphoneDevice)
+             << QStringLiteral("!")
+             << QStringLiteral("volume")
+             << QStringLiteral("volume=%1").arg(QString::number(qBound(0, m_microphoneVolume, 100) / 100.0, 'f', 2))
+             << QStringLiteral("!")
+             << QStringLiteral("queue")
+             << QStringLiteral("!")
+             << QStringLiteral("mix.");
+    }
+
+    m_process = new QProcess(this);
+    m_process->setProgram(gst);
+    m_process->setArguments(args);
+    m_process->setProcessChannelMode(QProcess::MergedChannels);
+    if (!configurePipeWireRemote(m_process, pipewireFd)) {
+        cleanupProcess();
+        emit recordingFailed(QStringLiteral("Wayland PipeWire remote could not be opened"));
+        return false;
+    }
+    m_usesGStreamer = true;
+    connect(m_process, &QProcess::finished, this, &VideoRecorder::onProcessFinished);
+    connect(m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
+        if (!m_recording)
+            return;
+        const bool canceled = m_canceling;
+        const QString reason = m_process ? m_process->errorString() : QStringLiteral("gstreamer process error");
+        const QString output = m_outputPath;
+        cleanupProcess();
+        if (!output.isEmpty())
+            QFile::remove(output);
+        if (!canceled)
+            emit recordingFailed(reason);
+    });
+
+    m_process->start();
+    if (!m_process->waitForStarted(3000)) {
+        const QString reason = m_process->errorString();
+        cleanupProcess();
+        emit recordingFailed(reason.isEmpty() ? QStringLiteral("cannot start gstreamer") : reason);
+        return false;
+    }
+
+    m_recording = true;
+    m_elapsed.start();
+    emit recordingStarted();
+    emit remainingTimeChanged(m_maxSeconds > 0 ? m_maxSeconds : -1);
+    emit elapsedTimeChanged(0);
+
+    m_countdownTimer = new QTimer(this);
+    m_countdownTimer->setInterval(500);
+    connect(m_countdownTimer, &QTimer::timeout, this, [this]() {
+        if (!m_recording || m_paused)
+            return;
+        const int elapsed = static_cast<int>(activeElapsedMs() / 1000);
+        if (elapsed != m_lastElapsedSeconds) {
+            m_lastElapsedSeconds = elapsed;
+            emit elapsedTimeChanged(elapsed);
+        }
+        if (m_maxSeconds > 0) {
+            const int remaining = qMax(0, m_maxSeconds - elapsed);
+            emit remainingTimeChanged(remaining);
+            if (remaining == 0)
+                stop();
+        }
+    });
+    m_countdownTimer->start();
+    return true;
+#else
+    Q_UNUSED(captureRect);
+    return false;
+#endif
+}
+
 QString VideoRecorder::ffmpegPath() const
 {
     const QString appDir = QCoreApplication::applicationDirPath();
-    const QStringList candidates = {
+    QStringList candidates = {
         QDir(appDir).filePath(QStringLiteral("ffmpeg/ffmpeg.exe")),
         QDir(appDir).filePath(QStringLiteral("ffmpeg.exe")),
+#ifndef Q_OS_WIN
+        QDir(appDir).filePath(QStringLiteral("ffmpeg/ffmpeg")),
+        QDir(appDir).filePath(QStringLiteral("ffmpeg")),
+#endif
         QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("../third_party/ffmpeg/bin/ffmpeg.exe")),
+#ifndef Q_OS_WIN
+        QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("../third_party/ffmpeg/bin/ffmpeg")),
+#endif
         QDir::current().filePath(QStringLiteral("third_party/ffmpeg/bin/ffmpeg.exe"))
     };
+#ifndef Q_OS_WIN
+    candidates << QDir::current().filePath(QStringLiteral("third_party/ffmpeg/bin/ffmpeg"));
+#endif
     for (const QString &path : candidates) {
         if (QFileInfo::exists(path))
             return QFileInfo(path).absoluteFilePath();
     }
     return QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));
+}
+
+QString VideoRecorder::gstLaunchPath() const
+{
+    const QString appDir = QCoreApplication::applicationDirPath();
+    const QStringList candidates = {
+        QDir(appDir).filePath(QStringLiteral("gstreamer/gst-launch-1.0")),
+        QDir(appDir).filePath(QStringLiteral("gst-launch-1.0"))
+    };
+    for (const QString &path : candidates) {
+        if (QFileInfo::exists(path))
+            return QFileInfo(path).absoluteFilePath();
+    }
+    return QStandardPaths::findExecutable(QStringLiteral("gst-launch-1.0"));
 }
 
 QString VideoRecorder::makeDefaultOutputPath() const
@@ -631,8 +947,11 @@ bool VideoRecorder::setProcessSuspended(bool suspended)
     CloseHandle(snapshot);
     return touched;
 #else
-    Q_UNUSED(suspended)
-    return false;
+    if (!m_process)
+        return false;
+    const QString signal = suspended ? QStringLiteral("-STOP") : QStringLiteral("-CONT");
+    return QProcess::execute(QStringLiteral("kill"),
+                             {signal, QString::number(m_process->processId())}) == 0;
 #endif
 }
 

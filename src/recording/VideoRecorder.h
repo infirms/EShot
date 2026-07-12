@@ -53,6 +53,8 @@ private:
     void cleanupProcess();
     void stopSystemAudioCapture();
     bool muxSystemAudio();
+    bool startWaylandPortalRecording(const QRect &captureRect);
+    QString gstLaunchPath() const;
 
     QProcess *m_process = nullptr;
     QTimer *m_countdownTimer = nullptr;
@@ -62,6 +64,7 @@ private:
     QString m_videoOnlyPath;
     QString m_audioPath;
     QString m_ffmpegPath;
+    bool m_usesGStreamer = false;
     QElapsedTimer m_elapsed;
     qint64 m_pausedMs = 0;
     qint64 m_pauseStartedMs = 0;

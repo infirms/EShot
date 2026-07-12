@@ -1,5 +1,6 @@
 #include "ScreenRecorder.h"
 #include "GifEncoder.h"
+#include "core/LinuxPortalScreenCast.h"
 
 #include <QGuiApplication>
 #include <QScreen>
@@ -9,6 +10,7 @@
 #include <QDir>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QCoreApplication>
 #include <QFileInfo>
 #include <QFile>
 #include <QDebug>
@@ -19,6 +21,10 @@
 #include <windows.h>
 #endif
 
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+#include <fcntl.h>
+#endif
+
 namespace {
 QString defaultSaveDirectory()
 {
@@ -27,6 +33,24 @@ QString defaultSaveDirectory()
         picturesPath = QDir::homePath();
     return QDir(picturesPath).filePath(QStringLiteral("EShot"));
 }
+
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+bool configurePipeWireRemote(QProcess *process, int fd)
+{
+    if (!process || fd < 0)
+        return false;
+
+    const int flags = fcntl(fd, F_GETFD);
+    if (flags < 0)
+        return false;
+    if (fcntl(fd, F_SETFD, flags & ~FD_CLOEXEC) < 0)
+        return false;
+
+    // ponytail: leave the portal PipeWire fd inheritable; add fd allowlisting
+    // only if a supported Qt floor gives us it on every Linux target.
+    return true;
+}
+#endif
 }
 
 ScreenRecorder::ScreenRecorder(QObject *parent) : QObject(parent) {}
@@ -63,13 +87,20 @@ void ScreenRecorder::start(const QRect &captureRect, int fps, int maxSeconds, in
     m_pendingFrame = QImage();
     m_pendingDelayCs = 0;
 
+    if (m_outputPath.isEmpty()) {
+        m_outputPath = makeDefaultOutputPath();
+    }
+
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    if (LinuxPortalScreenCast::isWaylandSession()) {
+        startWaylandPortalRecording(captureRect);
+        return;
+    }
+#endif
+
     if (!initCaptureResources()) {
         emit recordingFailed(QStringLiteral("cannot initialize screen capture"));
         return;
-    }
-
-    if (m_outputPath.isEmpty()) {
-        m_outputPath = makeDefaultOutputPath();
     }
 
     m_encoder = new GifEncoder(this);
@@ -159,6 +190,18 @@ QString ScreenRecorder::makeDefaultOutputPath() const
 void ScreenRecorder::stop()
 {
     if (!m_recording) return;
+    if (m_portalRecording && m_process) {
+        m_process->write("q\n");
+        QTimer::singleShot(2500, this, [this]() {
+            if (m_process && m_recording)
+                m_process->terminate();
+        });
+        QTimer::singleShot(5000, this, [this]() {
+            if (m_process && m_recording)
+                m_process->kill();
+        });
+        return;
+    }
     finishRecording();
 }
 
@@ -166,6 +209,8 @@ void ScreenRecorder::cancel()
 {
     if (!m_recording) return;
     m_recording = false;
+    m_portalRecording = false;
+    if (m_process) { m_process->kill(); m_process->deleteLater(); m_process = nullptr; }
     if (m_frameTimer)     { m_frameTimer->stop();     m_frameTimer->deleteLater();     m_frameTimer = nullptr; }
     if (m_countdownTimer) { m_countdownTimer->stop(); m_countdownTimer->deleteLater(); m_countdownTimer = nullptr; }
     if (m_encoder)        { delete m_encoder;         m_encoder = nullptr; }
@@ -211,6 +256,28 @@ void ScreenRecorder::finishRecording()
         }
     }
     emit recordingStopped(savedPath);
+}
+
+void ScreenRecorder::onPortalProcessFinished(int exitCode, QProcess::ExitStatus status)
+{
+    if (!m_portalRecording && !m_process)
+        return;
+    const QString stderrText = m_process ? QString::fromLocal8Bit(m_process->readAll()).trimmed() : QString();
+    const QString output = m_outputPath;
+
+    m_recording = false;
+    m_portalRecording = false;
+    if (m_countdownTimer) { m_countdownTimer->stop(); m_countdownTimer->deleteLater(); m_countdownTimer = nullptr; }
+    if (m_process) { m_process->deleteLater(); m_process = nullptr; }
+
+    if (status == QProcess::NormalExit && exitCode == 0 && QFileInfo::exists(output)) {
+        emit recordingStopped(output);
+        return;
+    }
+
+    if (QFileInfo::exists(output))
+        QFile::remove(output);
+    emit recordingFailed(stderrText.isEmpty() ? QStringLiteral("gstreamer exited with code %1").arg(exitCode) : stderrText);
 }
 
 void ScreenRecorder::captureFrame()
@@ -269,6 +336,140 @@ bool ScreenRecorder::framesEqual(const QImage &a, const QImage &b) const
     const qsizetype bytes = static_cast<qsizetype>(a.bytesPerLine()) * a.height();
     return bytes == static_cast<qsizetype>(b.bytesPerLine()) * b.height()
         && std::memcmp(a.constBits(), b.constBits(), static_cast<size_t>(bytes)) == 0;
+}
+
+bool ScreenRecorder::startWaylandPortalRecording(const QRect &captureRect)
+{
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    const QString gst = gstLaunchPath();
+    if (gst.isEmpty()) {
+        emit recordingFailed(QStringLiteral("gstreamer not found"));
+        return false;
+    }
+    if (!LinuxPortalScreenCast::isAvailable()) {
+        emit recordingFailed(QStringLiteral("Wayland ScreenCast portal is not available"));
+        return false;
+    }
+
+    LinuxPortalScreenCast::Stream stream = LinuxPortalScreenCast::selectStream();
+    if (!stream.isValid()) {
+        emit recordingFailed(QStringLiteral("Wayland screen recording permission was not granted"));
+        return false;
+    }
+
+    const QSize streamSize = stream.size.isValid() ? stream.size : captureRect.size();
+    const QRect relativeRect = captureRect.translated(-stream.position);
+    const int left = qBound(0, relativeRect.x(), qMax(0, streamSize.width() - 1));
+    const int top = qBound(0, relativeRect.y(), qMax(0, streamSize.height() - 1));
+    const int right = qMax(0, streamSize.width() - left - captureRect.width());
+    const int bottom = qMax(0, streamSize.height() - top - captureRect.height());
+    const QSize outputSize(qMax(8, qMin(m_outputSize.width(), streamSize.width() - left)),
+                           qMax(8, qMin(m_outputSize.height(), streamSize.height() - top)));
+
+    const QString targetObject = stream.pipewireSerial > 0
+        ? QString::number(stream.pipewireSerial)
+        : QString::number(stream.nodeId);
+    const int pipewireFd = stream.remoteFd();
+
+    QStringList args;
+    args << QStringLiteral("-e")
+         << QStringLiteral("pipewiresrc")
+         << QStringLiteral("fd=%1").arg(pipewireFd)
+         << QStringLiteral("target-object=%1").arg(targetObject)
+         << QStringLiteral("do-timestamp=true")
+         << QStringLiteral("!")
+         << QStringLiteral("queue")
+         << QStringLiteral("!")
+         << QStringLiteral("videoconvert")
+         << QStringLiteral("!")
+         << QStringLiteral("videocrop")
+         << QStringLiteral("left=%1").arg(left)
+         << QStringLiteral("right=%1").arg(right)
+         << QStringLiteral("top=%1").arg(top)
+         << QStringLiteral("bottom=%1").arg(bottom)
+         << QStringLiteral("!")
+         << QStringLiteral("videoscale")
+         << QStringLiteral("!")
+         << QStringLiteral("videorate")
+         << QStringLiteral("!")
+         << QStringLiteral("video/x-raw,width=%1,height=%2,framerate=%3/1")
+                .arg(outputSize.width())
+                .arg(outputSize.height())
+                .arg(m_fps)
+         << QStringLiteral("!")
+         << QStringLiteral("gifenc")
+         << QStringLiteral("!")
+         << QStringLiteral("filesink")
+         << QStringLiteral("location=%1").arg(m_outputPath);
+
+    m_process = new QProcess(this);
+    m_process->setProgram(gst);
+    m_process->setArguments(args);
+    m_process->setProcessChannelMode(QProcess::MergedChannels);
+    if (!configurePipeWireRemote(m_process, pipewireFd)) {
+        if (m_process) { m_process->deleteLater(); m_process = nullptr; }
+        emit recordingFailed(QStringLiteral("Wayland PipeWire remote could not be opened"));
+        return false;
+    }
+    connect(m_process, &QProcess::finished, this, &ScreenRecorder::onPortalProcessFinished);
+    connect(m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
+        if (!m_recording)
+            return;
+        const QString reason = m_process ? m_process->errorString() : QStringLiteral("gstreamer process error");
+        const QString output = m_outputPath;
+        m_recording = false;
+        m_portalRecording = false;
+        if (m_process) { m_process->deleteLater(); m_process = nullptr; }
+        if (!output.isEmpty())
+            QFile::remove(output);
+        emit recordingFailed(reason);
+    });
+
+    m_process->start();
+    if (!m_process->waitForStarted(3000)) {
+        const QString reason = m_process->errorString();
+        if (m_process) { m_process->deleteLater(); m_process = nullptr; }
+        emit recordingFailed(reason.isEmpty() ? QStringLiteral("cannot start gstreamer") : reason);
+        return false;
+    }
+
+    m_recording = true;
+    m_portalRecording = true;
+    m_recordingStartedAt = QDateTime::currentDateTime();
+    emit recordingStarted();
+    emit remainingTimeChanged(m_maxSeconds);
+
+    m_countdownTimer = new QTimer(this);
+    m_countdownTimer->setInterval(1000);
+    connect(m_countdownTimer, &QTimer::timeout, this, [this]() {
+        if (m_maxSeconds <= 0)
+            return;
+        const qint64 elapsed = m_recordingStartedAt.msecsTo(QDateTime::currentDateTime());
+        const int remaining = qMax(0, m_maxSeconds - static_cast<int>(elapsed / 1000));
+        emit remainingTimeChanged(remaining);
+        if (remaining == 0)
+            stop();
+    });
+    m_countdownTimer->start();
+    return true;
+#else
+    Q_UNUSED(captureRect);
+    return false;
+#endif
+}
+
+QString ScreenRecorder::gstLaunchPath() const
+{
+    const QString appDir = QCoreApplication::applicationDirPath();
+    const QStringList candidates = {
+        QDir(appDir).filePath(QStringLiteral("gstreamer/gst-launch-1.0")),
+        QDir(appDir).filePath(QStringLiteral("gst-launch-1.0"))
+    };
+    for (const QString &path : candidates) {
+        if (QFileInfo::exists(path))
+            return QFileInfo(path).absoluteFilePath();
+    }
+    return QStandardPaths::findExecutable(QStringLiteral("gst-launch-1.0"));
 }
 
 bool ScreenRecorder::initCaptureResources()

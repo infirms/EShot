@@ -1,7 +1,86 @@
 #include "HotkeyManager.h"
+#include "LinuxPortalGlobalShortcuts.h"
 #include <QApplication>
 #include <QSettings>
 #include <QDebug>
+#include <QGuiApplication>
+#include <QTimer>
+
+#if defined(ESHOT_HAVE_X11)
+#include <X11/Xlib.h>
+#include <X11/keysym.h>
+#endif
+
+namespace {
+#if defined(ESHOT_HAVE_X11)
+KeySym keySymForVirtualKey(UINT virtualKey)
+{
+    if (virtualKey >= 'A' && virtualKey <= 'Z')
+        return XK_A + (virtualKey - 'A');
+    if (virtualKey >= '0' && virtualKey <= '9')
+        return XK_0 + (virtualKey - '0');
+    if (virtualKey >= VK_F1 && virtualKey <= VK_F24)
+        return XK_F1 + (virtualKey - VK_F1);
+    if (virtualKey >= VK_NUMPAD0 && virtualKey <= VK_NUMPAD9)
+        return XK_KP_0 + (virtualKey - VK_NUMPAD0);
+
+    switch (virtualKey) {
+    case VK_SNAPSHOT: return XK_Print;
+    case VK_SCROLL: return XK_Scroll_Lock;
+    case VK_PAUSE: return XK_Pause;
+    case VK_CAPITAL: return XK_Caps_Lock;
+    case VK_NUMLOCK: return XK_Num_Lock;
+    case VK_APPS: return XK_Menu;
+    case VK_HOME: return XK_Home;
+    case VK_END: return XK_End;
+    case VK_PRIOR: return XK_Page_Up;
+    case VK_NEXT: return XK_Page_Down;
+    case VK_INSERT: return XK_Insert;
+    case VK_DELETE: return XK_Delete;
+    case VK_LEFT: return XK_Left;
+    case VK_RIGHT: return XK_Right;
+    case VK_UP: return XK_Up;
+    case VK_DOWN: return XK_Down;
+    case VK_SPACE: return XK_space;
+    case VK_RETURN: return XK_Return;
+    case VK_ESCAPE: return XK_Escape;
+    case VK_TAB: return XK_Tab;
+    case VK_BACK: return XK_BackSpace;
+    case VK_ADD: return XK_KP_Add;
+    case VK_SUBTRACT: return XK_KP_Subtract;
+    case VK_MULTIPLY: return XK_KP_Multiply;
+    case VK_DIVIDE: return XK_KP_Divide;
+    case VK_DECIMAL: return XK_KP_Decimal;
+    default: return NoSymbol;
+    }
+}
+
+unsigned int x11ModifiersForHotkey(UINT modifiers)
+{
+    unsigned int mask = 0;
+    if (modifiers & MOD_SHIFT) mask |= ShiftMask;
+    if (modifiers & MOD_CONTROL) mask |= ControlMask;
+    if (modifiers & MOD_ALT) mask |= Mod1Mask;
+    if (modifiers & MOD_WIN) mask |= Mod4Mask;
+    return mask;
+}
+
+QList<unsigned int> lockModifierVariants(unsigned int base)
+{
+    return {
+        base,
+        base | LockMask,
+        base | Mod2Mask,
+        base | LockMask | Mod2Mask
+    };
+}
+
+int ignoreX11HotkeyError(Display *, XErrorEvent *)
+{
+    return 0;
+}
+#endif
+}
 
 HotkeyManager& HotkeyManager::instance()
 {
@@ -12,6 +91,62 @@ HotkeyManager& HotkeyManager::instance()
 HotkeyManager::HotkeyManager(QObject *parent) : QObject(parent)
 {
     qApp->installNativeEventFilter(this);
+
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    m_portalShortcuts = new LinuxPortalGlobalShortcuts(this);
+    const bool portalAvailable = m_portalShortcuts->isAvailable();
+    bool x11Available = false;
+#if defined(ESHOT_HAVE_X11)
+    const bool useX11Hotkeys = QGuiApplication::platformName().contains(
+        QStringLiteral("xcb"), Qt::CaseInsensitive);
+    if (!portalAvailable && useX11Hotkeys)
+        m_x11Display = XOpenDisplay(nullptr);
+    x11Available = m_x11Display != nullptr;
+#endif
+
+    const LinuxHotkeyBackend backend = LinuxPortalGlobalShortcuts::preferredBackend(
+        portalAvailable, x11Available);
+    if (backend == LinuxHotkeyBackend::Portal) {
+        connect(m_portalShortcuts, &LinuxPortalGlobalShortcuts::shortcutActivated,
+                this, &HotkeyManager::emitHotkey);
+    }
+#if defined(ESHOT_HAVE_X11)
+    else if (backend == LinuxHotkeyBackend::X11) {
+        m_x11RootWindow = DefaultRootWindow(static_cast<Display *>(m_x11Display));
+        XSetErrorHandler(ignoreX11HotkeyError);
+        QTimer *pollTimer = new QTimer(this);
+        pollTimer->setInterval(40);
+        connect(pollTimer, &QTimer::timeout, this, [this]() {
+            Display *display = static_cast<Display *>(m_x11Display);
+            if (!display)
+                return;
+            while (XPending(display) > 0) {
+                XEvent event;
+                XNextEvent(display, &event);
+                if (event.type != KeyPress)
+                    continue;
+                const unsigned int keycode = event.xkey.keycode;
+                const unsigned int state = event.xkey.state & ~(LockMask | Mod2Mask);
+                for (auto it = m_registeredHotkeyDefs.constBegin(); it != m_registeredHotkeyDefs.constEnd(); ++it) {
+                    const UINT modifiers = it.value().first;
+                    const UINT virtualKey = it.value().second;
+                    const KeySym sym = keySymForVirtualKey(virtualKey);
+                    if (sym == NoSymbol)
+                        continue;
+                    const KeyCode registeredCode = XKeysymToKeycode(display, sym);
+                    if (registeredCode == keycode && x11ModifiersForHotkey(modifiers) == state) {
+                        emitHotkey(it.key());
+                        break;
+                    }
+                }
+            }
+        });
+        pollTimer->start();
+    }
+#endif
+    if (backend == LinuxHotkeyBackend::Unavailable)
+        qWarning() << "[HotkeyManager] GlobalShortcuts portal and X11 fallback are unavailable; global hotkeys are disabled.";
+#endif
 
     QSettings s("EShot", "EShot");
     UINT modifiers = static_cast<UINT>(s.value("hotkeyModifiers", 0).toUInt());
@@ -53,9 +188,25 @@ HotkeyManager::HotkeyManager(QObject *parent) : QObject(parent)
     registerHotkey(HOTKEY_VIDEO_CAPTURE, m_videoCaptureModifiers, m_videoCaptureVirtualKey);
 }
 
+bool HotkeyManager::requestLinuxPortalShortcutRebind()
+{
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    return m_portalShortcuts && m_portalShortcuts->requestRebind();
+#else
+    return false;
+#endif
+}
+
 HotkeyManager::~HotkeyManager()
 {
     unregisterAllHotkeys();
+#if defined(ESHOT_HAVE_X11)
+    if (m_x11Display) {
+        XCloseDisplay(static_cast<Display *>(m_x11Display));
+        m_x11Display = nullptr;
+        m_x11RootWindow = 0;
+    }
+#endif
     qApp->removeNativeEventFilter(this);
 }
 
@@ -63,12 +214,60 @@ bool HotkeyManager::registerHotkey(int id, UINT modifiers, UINT virtualKey)
 {
     if (virtualKey == 0)
         return true;
+#ifdef Q_OS_WIN
     if (RegisterHotKey(nullptr, id, modifiers, virtualKey)) {
         if (!m_registeredHotkeys.contains(id))
             m_registeredHotkeys.append(id);
+        m_registeredHotkeyDefs.insert(id, qMakePair(modifiers, virtualKey));
         return true;
     }
     return false;
+#elif defined(ESHOT_HAVE_X11)
+    Display *display = static_cast<Display *>(m_x11Display);
+    if (!display || m_x11RootWindow == 0) {
+        if (m_portalShortcuts && m_portalShortcuts->isAvailable()) {
+            if (!m_registeredHotkeys.contains(id))
+                m_registeredHotkeys.append(id);
+            m_registeredHotkeyDefs.insert(id, qMakePair(modifiers, virtualKey));
+            refreshPortalShortcuts();
+            return true;
+        }
+        return false;
+    }
+
+    const KeySym sym = keySymForVirtualKey(virtualKey);
+    if (sym == NoSymbol)
+        return false;
+    const KeyCode keycode = XKeysymToKeycode(display, sym);
+    if (keycode == 0)
+        return false;
+
+    const unsigned int baseModifiers = x11ModifiersForHotkey(modifiers);
+    XSync(display, False);
+    for (unsigned int variant : lockModifierVariants(baseModifiers)) {
+        XGrabKey(display, keycode, variant, m_x11RootWindow, True, GrabModeAsync, GrabModeAsync);
+    }
+    XSelectInput(display, m_x11RootWindow, KeyPressMask);
+    XSync(display, False);
+    if (!m_registeredHotkeys.contains(id))
+        m_registeredHotkeys.append(id);
+    m_registeredHotkeyDefs.insert(id, qMakePair(modifiers, virtualKey));
+    return true;
+#elif defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    if (!m_portalShortcuts || !m_portalShortcuts->isAvailable())
+        return false;
+    if (!m_registeredHotkeys.contains(id))
+        m_registeredHotkeys.append(id);
+    m_registeredHotkeyDefs.insert(id, qMakePair(modifiers, virtualKey));
+    refreshPortalShortcuts();
+    return true;
+#else
+    Q_UNUSED(modifiers);
+    if (!m_registeredHotkeys.contains(id))
+        m_registeredHotkeys.append(id);
+    m_registeredHotkeyDefs.insert(id, qMakePair(modifiers, virtualKey));
+    return true;
+#endif
 }
 
 bool HotkeyManager::isPlainPrintScreen(UINT modifiers, UINT virtualKey)
@@ -119,14 +318,38 @@ bool HotkeyManager::setWindowsPrintScreenSnippingEnabled(bool enabled)
 
 void HotkeyManager::unregisterHotkey(int id)
 {
+#ifdef Q_OS_WIN
     UnregisterHotKey(nullptr, id);
+#elif defined(ESHOT_HAVE_X11)
+    Display *display = static_cast<Display *>(m_x11Display);
+    if (display && m_x11RootWindow != 0 && m_registeredHotkeyDefs.contains(id)) {
+        const auto def = m_registeredHotkeyDefs.value(id);
+        const KeySym sym = keySymForVirtualKey(def.second);
+        const KeyCode keycode = sym == NoSymbol ? 0 : XKeysymToKeycode(display, sym);
+        if (keycode != 0) {
+            for (unsigned int variant : lockModifierVariants(x11ModifiersForHotkey(def.first)))
+                XUngrabKey(display, keycode, variant, m_x11RootWindow);
+            XSync(display, False);
+        }
+    }
+#endif
     m_registeredHotkeys.removeAll(id);
+    m_registeredHotkeyDefs.remove(id);
+    refreshPortalShortcuts();
 }
 
 void HotkeyManager::unregisterAllHotkeys()
 {
+#ifdef Q_OS_WIN
     for (int id : m_registeredHotkeys) UnregisterHotKey(nullptr, id);
+#elif defined(ESHOT_HAVE_X11)
+    const QList<int> ids = m_registeredHotkeys;
+    for (int id : ids)
+        unregisterHotkey(id);
+#endif
     m_registeredHotkeys.clear();
+    m_registeredHotkeyDefs.clear();
+    refreshPortalShortcuts();
 }
 
 bool HotkeyManager::reRegisterCaptureHotkey(UINT modifiers, UINT virtualKey)
@@ -232,20 +455,35 @@ bool HotkeyManager::reRegisterActionHotkeys(UINT instantModifiers, UINT instantV
 bool HotkeyManager::nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result)
 {
     Q_UNUSED(result);
+#ifdef Q_OS_WIN
     if (eventType == "windows_generic_MSG" || eventType == "windows_dispatcher_MSG") {
         MSG *msg = static_cast<MSG*>(message);
         if (msg->message == WM_HOTKEY) {
-            int id = static_cast<int>(msg->wParam);
-            emit hotkeyTriggered(id);
-            if (id == HOTKEY_CAPTURE) emit captureRequested();
-            else if (id == HOTKEY_RECORDING_PAUSE) emit recordingPauseRequested();
-            else if (id == HOTKEY_RECORDING_STOP) emit recordingStopRequested();
-            else if (id == HOTKEY_RECORDING_CANCEL) emit recordingCancelRequested();
-            else if (id == HOTKEY_INSTANT_CAPTURE) emit instantCaptureRequested();
-            else if (id == HOTKEY_GIF_CAPTURE) emit gifCaptureRequested();
-            else if (id == HOTKEY_VIDEO_CAPTURE) emit videoCaptureRequested();
+            emitHotkey(static_cast<int>(msg->wParam));
             return true;
         }
     }
+#else
+    Q_UNUSED(eventType);
+    Q_UNUSED(message);
+#endif
     return false;
+}
+
+void HotkeyManager::emitHotkey(int id)
+{
+    emit hotkeyTriggered(id);
+    if (id == HOTKEY_CAPTURE) emit captureRequested();
+    else if (id == HOTKEY_RECORDING_PAUSE) emit recordingPauseRequested();
+    else if (id == HOTKEY_RECORDING_STOP) emit recordingStopRequested();
+    else if (id == HOTKEY_RECORDING_CANCEL) emit recordingCancelRequested();
+    else if (id == HOTKEY_INSTANT_CAPTURE) emit instantCaptureRequested();
+    else if (id == HOTKEY_GIF_CAPTURE) emit gifCaptureRequested();
+    else if (id == HOTKEY_VIDEO_CAPTURE) emit videoCaptureRequested();
+}
+
+void HotkeyManager::refreshPortalShortcuts()
+{
+    if (m_portalShortcuts && m_portalShortcuts->isAvailable())
+        m_portalShortcuts->setShortcuts(m_registeredHotkeyDefs);
 }

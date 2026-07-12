@@ -30,8 +30,14 @@ UploadDialog::UploadDialog(QWidget *parent) : QDialog(parent)
                               static_cast<int>(ImageUploader::Provider::Uguu));
     m_providerCombo->addItem(QStringLiteral("Litterbox (24 hours)"),
                               static_cast<int>(ImageUploader::Provider::Litterbox));
-    m_providerCombo->addItem(QStringLiteral("Yandex Disk"),
-                              static_cast<int>(ImageUploader::Provider::YandexDisk));
+    m_providerCombo->addItem(QStringLiteral("TmpFiles.org"),
+                              static_cast<int>(ImageUploader::Provider::TmpFiles));
+    m_providerCombo->addItem(QStringLiteral("temp.sh"),
+                              static_cast<int>(ImageUploader::Provider::TempSh));
+    m_providerCombo->addItem(QStringLiteral("Allwebs"),
+                              static_cast<int>(ImageUploader::Provider::Allwebs));
+    m_providerCombo->addItem(QStringLiteral("Radikal Cloud"),
+                              static_cast<int>(ImageUploader::Provider::RadikalCloud));
     m_providerCombo->addItem(QStringLiteral("Google Drive"),
                               static_cast<int>(ImageUploader::Provider::GoogleDrive));
     providerRow->addWidget(providerLabel);
@@ -186,6 +192,10 @@ void UploadDialog::updateAuthHelp()
         break;
     case ImageUploader::Provider::GoogleDrive:
         text = TranslationManager::uploadAuthHelpGoogleDrive();
+        break;
+    case ImageUploader::Provider::Allwebs:
+    case ImageUploader::Provider::RadikalCloud:
+        text = TranslationManager::uploadAuthHelpApiKey(m_uploader->providerDisplayName());
         break;
     case ImageUploader::Provider::Catbox:
         text = TranslationManager::uploadAuthHelpCatbox();

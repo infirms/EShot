@@ -1,9 +1,13 @@
 #include "FirstRunWizard.h"
 #include "../core/HotkeyManager.h"
 #include "../core/TranslationManager.h"
+#ifdef Q_OS_LINUX
+#include "../core/LinuxDependencySelection.h"
+#endif
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QGridLayout>
 #include <QLabel>
 #include <QPushButton>
 #include <QComboBox>
@@ -14,12 +18,19 @@
 #include <QSettings>
 #include <QGroupBox>
 #include <QFont>
+#include <QIcon>
 #include <QDir>
 #include <QMessageBox>
 #include <QTimer>
 #include <QGuiApplication>
 #include <QScreen>
 #include <QCursor>
+#ifdef Q_OS_LINUX
+#include <QCheckBox>
+#include <QProcess>
+#include <QCoreApplication>
+#include <QLocale>
+#endif
 
 FirstRunWizard::FirstRunWizard(QWidget *parent)
     : QDialog(parent)
@@ -46,7 +57,6 @@ bool FirstRunWizard::shouldShow()
 static QKeySequence win32ToKeySequence(UINT modifiers, UINT vkey)
 {
     Qt::KeyboardModifiers qtMod = Qt::NoModifier;
-#ifdef Q_OS_WIN
     if (modifiers & MOD_SHIFT)   qtMod |= Qt::ShiftModifier;
     if (modifiers & MOD_CONTROL) qtMod |= Qt::ControlModifier;
     if (modifiers & MOD_ALT)     qtMod |= Qt::AltModifier;
@@ -88,15 +98,11 @@ static QKeySequence win32ToKeySequence(UINT modifiers, UINT vkey)
     if (vkey == VK_MULTIPLY) return QKeySequence(QKeyCombination(qtMod | Qt::KeypadModifier, Qt::Key_Asterisk));
     if (vkey == VK_DIVIDE)   return QKeySequence(QKeyCombination(qtMod | Qt::KeypadModifier, Qt::Key_Slash));
     if (vkey == VK_DECIMAL)  return QKeySequence(QKeyCombination(qtMod | Qt::KeypadModifier, Qt::Key_Period));
-#else
-    Q_UNUSED(modifiers); Q_UNUSED(vkey);
-#endif
     return QKeySequence(Qt::Key_Print);
 }
 
 bool FirstRunWizard::keySequenceToWin32(const QKeySequence &seq, UINT &modifiers, UINT &vkey)
 {
-#ifdef Q_OS_WIN
     if (seq.isEmpty()) return false;
 
     QKeyCombination combo = seq[0];
@@ -168,10 +174,6 @@ bool FirstRunWizard::keySequenceToWin32(const QKeySequence &seq, UINT &modifiers
         return true;
     }
     return false;
-#else
-    Q_UNUSED(seq); Q_UNUSED(modifiers); Q_UNUSED(vkey);
-    return false;
-#endif
 }
 
 void FirstRunWizard::setupUi()
@@ -244,11 +246,41 @@ void FirstRunWizard::setupUi()
     pathLayout->addWidget(browseBtn);
     mainLayout->addWidget(pathGroup);
 
+#ifdef Q_OS_LINUX
+    QGroupBox *depsGroup = new QGroupBox(tr("Optional Linux features"));
+    QVBoxLayout *depsLayout = new QVBoxLayout(depsGroup);
+    QLabel *depsHint = new QLabel(tr("Select optional features to install with the system package manager. You can skip and retry from Settings."));
+    depsHint->setWordWrap(true); depsLayout->addWidget(depsHint);
+    m_linuxFfmpegCheck = new QCheckBox(tr("FFmpeg (video and GIF recording)"));
+    m_linuxOcrCheck = new QCheckBox(tr("Tesseract OCR"));
+    m_linuxDesktopCheck = new QCheckBox(tr("Wayland recording and desktop portal packages"));
+    m_linuxAppImageIntegrationCheck = new QCheckBox(tr("Add EShot to the application menu and install shortcuts"));
+    m_linuxFfmpegCheck->setChecked(true); m_linuxOcrCheck->setChecked(true);
+    m_linuxDesktopCheck->setChecked(false);
+    m_linuxAppImageIntegrationCheck->setChecked(!qEnvironmentVariable("APPIMAGE").isEmpty());
+    depsLayout->addWidget(m_linuxFfmpegCheck); depsLayout->addWidget(m_linuxOcrCheck); depsLayout->addWidget(m_linuxDesktopCheck); depsLayout->addWidget(m_linuxAppImageIntegrationCheck);
+    QGridLayout *languages = new QGridLayout();
+    const auto names = ocrLanguageDisplayNames();
+    const auto defaults = defaultOcrLanguageCodes(QLocale::system().name());
+    int languageIndex = 0;
+    for (const QString &code : supportedOcrLanguageCodes()) { auto *check = new QCheckBox(names.value(code)); check->setProperty("ocrCode", code); check->setChecked(defaults.contains(code)); languages->addWidget(check, languageIndex / 4, languageIndex % 4); m_linuxLanguageChecks << check; ++languageIndex; }
+    depsLayout->addLayout(languages);
+    connect(m_linuxOcrCheck, &QCheckBox::toggled, depsGroup, [this](bool enabled) { for (auto *check : m_linuxLanguageChecks) check->setEnabled(enabled); });
+    QPushButton *skipDeps = new QPushButton(tr("Skip optional dependency setup"));
+    connect(skipDeps, &QPushButton::clicked, depsGroup, [this] { m_linuxExplicitSkip = true; m_linuxFfmpegCheck->setChecked(false); m_linuxOcrCheck->setChecked(false); m_linuxDesktopCheck->setChecked(false); m_linuxAppImageIntegrationCheck->setChecked(false); m_linuxInstallStatus->setText(tr("Optional setup will be skipped. Click Finish to continue.")); });
+    depsLayout->addWidget(skipDeps);
+    m_linuxInstallStatus = new QLabel(); m_linuxInstallStatus->setWordWrap(true); depsLayout->addWidget(m_linuxInstallStatus);
+    mainLayout->addWidget(depsGroup);
+#endif
+
     mainLayout->addStretch();
 
     QHBoxLayout *btnLayout = new QHBoxLayout();
     btnLayout->addStretch();
     QPushButton *finishBtn = new QPushButton(TranslationManager::wizardFinish());
+#ifdef Q_OS_LINUX
+    m_finishButton = finishBtn;
+#endif
     finishBtn->setDefault(true);
     finishBtn->setStyleSheet(R"(
         QPushButton { background-color: #0078D4; color: white; border: none;
@@ -279,6 +311,14 @@ void FirstRunWizard::loadDefaults()
         defaultPath = QDir::homePath();
     defaultPath = QDir(defaultPath).filePath("EShot");
     m_savePathEdit->setText(s.value("savePath", defaultPath).toString());
+#ifdef Q_OS_LINUX
+    m_linuxFfmpegCheck->setChecked(s.value("linuxSetupFfmpeg", true).toBool());
+    m_linuxOcrCheck->setChecked(s.value("linuxSetupOcr", true).toBool());
+    m_linuxDesktopCheck->setChecked(s.value("linuxSetupPortal", false).toBool());
+    m_linuxAppImageIntegrationCheck->setChecked(s.value("linuxSetupAppImageIntegration", !qEnvironmentVariable("APPIMAGE").isEmpty()).toBool());
+    const QStringList selectedLanguages = s.value("linuxSetupOcrLanguages", defaultOcrLanguageCodes(QLocale::system().name())).toStringList();
+    for (auto *check : m_linuxLanguageChecks) check->setChecked(selectedLanguages.contains(check->property("ocrCode").toString()));
+#endif
 
     onHotkeyChanged();
 }
@@ -375,8 +415,124 @@ void FirstRunWizard::onFinish()
     s.setValue("hotkeyModifiers", modifiers);
     s.setValue("hotkeyVKey", vkey);
     s.setValue("savePath", savePath);
+#ifdef Q_OS_LINUX
+    QStringList selectedLanguages;
+    for (auto *check : m_linuxLanguageChecks) if (check->isChecked()) selectedLanguages << check->property("ocrCode").toString();
+    s.setValue("linuxSetupFfmpeg", m_linuxFfmpegCheck->isChecked());
+    s.setValue("linuxSetupOcr", m_linuxOcrCheck->isChecked());
+    s.setValue("linuxSetupPortal", m_linuxDesktopCheck->isChecked());
+    s.setValue("linuxSetupAppImageIntegration", m_linuxAppImageIntegrationCheck->isChecked());
+    s.setValue("linuxSetupOcrLanguages", selectedLanguages);
+#else
     s.setValue("wizardCompleted", true);
+#endif
     s.sync();
 
+#ifdef Q_OS_LINUX
+    startLinuxDependencyInstaller();
+#else
     accept();
+#endif
 }
+
+#ifdef Q_OS_LINUX
+static QString linuxInstallerPath()
+{
+    const QString appDir = qEnvironmentVariable("ESHOT_APPDIR");
+    if (!appDir.isEmpty()) return QDir(appDir).filePath("usr/lib/eshot/install-runtime-deps.sh");
+    return QDir(QCoreApplication::applicationDirPath()).filePath("../lib/eshot/install-runtime-deps.sh");
+}
+
+static bool selectedLinuxCapabilitiesAvailable(bool ffmpeg, bool ocr, bool integration)
+{
+    if (ffmpeg && QStandardPaths::findExecutable(QStringLiteral("ffmpeg")).isEmpty()) return false;
+    if (ocr && QStandardPaths::findExecutable(QStringLiteral("tesseract")).isEmpty()) return false;
+    if (integration) {
+        const QString dataHome = qEnvironmentVariable("XDG_DATA_HOME",
+            QDir::home().filePath(QStringLiteral(".local/share")));
+        if (!QFileInfo::exists(QDir(dataHome).filePath(QStringLiteral("applications/io.github.benoks.EShot.desktop")))) return false;
+    }
+    return true;
+}
+
+void FirstRunWizard::startLinuxDependencyInstaller()
+{
+    QStringList languages;
+    for (auto *check : m_linuxLanguageChecks) if (check->isChecked()) languages << check->property("ocrCode").toString();
+    QStringList args = linuxDependencyArguments(m_linuxFfmpegCheck->isChecked(), m_linuxOcrCheck->isChecked(), languages, m_linuxDesktopCheck->isChecked());
+    const bool integrate = m_linuxAppImageIntegrationCheck->isChecked() && !qEnvironmentVariable("APPIMAGE").isEmpty();
+    if (integrate) args << QStringLiteral("--integrate-appimage");
+    if (m_linuxExplicitSkip) { QSettings("EShot", "EShot").setValue("wizardCompleted", true); accept(); return; }
+    if (args.isEmpty() && !integrate) { QSettings("EShot", "EShot").setValue("wizardCompleted", true); accept(); return; }
+    const QString script = linuxInstallerPath();
+    if (!QFileInfo::exists(script)) { m_linuxInstallStatus->setText(tr("Installer script was not found. Retry after reinstalling EShot, or skip optional setup.")); return; }
+    m_finishButton->setEnabled(false); m_linuxInstallStatus->setText(tr("Installing selected dependencies…"));
+    m_linuxInstallerProcess = new QProcess(this);
+    const QString program = QStringLiteral("bash");
+    const QStringList processArgs = QStringList{script} + args;
+    qInfo() << "[FirstRunWizard] Starting optional setup:" << program << processArgs << "packages/options; no credentials are logged";
+    connect(m_linuxInstallerProcess, &QProcess::started, this, [this] { m_linuxInstallStatus->setText(tr("Installing selected optional components…")); });
+    connect(m_linuxInstallerProcess, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
+        if (!m_linuxInstallerProcess) return;
+        m_finishButton->setEnabled(true);
+        m_linuxInstallStatus->setText(tr("Could not start optional setup. Click Finish to retry, or choose Skip."));
+        m_linuxInstallerProcess->deleteLater(); m_linuxInstallerProcess = nullptr;
+    });
+    connect(m_linuxInstallerProcess, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus status) {
+        if (!m_linuxInstallerProcess) return;
+        qInfo() << "[FirstRunWizard] Optional setup exit status:" << exitCode << status;
+        m_finishButton->setEnabled(true);
+        if (status == QProcess::NormalExit && exitCode == 0) {
+            const bool integration = m_linuxAppImageIntegrationCheck->isChecked() && !qEnvironmentVariable("APPIMAGE").isEmpty();
+            if (!selectedLinuxCapabilitiesAvailable(m_linuxFfmpegCheck->isChecked(), m_linuxOcrCheck->isChecked(), integration)) {
+                m_linuxInstallStatus->setText(tr("Setup finished, but one or more selected capabilities are still unavailable. Click Finish to retry, or choose Skip."));
+                m_linuxInstallerProcess->deleteLater(); m_linuxInstallerProcess = nullptr;
+                return;
+            }
+            QSettings("EShot", "EShot").setValue("wizardCompleted", true); m_linuxInstallStatus->setText(tr("Selected optional components installed successfully.")); accept(); return;
+        }
+        const QString detail = QString::fromUtf8(m_linuxInstallerProcess->readAllStandardError()).trimmed();
+        m_linuxInstallStatus->setText(tr("Installation failed or authorization was cancelled. Check your package manager, then click Finish to retry, or choose Skip. %1").arg(detail));
+        m_linuxInstallerProcess->deleteLater(); m_linuxInstallerProcess = nullptr;
+    });
+    m_linuxInstallerProcess->start(program, processArgs);
+}
+
+void FirstRunWizard::showLinuxDependencySetup(QWidget *parent)
+{
+    QDialog dialog(parent); dialog.setWindowTitle(QObject::tr("Linux dependency setup"));
+    QVBoxLayout layout(&dialog);
+    auto *ffmpeg = new QCheckBox(QObject::tr("FFmpeg (video and GIF recording)")); ffmpeg->setChecked(true);
+    auto *ocr = new QCheckBox(QObject::tr("Tesseract OCR")); ocr->setChecked(true);
+    auto *desktop = new QCheckBox(QObject::tr("Wayland recording and desktop portal packages")); desktop->setChecked(false);
+    const auto defaults = defaultOcrLanguageCodes(QLocale::system().name());
+    layout.addWidget(ffmpeg); layout.addWidget(ocr);
+    QList<QCheckBox *> languageChecks;
+    const auto names = ocrLanguageDisplayNames();
+    QGridLayout languageLayout;
+    int languageIndex = 0;
+    for (const QString &code : supportedOcrLanguageCodes()) { auto *check = new QCheckBox(names.value(code)); check->setProperty("ocrCode", code); check->setChecked(defaults.contains(code)); languageLayout.addWidget(check, languageIndex / 4, languageIndex % 4); languageChecks << check; ++languageIndex; }
+    layout.addLayout(&languageLayout); layout.addWidget(desktop);
+    QObject::connect(ocr, &QCheckBox::toggled, &dialog, [&languageChecks](bool enabled) { for (auto *check : languageChecks) check->setEnabled(enabled); });
+    QHBoxLayout buttons; auto *cancel = new QPushButton(QObject::tr("Cancel")); auto *install = new QPushButton(QObject::tr("Install selected")); buttons.addStretch(); buttons.addWidget(cancel); buttons.addWidget(install); layout.addLayout(&buttons);
+    QLabel statusLabel; statusLabel.setWordWrap(true); layout.addWidget(&statusLabel);
+    QProcess installer(&dialog);
+    QObject::connect(cancel, &QPushButton::clicked, &dialog, &QDialog::reject);
+    QObject::connect(install, &QPushButton::clicked, &dialog, [&] {
+        QStringList languages; for (auto *check : languageChecks) if (check->isChecked()) languages << check->property("ocrCode").toString();
+        const auto args = linuxDependencyArguments(ffmpeg->isChecked(), ocr->isChecked(), languages, desktop->isChecked());
+        if (args.isEmpty()) { dialog.accept(); return; }
+        if (!QFileInfo::exists(linuxInstallerPath())) { statusLabel.setText(QObject::tr("Installer script not found. Reinstall EShot and retry, or cancel.")); return; }
+        install->setEnabled(false); cancel->setEnabled(false); statusLabel.setText(QObject::tr("Installing selected dependencies…"));
+        installer.start("bash", QStringList{linuxInstallerPath()} + args);
+    });
+    QObject::connect(&installer, &QProcess::finished, &dialog, [&](int exitCode, QProcess::ExitStatus exitStatus) {
+        install->setEnabled(true); cancel->setEnabled(true);
+        if (exitStatus == QProcess::NormalExit && exitCode == 0) { statusLabel.setText(QObject::tr("Selected dependencies installed successfully.")); dialog.accept(); return; }
+        const QString detail = QString::fromUtf8(installer.readAllStandardError()).trimmed();
+        statusLabel.setText(QObject::tr("Installation failed or authorization was cancelled. Check your package manager, then retry or cancel. %1").arg(detail));
+    });
+    QObject::connect(&installer, &QProcess::errorOccurred, &dialog, [&](QProcess::ProcessError) { install->setEnabled(true); cancel->setEnabled(true); statusLabel.setText(QObject::tr("Could not start the installer. Retry or cancel.")); });
+    dialog.exec();
+}
+#endif

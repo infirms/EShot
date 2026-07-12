@@ -1,5 +1,7 @@
 #include "UpdateManager.h"
+#include "LinuxUpdateScript.h"
 #include "TranslationManager.h"
+#include "UpdateAssetSelector.h"
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
@@ -119,7 +121,20 @@ void UpdateManager::parseRelease(const QByteArray &data, bool manual)
 
     m_latestVersion = latestTag;
     m_releaseUrl = obj.value(QStringLiteral("html_url")).toString();
-    m_installerUrl = selectInstallerUrl(obj.value(QStringLiteral("assets")).toArray(), &m_installerName, &m_installerSize);
+    const UpdatePlatform platform =
+#ifdef Q_OS_WIN
+        UpdatePlatform::Windows;
+#else
+        UpdatePlatform::Linux;
+#endif
+    const UpdateAsset asset = selectUpdateAsset(
+        obj.value(QStringLiteral("assets")).toArray(),
+        platform,
+        QSysInfo::currentCpuArchitecture());
+    m_installerUrl = asset.url;
+    m_installerName = asset.name;
+    m_installerSize = asset.size;
+    m_installerSha256 = asset.sha256;
 
     const QString currentVersion = QCoreApplication::applicationVersion();
     m_updateAvailable = !latestTag.isEmpty() && isNewerVersion(latestTag, currentVersion);
@@ -141,30 +156,6 @@ void UpdateManager::parseRelease(const QByteArray &data, bool manual)
         if (m_updateAvailable)
             QTimer::singleShot(0, this, &UpdateManager::installUpdate);
     }
-}
-
-QString UpdateManager::selectInstallerUrl(const QJsonArray &assets, QString *assetName, qint64 *assetSize) const
-{
-    const QString arch = QSysInfo::currentCpuArchitecture().toLower();
-    const QString wanted = arch.contains(QStringLiteral("arm")) ? QStringLiteral("arm64") : QStringLiteral("x64");
-
-    for (const QJsonValue &value : assets) {
-        const QJsonObject asset = value.toObject();
-        const QString name = asset.value(QStringLiteral("name")).toString();
-        const QString lower = name.toLower();
-        if (!lower.endsWith(QStringLiteral(".exe")))
-            continue;
-        if (!lower.contains(QStringLiteral("setup")))
-            continue;
-        if (!lower.contains(wanted))
-            continue;
-
-        if (assetName) *assetName = name;
-        if (assetSize) *assetSize = static_cast<qint64>(asset.value(QStringLiteral("size")).toDouble());
-        return asset.value(QStringLiteral("browser_download_url")).toString();
-    }
-
-    return QString();
 }
 
 QString UpdateManager::updateCacheDir() const
@@ -192,6 +183,20 @@ void UpdateManager::installUpdate()
         emit failed(msg);
         return;
     }
+#if defined(Q_OS_LINUX)
+    const QString appImagePath = qEnvironmentVariable("APPIMAGE");
+    if (appImagePath.isEmpty() || !QFileInfo::exists(appImagePath)) {
+        const QString msg = TranslationManager::updateNoInstaller();
+        setStatus(TranslationManager::updateStatusFailed(msg));
+        emit failed(msg);
+        return;
+    }
+#elif !defined(Q_OS_WIN)
+    const QString msg = TranslationManager::updateNoInstaller();
+    setStatus(TranslationManager::updateStatusFailed(msg));
+    emit failed(msg);
+    return;
+#endif
     downloadInstaller();
 }
 
@@ -201,7 +206,11 @@ void UpdateManager::downloadInstaller()
     setStatus(TranslationManager::updateStatusDownloading());
 
     const QString fileName = m_installerName.isEmpty()
+#ifdef Q_OS_WIN
         ? QStringLiteral("EShot_Update_%1.exe").arg(m_latestVersion)
+#else
+        ? QStringLiteral("EShot_Update_%1.AppImage").arg(m_latestVersion)
+#endif
         : m_installerName;
     const QString path = QDir(updateCacheDir()).filePath(fileName);
     m_downloadFile = new QFile(path);
@@ -271,6 +280,25 @@ void UpdateManager::finishDownload()
         return;
     }
 
+#ifdef Q_OS_LINUX
+    const bool digestValid = !m_installerSha256.isEmpty()
+        && fileMatchesSha256(path, m_installerSha256);
+#else
+    const bool digestValid = m_installerSha256.isEmpty()
+        || fileMatchesSha256(path, m_installerSha256);
+#endif
+    if (!digestValid) {
+        if (m_downloadFile) {
+            delete m_downloadFile;
+            m_downloadFile = nullptr;
+        }
+        QFile::remove(path);
+        const QString msg = TranslationManager::updateInvalidDownload();
+        setStatus(TranslationManager::updateStatusFailed(msg));
+        emit failed(msg);
+        return;
+    }
+
     delete m_downloadFile;
     m_downloadFile = nullptr;
     launchInstaller(path);
@@ -281,6 +309,7 @@ void UpdateManager::launchInstaller(const QString &installerPath)
     m_installing = true;
     setStatus(TranslationManager::updateStatusInstalling());
 
+#ifdef Q_OS_WIN
     const QString exePath = QCoreApplication::applicationFilePath();
     const QString scriptPath = QDir(updateCacheDir()).filePath(
         QStringLiteral("install_update_%1.ps1").arg(QDateTime::currentMSecsSinceEpoch()));
@@ -329,4 +358,53 @@ void UpdateManager::launchInstaller(const QString &installerPath)
     setStatus(TranslationManager::updateStatusRestarting());
     emit installerLaunched();
     QTimer::singleShot(500, qApp, &QCoreApplication::quit);
+#elif defined(Q_OS_LINUX)
+    const QString currentPath = QFileInfo(qEnvironmentVariable("APPIMAGE")).absoluteFilePath();
+    const QFileInfo currentInfo(currentPath);
+    if (!currentInfo.exists() || !currentInfo.isFile() || !currentInfo.isWritable()) {
+        m_installing = false;
+        const QString msg = TranslationManager::updateCannotLaunchInstaller();
+        setStatus(TranslationManager::updateStatusFailed(msg));
+        emit failed(msg);
+        return;
+    }
+
+    const QString scriptPath = QDir(updateCacheDir()).filePath(
+        QStringLiteral("install_update_%1.sh").arg(QDateTime::currentMSecsSinceEpoch()));
+    const QString script = buildLinuxUpdateScript(
+        QCoreApplication::applicationPid(), currentPath, installerPath);
+    QFile file(scriptPath);
+    if (script.isEmpty() || !file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+        m_installing = false;
+        const QString msg = file.errorString().isEmpty()
+            ? TranslationManager::updateCannotLaunchInstaller()
+            : file.errorString();
+        setStatus(TranslationManager::updateStatusFailed(msg));
+        emit failed(msg);
+        return;
+    }
+    file.write(script.toUtf8());
+    file.close();
+    QFile::setPermissions(scriptPath,
+                          QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
+
+    if (!QProcess::startDetached(QStringLiteral("/bin/sh"), {scriptPath})) {
+        m_installing = false;
+        QFile::remove(scriptPath);
+        const QString msg = TranslationManager::updateCannotLaunchInstaller();
+        setStatus(TranslationManager::updateStatusFailed(msg));
+        emit failed(msg);
+        return;
+    }
+
+    setStatus(TranslationManager::updateStatusRestarting());
+    emit installerLaunched();
+    QTimer::singleShot(500, qApp, &QCoreApplication::quit);
+#else
+    Q_UNUSED(installerPath);
+    m_installing = false;
+    const QString msg = TranslationManager::updateNoInstaller();
+    setStatus(TranslationManager::updateStatusFailed(msg));
+    emit failed(msg);
+#endif
 }

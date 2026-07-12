@@ -15,6 +15,7 @@
 #include <QSettings>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QRegularExpression>
 #include <QUrl>
 #include <QUrlQuery>
 
@@ -33,6 +34,29 @@ QString tokenFromQueryLikeString(QString text)
     return query.queryItemValue(QStringLiteral("access_token"), QUrl::FullyDecoded).trimmed();
 }
 
+QString tokenFromJsonLikeString(const QString &text)
+{
+    const QString trimmed = text.trimmed();
+    if (trimmed.isEmpty() || !trimmed.contains(QStringLiteral("access_token")))
+        return QString();
+
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(trimmed.toUtf8(), &parseError);
+    if (parseError.error != QJsonParseError::NoError) {
+        doc = QJsonDocument::fromJson((QStringLiteral("{") + trimmed + QStringLiteral("}")).toUtf8(), &parseError);
+    }
+    if (parseError.error == QJsonParseError::NoError && doc.isObject()) {
+        const QString token = doc.object().value(QStringLiteral("access_token")).toString().trimmed();
+        if (!token.isEmpty())
+            return token;
+    }
+
+    static const QRegularExpression accessTokenPattern(
+        QStringLiteral(R"(["']access_token["']\s*:\s*["']([^"']+)["'])"));
+    const QRegularExpressionMatch match = accessTokenPattern.match(trimmed);
+    return match.hasMatch() ? match.captured(1).trimmed() : QString();
+}
+
 QString normalizeOAuthTokenInput(const QString &value)
 {
     QString text = value.trimmed();
@@ -47,6 +71,10 @@ QString normalizeOAuthTokenInput(const QString &value)
     if (text.startsWith(QStringLiteral("Bearer "), Qt::CaseInsensitive))
         text = text.mid(7).trimmed();
 
+    const QString jsonToken = tokenFromJsonLikeString(text);
+    if (!jsonToken.isEmpty())
+        return jsonToken;
+
     QUrl url(text);
     if (url.isValid()) {
         const QString fragmentToken = tokenFromQueryLikeString(url.fragment());
@@ -59,6 +87,48 @@ QString normalizeOAuthTokenInput(const QString &value)
 
     const QString inlineToken = tokenFromQueryLikeString(text);
     return inlineToken.isEmpty() ? text : inlineToken;
+}
+
+bool hasQueryLikeItem(const QString &text, const QString &name)
+{
+    QString queryText = text.trimmed();
+    if (queryText.startsWith(QLatin1Char('?')) || queryText.startsWith(QLatin1Char('#')))
+        queryText.remove(0, 1);
+
+    QUrlQuery query(queryText);
+    return query.hasQueryItem(name);
+}
+
+bool looksLikeUnsupportedOAuthInput(const QString &value)
+{
+    const QString text = value.trimmed();
+    if (text.isEmpty())
+        return false;
+
+    if (hasQueryLikeItem(text, QStringLiteral("access_token")))
+        return false;
+
+    QUrl url(text);
+    if (url.isValid()) {
+        if (hasQueryLikeItem(url.fragment(), QStringLiteral("access_token")) ||
+            hasQueryLikeItem(url.query(), QStringLiteral("access_token"))) {
+            return false;
+        }
+        if (hasQueryLikeItem(url.fragment(), QStringLiteral("code")) ||
+            hasQueryLikeItem(url.query(), QStringLiteral("code")) ||
+            hasQueryLikeItem(url.fragment(), QStringLiteral("client_id")) ||
+            hasQueryLikeItem(url.query(), QStringLiteral("client_id")) ||
+            hasQueryLikeItem(url.fragment(), QStringLiteral("client_secret")) ||
+            hasQueryLikeItem(url.query(), QStringLiteral("client_secret")) ||
+            url.toString().contains(QStringLiteral("verification_code"), Qt::CaseInsensitive)) {
+            return true;
+        }
+    }
+
+    return hasQueryLikeItem(text, QStringLiteral("code")) ||
+           hasQueryLikeItem(text, QStringLiteral("client_id")) ||
+           hasQueryLikeItem(text, QStringLiteral("client_secret")) ||
+           text.contains(QStringLiteral("verification_code"), Qt::CaseInsensitive);
 }
 
 class FormUploader : public ImageUploader {
@@ -182,6 +252,279 @@ private:
     QHttpMultiPart *m_multipart = nullptr;
 };
 
+class SimpleFileUploader : public ImageUploader {
+public:
+    enum class ResponseMode {
+        PlainTextUrl,
+        TmpFilesJson,
+    };
+
+    SimpleFileUploader(Provider provider, const QString &name, const QUrl &url,
+                       const QString &fileField, ResponseMode responseMode,
+                       QObject *parent = nullptr)
+        : ImageUploader(parent)
+        , m_provider(provider)
+        , m_name(name)
+        , m_url(url)
+        , m_fileField(fileField)
+        , m_responseMode(responseMode)
+    {}
+
+    ~SimpleFileUploader() override { cancel(); }
+
+    Provider provider() const override { return m_provider; }
+    QString providerDisplayName() const override { return m_name; }
+
+    void upload() override
+    {
+        if (m_reply) {
+            emit failed(TranslationManager::uploadErrorInProgress());
+            return;
+        }
+        if (!hasImage()) {
+            finishWithError(TranslationManager::uploadErrorImageMissing());
+            return;
+        }
+
+        emit uploading();
+        m_multipart = new QHttpMultiPart(QHttpMultiPart::FormDataType);
+
+        QHttpPart filePart;
+        filePart.setHeader(QNetworkRequest::ContentTypeHeader, QVariant(QStringLiteral("image/png")));
+        filePart.setHeader(QNetworkRequest::ContentDispositionHeader,
+                           QVariant(QStringLiteral("form-data; name=\"%1\"; filename=\"%2\"")
+                                        .arg(m_fileField, QFileInfo(imagePath()).fileName())));
+        QFile *file = new QFile(imagePath(), m_multipart);
+        if (!file->open(QIODevice::ReadOnly)) {
+            delete m_multipart;
+            m_multipart = nullptr;
+            finishWithError(TranslationManager::uploadErrorCannotReadImage());
+            return;
+        }
+        filePart.setBodyDevice(file);
+        m_multipart->append(filePart);
+
+        QNetworkRequest req(m_url);
+        req.setRawHeader("User-Agent", "EShot/3.0");
+        req.setTransferTimeout(60000);
+        m_reply = nam()->post(req, m_multipart);
+        m_multipart->setParent(m_reply);
+
+        QPointer<SimpleFileUploader> self(this);
+        QObject::connect(m_reply, &QNetworkReply::finished, this, [this, self]() {
+            if (!self) return;
+            const QByteArray data = m_reply->readAll();
+            const int code = m_reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            const QNetworkReply::NetworkError err = m_reply->error();
+            const QString errStr = m_reply->errorString();
+            clearReply();
+
+            if (err != QNetworkReply::NoError) {
+                finishWithError(TranslationManager::uploadErrorNetwork(errStr));
+                return;
+            }
+            if (code < 200 || code >= 300) {
+                finishWithError(TranslationManager::uploadErrorHttp(code) + QStringLiteral(": ") +
+                                QString::fromUtf8(data).simplified().left(120));
+                return;
+            }
+
+            QString url;
+            if (m_responseMode == ResponseMode::PlainTextUrl) {
+                url = QString::fromUtf8(data).trimmed();
+            } else {
+                const QJsonObject obj = QJsonDocument::fromJson(data).object();
+                url = obj.value(QStringLiteral("data")).toObject().value(QStringLiteral("url")).toString();
+                url.replace(QStringLiteral("https://tmpfiles.org/"), QStringLiteral("https://tmpfiles.org/dl/"));
+            }
+
+            if (url.isEmpty() || !url.startsWith(QStringLiteral("https://"))) {
+                finishWithError(TranslationManager::uploadErrorUnexpectedResponse(QString::fromUtf8(data).left(120)));
+                return;
+            }
+            finishWithSuccess(url);
+        });
+    }
+
+    void cancel() override
+    {
+        clearReply(true);
+    }
+
+private:
+    void clearReply(bool abort = false)
+    {
+        QNetworkReply *reply = m_reply;
+        QHttpMultiPart *multipart = m_multipart;
+        m_reply = nullptr;
+        m_multipart = nullptr;
+        if (reply) {
+            disconnect(reply, nullptr, this, nullptr);
+            if (abort)
+                reply->abort();
+            reply->deleteLater();
+        }
+        if (multipart && multipart->parent() != reply)
+            multipart->deleteLater();
+    }
+
+    Provider m_provider;
+    QString m_name;
+    QUrl m_url;
+    QString m_fileField;
+    ResponseMode m_responseMode;
+    QNetworkReply *m_reply = nullptr;
+    QHttpMultiPart *m_multipart = nullptr;
+};
+
+class CheveretoUploader : public ImageUploader {
+public:
+    CheveretoUploader(Provider provider, const QString &name, const QUrl &url,
+                      const QString &settingsKey, QObject *parent = nullptr)
+        : ImageUploader(parent)
+        , m_provider(provider)
+        , m_name(name)
+        , m_url(url)
+        , m_settingsKey(settingsKey)
+    {
+        QSettings s("EShot", "EShot");
+        m_apiKey = s.value(m_settingsKey).toString().trimmed();
+    }
+
+    ~CheveretoUploader() override { cancel(); }
+
+    Provider provider() const override { return m_provider; }
+    QString providerDisplayName() const override { return m_name; }
+    bool needsAuth() const override { return true; }
+    QString authValue() const override { return m_apiKey; }
+    QString authPlaceholder() const override { return TranslationManager::uploadApiKeyPlaceholder(m_name); }
+    void setAuthValue(const QString &value) override
+    {
+        m_apiKey = value.trimmed();
+        QSettings s("EShot", "EShot");
+        s.setValue(m_settingsKey, m_apiKey);
+    }
+
+    void upload() override
+    {
+        if (m_reply) {
+            emit failed(TranslationManager::uploadErrorInProgress());
+            return;
+        }
+        if (!hasImage()) {
+            finishWithError(TranslationManager::uploadErrorImageMissing());
+            return;
+        }
+        if (m_apiKey.isEmpty()) {
+            finishWithError(TranslationManager::uploadErrorApiKeyMissing(m_name));
+            return;
+        }
+
+        emit uploading();
+        m_multipart = new QHttpMultiPart(QHttpMultiPart::FormDataType);
+
+        QHttpPart keyPart;
+        keyPart.setHeader(QNetworkRequest::ContentDispositionHeader,
+                          QVariant(QStringLiteral("form-data; name=\"key\"")));
+        keyPart.setBody(m_apiKey.toUtf8());
+        m_multipart->append(keyPart);
+
+        QHttpPart formatPart;
+        formatPart.setHeader(QNetworkRequest::ContentDispositionHeader,
+                             QVariant(QStringLiteral("form-data; name=\"format\"")));
+        formatPart.setBody("json");
+        m_multipart->append(formatPart);
+
+        QHttpPart filePart;
+        filePart.setHeader(QNetworkRequest::ContentTypeHeader, QVariant(QStringLiteral("image/png")));
+        filePart.setHeader(QNetworkRequest::ContentDispositionHeader,
+                           QVariant(QStringLiteral("form-data; name=\"source\"; filename=\"%1\"")
+                                        .arg(QFileInfo(imagePath()).fileName())));
+        QFile *file = new QFile(imagePath(), m_multipart);
+        if (!file->open(QIODevice::ReadOnly)) {
+            delete m_multipart;
+            m_multipart = nullptr;
+            finishWithError(TranslationManager::uploadErrorCannotReadImage());
+            return;
+        }
+        filePart.setBodyDevice(file);
+        m_multipart->append(filePart);
+
+        QNetworkRequest req(m_url);
+        req.setRawHeader("Accept", "application/json");
+        req.setRawHeader("User-Agent", "EShot/3.0");
+        req.setTransferTimeout(60000);
+        m_reply = nam()->post(req, m_multipart);
+        m_multipart->setParent(m_reply);
+
+        QPointer<CheveretoUploader> self(this);
+        QObject::connect(m_reply, &QNetworkReply::finished, this, [this, self]() {
+            if (!self) return;
+            const QByteArray data = m_reply->readAll();
+            const int code = m_reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            const QNetworkReply::NetworkError err = m_reply->error();
+            const QString errStr = m_reply->errorString();
+            clearReply();
+
+            if (err != QNetworkReply::NoError) {
+                finishWithError(TranslationManager::uploadErrorNetwork(errStr));
+                return;
+            }
+            if (code < 200 || code >= 300) {
+                finishWithError(TranslationManager::uploadErrorHttp(code) + QStringLiteral(": ") +
+                                QString::fromUtf8(data).simplified().left(120));
+                return;
+            }
+
+            const QJsonObject image = QJsonDocument::fromJson(data)
+                .object()
+                .value(QStringLiteral("image"))
+                .toObject();
+            QString url = image.value(QStringLiteral("url")).toString();
+            if (url.isEmpty())
+                url = image.value(QStringLiteral("display_url")).toString();
+            if (url.isEmpty())
+                url = image.value(QStringLiteral("url_viewer")).toString();
+
+            if (url.isEmpty() || !url.startsWith(QStringLiteral("http"))) {
+                finishWithError(TranslationManager::uploadErrorUnexpectedResponse(QString::fromUtf8(data).left(120)));
+                return;
+            }
+            finishWithSuccess(url);
+        });
+    }
+
+    void cancel() override
+    {
+        clearReply(true);
+    }
+
+private:
+    void clearReply(bool abort = false)
+    {
+        QNetworkReply *reply = m_reply;
+        QHttpMultiPart *multipart = m_multipart;
+        m_reply = nullptr;
+        m_multipart = nullptr;
+        if (reply) {
+            disconnect(reply, nullptr, this, nullptr);
+            if (abort)
+                reply->abort();
+            reply->deleteLater();
+        }
+        if (multipart && multipart->parent() != reply)
+            multipart->deleteLater();
+    }
+
+    Provider m_provider;
+    QString m_name;
+    QUrl m_url;
+    QString m_settingsKey;
+    QString m_apiKey;
+    QNetworkReply *m_reply = nullptr;
+    QHttpMultiPart *m_multipart = nullptr;
+};
+
 class YandexDiskUploader : public ImageUploader {
 public:
     explicit YandexDiskUploader(QObject *parent = nullptr)
@@ -222,6 +565,10 @@ public:
             finishWithError(TranslationManager::uploadErrorYandexTokenMissing());
             return;
         }
+        if (looksLikeUnsupportedOAuthInput(m_token)) {
+            finishWithError(TranslationManager::uploadErrorYandexUnsupportedToken());
+            return;
+        }
 
         emit uploading();
         m_remotePath = QStringLiteral("disk:/EShot/%1").arg(QFileInfo(imagePath()).fileName());
@@ -245,6 +592,9 @@ private:
         if (code == 401) {
             return TranslationManager::uploadErrorYandexAuthFailed();
         }
+        if (code == 403) {
+            return TranslationManager::uploadErrorYandexScopeMissing();
+        }
 
         QString message = TranslationManager::uploadErrorYandexStep(step, code);
         const QString body = QString::fromUtf8(data).simplified().left(160);
@@ -257,6 +607,8 @@ private:
     {
         QNetworkRequest req(url);
         req.setRawHeader("Authorization", "OAuth " + m_token.toUtf8());
+        req.setRawHeader("Accept", "application/json");
+        req.setHeader(QNetworkRequest::ContentTypeHeader, QVariant(QStringLiteral("application/json")));
         req.setRawHeader("User-Agent", "EShot/3.0");
         req.setTransferTimeout(60000);
         return req;
@@ -519,6 +871,10 @@ private:
             clearReply();
             if (mp && mp->parent() != reply) mp->deleteLater();
             if (err != QNetworkReply::NoError || code < 200 || code >= 300) {
+                if (code == 401) {
+                    finishWithError(TranslationManager::uploadErrorGoogleAuthFailed());
+                    return;
+                }
                 finishWithError(TranslationManager::uploadErrorHttp(code));
                 return;
             }
@@ -555,6 +911,10 @@ private:
             const QNetworkReply::NetworkError err = m_reply->error();
             clearReply();
             if (err != QNetworkReply::NoError || code < 200 || code >= 300) {
+                if (code == 401) {
+                    finishWithError(TranslationManager::uploadErrorGoogleAuthFailed());
+                    return;
+                }
                 finishWithError(TranslationManager::uploadErrorHttp(code));
                 return;
             }
@@ -668,6 +1028,36 @@ ImageUploader *ImageUploader::create(Provider p, QObject *parent)
         return new YandexDiskUploader(parent);
     case Provider::GoogleDrive:
         return new GoogleDriveUploader(parent);
+    case Provider::TmpFiles:
+        return new SimpleFileUploader(
+            Provider::TmpFiles,
+            QStringLiteral("TmpFiles.org"),
+            QUrl(QStringLiteral("https://tmpfiles.org/api/v1/upload")),
+            QStringLiteral("file"),
+            SimpleFileUploader::ResponseMode::TmpFilesJson,
+            parent);
+    case Provider::TempSh:
+        return new SimpleFileUploader(
+            Provider::TempSh,
+            QStringLiteral("temp.sh"),
+            QUrl(QStringLiteral("https://temp.sh/upload")),
+            QStringLiteral("file"),
+            SimpleFileUploader::ResponseMode::PlainTextUrl,
+            parent);
+    case Provider::Allwebs:
+        return new CheveretoUploader(
+            Provider::Allwebs,
+            QStringLiteral("Allwebs"),
+            QUrl(QStringLiteral("https://allwebs.ru/api/1/upload")),
+            QStringLiteral("allwebsApiKey"),
+            parent);
+    case Provider::RadikalCloud:
+        return new CheveretoUploader(
+            Provider::RadikalCloud,
+            QStringLiteral("Radikal Cloud"),
+            QUrl(QStringLiteral("https://radikal.cloud/api/1/upload")),
+            QStringLiteral("radikalCloudApiKey"),
+            parent);
     }
     return nullptr;
 }

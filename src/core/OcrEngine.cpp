@@ -14,17 +14,23 @@
 #include <atomic>
 
 QString OcrEngine::tesseractPath() {
-    static const QStringList kCandidates = {
+    QStringList candidates = {
         QCoreApplication::applicationDirPath() + QStringLiteral("/tesseract/tesseract.exe"),
         QCoreApplication::applicationDirPath() + QStringLiteral("/tesseract.exe"),
+        QCoreApplication::applicationDirPath() + QStringLiteral("/tesseract/tesseract"),
+        QCoreApplication::applicationDirPath() + QStringLiteral("/tesseract"),
+#ifdef Q_OS_WIN
         QStringLiteral("C:/Program Files/Tesseract-OCR/tesseract.exe"),
         QStringLiteral("C:/Program Files (x86)/Tesseract-OCR/tesseract.exe"),
+#endif
     };
-    for (const QString &p : kCandidates) {
+    for (const QString &p : candidates) {
         if (QFileInfo::exists(p)) return p;
     }
     QString envPath = QProcessEnvironment::systemEnvironment().value(QStringLiteral("TESSERACT_PATH"));
     if (!envPath.isEmpty() && QFileInfo::exists(envPath)) return envPath;
+    const QString systemTesseract = QStandardPaths::findExecutable(QStringLiteral("tesseract"));
+    if (!systemTesseract.isEmpty()) return systemTesseract;
     return QString();
 }
 
@@ -111,7 +117,7 @@ void OcrEngine::recognize(const QPixmap &pixmap, const QString &languageTag) {
 
     const QString exe = tesseractPath();
     if (exe.isEmpty() || !QFileInfo::exists(exe)) {
-        emit failed(QStringLiteral("Tesseract OCR engine not found. Please install Tesseract-OCR or place tesseract.exe in the app folder."));
+        emit failed(QStringLiteral("Tesseract OCR engine not found. Please install Tesseract-OCR or place Tesseract in the app folder."));
         return;
     }
 
@@ -191,6 +197,6 @@ void OcrEngine::recognize(const QPixmap &pixmap, const QString &languageTag) {
         QString errStr = m_proc->errorString();
         m_proc->deleteLater();
         m_proc = nullptr;
-        emit failed(QStringLiteral("Cannot start tesseract.exe: ") + errStr);
+        emit failed(QStringLiteral("Cannot start Tesseract: ") + errStr);
     }
 }

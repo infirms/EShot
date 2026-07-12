@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=EShot
+Comment=Screenshot, annotation, OCR, upload, GIF and video capture tool
+Exec=eshot-launcher
+Icon=io.github.benoks.EShot
+Terminal=false
+StartupNotify=false
+X-KDE-StartupNotify=false
+Categories=Utility;Graphics;Photography;
+Keywords=screenshot;screen capture;annotation;ocr;

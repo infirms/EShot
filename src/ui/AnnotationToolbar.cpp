@@ -1,6 +1,7 @@
 #include "AnnotationToolbar.h"
 #include "annotation/AnnotationEngine.h"
 #include "../core/TranslationManager.h"
+#include "../core/VisualSearch.h"
 #include <QColorDialog>
 #include <QSlider>
 #include <QLabel>
@@ -461,7 +462,15 @@ void AnnotationToolbar::setupUI()
     m_optionalControls["Upload"] = m_uploadButton;
     m_layout->addWidget(m_uploadButton);
 
-    m_lensButton = createActionButton(":/icons/search.svg", QStringLiteral("Google Lens"), "lens");
+    QSettings visualSearchSettings(QStringLiteral("EShot"), QStringLiteral("EShot"));
+    const VisualSearchProvider visualSearchProvider = visualSearchProviderFromSettings(
+        visualSearchSettings.value("visualSearchProvider", QStringLiteral("google")).toString());
+    m_lensButton = createActionButton(
+        visualSearchIconPath(visualSearchProvider),
+        visualSearchProvider == VisualSearchProvider::YandexImages
+            ? TranslationManager::visualSearchYandexTooltip()
+            : TranslationManager::visualSearchGoogleTooltip(),
+        "lens");
     m_optionalControls["GoogleLens"] = m_lensButton;
     m_layout->addWidget(m_lensButton);
 
@@ -738,7 +747,15 @@ void AnnotationToolbar::refreshToolTips()
     if (m_textSizeSpin) m_textSizeSpin->setToolTip(TranslationManager::toolFontSize());
     if (m_ocrButton) m_ocrButton->setToolTip(TranslationManager::actionOcr());
     if (m_uploadButton) m_uploadButton->setToolTip(TranslationManager::uploadToService());
-    if (m_lensButton) m_lensButton->setToolTip(QStringLiteral("Google Lens"));
+    if (m_lensButton) {
+        QSettings settings(QStringLiteral("EShot"), QStringLiteral("EShot"));
+        const VisualSearchProvider provider = visualSearchProviderFromSettings(
+            settings.value("visualSearchProvider", QStringLiteral("google")).toString());
+        m_lensButton->setIcon(QIcon(visualSearchIconPath(provider)));
+        m_lensButton->setToolTip(provider == VisualSearchProvider::YandexImages
+            ? TranslationManager::visualSearchYandexTooltip()
+            : TranslationManager::visualSearchGoogleTooltip());
+    }
     if (m_gifButton) m_gifButton->setToolTip(TranslationManager::recordingStartTitle());
     if (m_videoButton) m_videoButton->setToolTip(TranslationManager::videoRecordingTitle());
 }
