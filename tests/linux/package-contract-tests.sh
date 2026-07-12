@@ -18,8 +18,7 @@ grep -F 'appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage'
 grep -F 'packaging/linux/AppRun' "${build_script}" >/dev/null
 grep -F -- '--appimage-extract-and-run' "${workflow}" >/dev/null
 grep -F 'packages/EShot-v${APP_VERSION}-x86_64.AppImage' "${workflow}" >/dev/null
-grep -F 'release-assets/*.AppImage' "${workflow}" >/dev/null
-grep -F 'packages/*.AppImage' "${workflow}" >/dev/null
+grep -F 'if: false # Linux releases are built and published locally.' "${workflow}" >/dev/null
 grep -F 'release-assets/EShot-Setup-x64/*.exe' "${workflow}" >/dev/null
 grep -F 'release-assets/EShot-Setup-arm64/*.exe' "${workflow}" >/dev/null
 grep -F 'if: startsWith(github.ref, '"'"'refs/tags/v'"'"')' "${workflow}" >/dev/null
