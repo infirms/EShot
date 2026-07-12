@@ -3,15 +3,13 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 build_script="${repo_root}/scripts/linux/build-appimage.sh"
-workflow="${repo_root}/.github/workflows/build.yml.disabled"
+workflow="${repo_root}/.github/workflows/build.yml"
 desktop_launcher="${repo_root}/scripts/linux/desktop-launch.sh"
 installed_launcher="${repo_root}/scripts/linux/eshot-launcher"
 source_desktop_entry="${repo_root}/EShot-Linux.desktop"
 release_version_script="${repo_root}/scripts/linux/apply-release-version.sh"
 ubuntu_deps="${repo_root}/scripts/linux/install-ubuntu-deps.sh"
 linux_package_script="${repo_root}/scripts/linux/package-linux.sh"
-
-[[ ! -e "${repo_root}/.github/workflows/build.yml" ]]
 
 grep -F 'EShot-v${version}-x86_64.AppImage' "${build_script}" >/dev/null
 grep -F 'linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage' "${build_script}" >/dev/null
