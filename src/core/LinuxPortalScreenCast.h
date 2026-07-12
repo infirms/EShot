@@ -21,6 +21,7 @@ public:
         QPoint position;
         QSize size;
         QVariantMap properties;
+        QString sessionHandle;
         bool isValid() const { return nodeId != 0 || pipewireSerial != 0; }
         int remoteFd() const { return pipewireFd ? *pipewireFd : -1; }
     };
@@ -31,6 +32,7 @@ public:
     static bool isWaylandSessionType(const QString &sessionType, const QString &platformName);
     static bool isAvailable();
     static Stream selectStream(QWidget *parent = nullptr, int timeoutMs = 120000);
+    static void closeSession(const QString &sessionHandle);
 
 private slots:
     void onPortalResponse(uint response, const QVariantMap &results);

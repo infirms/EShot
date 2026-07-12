@@ -86,6 +86,7 @@ void ScreenRecorder::start(const QRect &captureRect, int fps, int maxSeconds, in
     m_outputPath = outputPath;
     m_loopCount = loopCount;
     m_portalVideoPath.clear();
+    closePortalSession();
     m_hasPendingFrame = false;
     m_pendingFrame = QImage();
     m_pendingDelayCs = 0;
@@ -230,6 +231,7 @@ void ScreenRecorder::cancel()
         QFile::remove(m_outputPath);
     }
     if (!m_portalVideoPath.isEmpty()) QFile::remove(m_portalVideoPath);
+    closePortalSession();
 }
 
 void ScreenRecorder::finishRecording()
@@ -276,6 +278,7 @@ void ScreenRecorder::onPortalProcessFinished(int exitCode, QProcess::ExitStatus 
 
     m_recording = false;
     m_portalRecording = false;
+    closePortalSession();
     if (m_countdownTimer) { m_countdownTimer->stop(); m_countdownTimer->deleteLater(); m_countdownTimer = nullptr; }
     if (m_process) { m_process->deleteLater(); m_process = nullptr; }
 
@@ -369,6 +372,7 @@ bool ScreenRecorder::startWaylandPortalRecording(const QRect &captureRect)
         emit recordingFailed(QStringLiteral("Wayland screen recording permission was not granted"));
         return false;
     }
+    m_portalSessionHandle = stream.sessionHandle;
 
     const QSize streamSize = stream.size.isValid() ? stream.size : captureRect.size();
     const QRect relativeRect = captureRect.translated(-stream.position);
@@ -428,6 +432,7 @@ bool ScreenRecorder::startWaylandPortalRecording(const QRect &captureRect)
     m_process->setProcessChannelMode(QProcess::MergedChannels);
     if (!configurePipeWireRemote(m_process, pipewireFd)) {
         if (m_process) { m_process->deleteLater(); m_process = nullptr; }
+        closePortalSession();
         emit recordingFailed(QStringLiteral("Wayland PipeWire remote could not be opened"));
         return false;
     }
@@ -435,6 +440,7 @@ bool ScreenRecorder::startWaylandPortalRecording(const QRect &captureRect)
     if (!m_process->waitForStarted(3000)) {
         const QString reason = m_process->errorString();
         if (m_process) { m_process->deleteLater(); m_process = nullptr; }
+        closePortalSession();
         emit recordingFailed(reason.isEmpty() ? QStringLiteral("cannot start gstreamer") : reason);
         return false;
     }
@@ -443,6 +449,7 @@ bool ScreenRecorder::startWaylandPortalRecording(const QRect &captureRect)
         m_process->deleteLater();
         m_process = nullptr;
         QFile::remove(m_portalVideoPath);
+        closePortalSession();
         emit recordingFailed(reason.isEmpty() ? QStringLiteral("gstreamer pipeline exited during startup") : reason);
         return false;
     }
@@ -455,6 +462,7 @@ bool ScreenRecorder::startWaylandPortalRecording(const QRect &captureRect)
         m_portalRecording = false;
         if (m_process) { m_process->deleteLater(); m_process = nullptr; }
         QFile::remove(m_portalVideoPath);
+        closePortalSession();
         emit recordingFailed(reason);
     });
 
@@ -500,6 +508,13 @@ QString ScreenRecorder::gstLaunchPath() const
 QString ScreenRecorder::ffmpegPath() const
 {
     return QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));
+}
+
+void ScreenRecorder::closePortalSession()
+{
+    if (m_portalSessionHandle.isEmpty()) return;
+    LinuxPortalScreenCast::closeSession(m_portalSessionHandle);
+    m_portalSessionHandle.clear();
 }
 
 bool ScreenRecorder::convertPortalVideoToGif()

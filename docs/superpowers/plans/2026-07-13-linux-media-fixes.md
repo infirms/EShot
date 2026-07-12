@@ -28,6 +28,7 @@
 - [ ] Switch video and GIF target objects to node ID and even dimensions.
 - [ ] Replace `gifenc` with temporary MP4 plus FFmpeg conversion.
 - [ ] Add an immediate-exit startup gate before `recordingStarted`.
+- [ ] Select an installed AAC encoder and close the portal session on every recorder exit path.
 - [ ] Verify recorder build and failure cleanup.
 
 ### Task 3: UI, icon, and package

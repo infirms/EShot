@@ -27,5 +27,6 @@ sudo apt-get install -y \
   gstreamer1.0-plugins-good \
   gstreamer1.0-plugins-bad \
   gstreamer1.0-plugins-ugly \
+  gstreamer1.0-libav \
   xdg-desktop-portal \
   xdg-desktop-portal-gtk

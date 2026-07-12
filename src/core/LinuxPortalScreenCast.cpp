@@ -118,10 +118,14 @@ LinuxPortalScreenCast::Stream LinuxPortalScreenCast::select(QWidget *parent, int
         QStringLiteral("SelectSources"),
         QDBusObjectPath(sessionHandle),
         sourceOptions);
-    if (!sourcesReply.isValid() || !waitForRequest(sourcesReply.value().path(), timeoutMs))
+    if (!sourcesReply.isValid() || !waitForRequest(sourcesReply.value().path(), timeoutMs)) {
+        closeSession(sessionHandle);
         return {};
-    if (m_response != 0)
+    }
+    if (m_response != 0) {
+        closeSession(sessionHandle);
         return {};
+    }
 
     const bool isX11 = QGuiApplication::platformName().contains(QStringLiteral("xcb"), Qt::CaseInsensitive);
     const QString parentWindow = isX11 && parent && parent->windowHandle()
@@ -135,18 +139,36 @@ LinuxPortalScreenCast::Stream LinuxPortalScreenCast::select(QWidget *parent, int
         QDBusObjectPath(sessionHandle),
         parentWindow,
         startOptions);
-    if (!startReply.isValid() || !waitForRequest(startReply.value().path(), timeoutMs))
+    if (!startReply.isValid() || !waitForRequest(startReply.value().path(), timeoutMs)) {
+        closeSession(sessionHandle);
         return {};
-    if (m_response != 0)
+    }
+    if (m_response != 0) {
+        closeSession(sessionHandle);
         return {};
+    }
 
     Stream stream = firstStreamFromResults(m_results);
+    stream.sessionHandle = sessionHandle;
     stream.pipewireFd = openPipeWireRemote(sessionHandle);
     return stream;
 #else
     Q_UNUSED(parent);
     Q_UNUSED(timeoutMs);
     return {};
+#endif
+}
+
+void LinuxPortalScreenCast::closeSession(const QString &sessionHandle)
+{
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    if (sessionHandle.isEmpty()) return;
+    QDBusInterface session(QStringLiteral("org.freedesktop.portal.Desktop"), sessionHandle,
+                           QStringLiteral("org.freedesktop.portal.Session"),
+                           QDBusConnection::sessionBus());
+    if (session.isValid()) session.call(QStringLiteral("Close"));
+#else
+    Q_UNUSED(sessionHandle);
 #endif
 }
 

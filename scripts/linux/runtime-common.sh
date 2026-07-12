@@ -33,13 +33,13 @@ eshot_runtime_packages() {
       local portal="xdg-desktop-portal-gtk"
       [[ "${backend}" == "kde" ]] && portal="xdg-desktop-portal-kde"
       [[ "${backend}" == "gnome" ]] && portal="xdg-desktop-portal-gnome"
-      printf '%s\n' "ffmpeg tesseract tesseract-data-eng pipewire wireplumber gst-plugin-pipewire gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly xdg-desktop-portal ${portal}"
+      printf '%s\n' "ffmpeg tesseract tesseract-data-eng pipewire wireplumber gst-plugin-pipewire gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav xdg-desktop-portal ${portal}"
       ;;
     apt)
       local portal="xdg-desktop-portal-gtk"
       [[ "${backend}" == "kde" ]] && portal="xdg-desktop-portal-kde"
       [[ "${backend}" == "gnome" ]] && portal="xdg-desktop-portal-gnome"
-      printf '%s\n' "ffmpeg tesseract-ocr tesseract-ocr-eng pipewire wireplumber gstreamer1.0-tools gstreamer1.0-pipewire gstreamer1.0-pulseaudio gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly xdg-desktop-portal ${portal}"
+      printf '%s\n' "ffmpeg tesseract-ocr tesseract-ocr-eng pipewire wireplumber gstreamer1.0-tools gstreamer1.0-pipewire gstreamer1.0-pulseaudio gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav xdg-desktop-portal ${portal}"
       ;;
     *) return 1 ;;
   esac
@@ -71,9 +71,9 @@ eshot_selected_packages() {
     [[ "${backend}" == kde ]] && portal="xdg-desktop-portal-kde"
     [[ "${backend}" == gnome ]] && portal="xdg-desktop-portal-gnome"
     if [[ "${manager}" == pacman ]]; then
-      packages+=(pipewire wireplumber gst-plugin-pipewire gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly xdg-desktop-portal "${portal}")
+      packages+=(pipewire wireplumber gst-plugin-pipewire gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav xdg-desktop-portal "${portal}")
     else
-      packages+=(pipewire wireplumber gstreamer1.0-tools gstreamer1.0-pipewire gstreamer1.0-pulseaudio gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly xdg-desktop-portal "${portal}")
+      packages+=(pipewire wireplumber gstreamer1.0-tools gstreamer1.0-pipewire gstreamer1.0-pulseaudio gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav xdg-desktop-portal "${portal}")
     fi
   fi
   printf '%s\n' "${packages[*]}"
@@ -122,9 +122,16 @@ eshot_runtime_ready() {
   done
 
   local plugin
-  for plugin in pipewiresrc pulsesrc x264enc h264parse mp4mux voaacenc; do
+  for plugin in pipewiresrc pulsesrc x264enc h264parse mp4mux; do
     gst-inspect-1.0 "${plugin}" >/dev/null 2>&1 || return 1
   done
+  if ! gst-inspect-1.0 fdkaacenc >/dev/null 2>&1 \
+     && ! gst-inspect-1.0 avenc_aac >/dev/null 2>&1 \
+     && ! gst-inspect-1.0 faac >/dev/null 2>&1 \
+     && ! gst-inspect-1.0 voaacenc >/dev/null 2>&1; then
+    return 1
+  fi
+  return 0
 }
 
 eshot_installed_appimage_path() {

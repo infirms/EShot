@@ -78,7 +78,7 @@ QStringList platformAudioDevices(const QString &ffmpegPath)
     devices << QStringLiteral("default")
             << QStringLiteral("@DEFAULT_SOURCE@")
             << QStringLiteral("@DEFAULT_SINK@.monitor");
-    devices << discoverLinuxMicrophoneSources();
+    for (const auto &device : discoverLinuxMicrophoneDevices()) devices << device.second;
     devices.removeDuplicates();
     return devices;
 #endif
@@ -660,6 +660,7 @@ bool VideoRecorder::startWaylandPortalRecording(const QRect &captureRect)
         emit recordingFailed(QStringLiteral("Wayland screen recording permission was not granted"));
         return false;
     }
+    m_portalSessionHandle = stream.sessionHandle;
 
     const QSize streamSize = stream.size.isValid() ? stream.size : captureRect.size();
     const QRect relativeRect = captureRect.translated(-stream.position);
@@ -677,6 +678,13 @@ bool VideoRecorder::startWaylandPortalRecording(const QRect &captureRect)
     QStringList args;
     const bool wantDesktopAudio = m_desktopAudioEnabled && m_desktopVolume > 0 && !m_desktopAudioDevice.isEmpty();
     const bool wantMicrophoneAudio = m_microphoneEnabled && m_microphoneVolume > 0 && !m_microphoneDevice.isEmpty();
+    const QString aacEncoder = (wantDesktopAudio || wantMicrophoneAudio)
+        ? discoverGstAacEncoder() : QString();
+    if ((wantDesktopAudio || wantMicrophoneAudio) && aacEncoder.isEmpty()) {
+        cleanupProcess();
+        emit recordingFailed(QStringLiteral("No GStreamer AAC encoder is installed"));
+        return false;
+    }
     args << QStringLiteral("-e")
          << QStringLiteral("mp4mux")
          << QStringLiteral("name=mux")
@@ -719,7 +727,7 @@ bool VideoRecorder::startWaylandPortalRecording(const QRect &captureRect)
          << QStringLiteral("!")
          << QStringLiteral("mux.");
 
-    auto appendAudioEncoder = [&args](int volume) {
+    auto appendAudioEncoder = [&args, &aacEncoder](int volume) {
         args << QStringLiteral("!")
              << QStringLiteral("audioconvert")
              << QStringLiteral("!")
@@ -728,7 +736,7 @@ bool VideoRecorder::startWaylandPortalRecording(const QRect &captureRect)
              << QStringLiteral("volume")
              << QStringLiteral("volume=%1").arg(QString::number(qBound(0, volume, 100) / 100.0, 'f', 2))
              << QStringLiteral("!")
-             << QStringLiteral("voaacenc")
+             << aacEncoder
              << QStringLiteral("bitrate=160000")
              << QStringLiteral("!")
              << QStringLiteral("queue")
@@ -752,7 +760,7 @@ bool VideoRecorder::startWaylandPortalRecording(const QRect &captureRect)
              << QStringLiteral("!")
              << QStringLiteral("audioresample")
              << QStringLiteral("!")
-             << QStringLiteral("voaacenc")
+             << aacEncoder
              << QStringLiteral("bitrate=160000")
              << QStringLiteral("!")
              << QStringLiteral("queue")
@@ -971,6 +979,10 @@ bool VideoRecorder::setProcessSuspended(bool suspended)
 
 void VideoRecorder::cleanupProcess()
 {
+    if (!m_portalSessionHandle.isEmpty()) {
+        LinuxPortalScreenCast::closeSession(m_portalSessionHandle);
+        m_portalSessionHandle.clear();
+    }
     m_recording = false;
     m_paused = false;
     m_stopping = false;

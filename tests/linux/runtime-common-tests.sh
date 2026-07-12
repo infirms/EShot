@@ -50,7 +50,9 @@ assert_not_contains "xdg-desktop-portal-gnome" "${kde_pacman}" "KDE excludes GNO
 assert_contains "xdg-desktop-portal-gnome" "${gnome_pacman}" "GNOME portal package"
 assert_not_contains "xdg-desktop-portal-kde" "${gnome_pacman}" "GNOME excludes KDE portal"
 assert_contains "gst-plugin-pipewire" "${gnome_pacman}" "Arch PipeWire GStreamer package"
+assert_contains "gst-libav" "${gnome_pacman}" "Arch AAC encoder package"
 assert_contains "gstreamer1.0-pipewire" "${gnome_apt}" "Debian PipeWire GStreamer package"
+assert_contains "gstreamer1.0-libav" "${gnome_apt}" "Debian AAC encoder package"
 assert_contains "ffmpeg" "${kde_pacman}" "FFmpeg runtime"
 assert_contains "tesseract" "${kde_pacman}" "Tesseract runtime"
 

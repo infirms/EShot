@@ -56,7 +56,14 @@ check_gst pulsesrc
 check_gst x264enc
 check_gst h264parse
 check_gst mp4mux
-check_gst voaacenc
+if gst-inspect-1.0 fdkaacenc >/dev/null 2>&1 \
+   || gst-inspect-1.0 avenc_aac >/dev/null 2>&1 \
+   || gst-inspect-1.0 faac >/dev/null 2>&1 \
+   || gst-inspect-1.0 voaacenc >/dev/null 2>&1; then
+    printf '[ok] GStreamer AAC encoder\n'
+else
+    printf '[missing] GStreamer AAC encoder\n'
+fi
 
 portal_xml=""
 if command -v qdbus6 >/dev/null 2>&1; then

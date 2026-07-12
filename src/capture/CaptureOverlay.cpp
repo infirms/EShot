@@ -247,15 +247,14 @@ QStringList desktopAudioDevices()
 #endif
 }
 
-QStringList microphoneAudioDevices()
+QList<QPair<QString, QString>> microphoneAudioDevices()
 {
 #ifdef Q_OS_WIN
-    return windowsAudioInputDevices();
-#else
-    QStringList devices{QStringLiteral("default"), QStringLiteral("@DEFAULT_SOURCE@")};
-    devices << discoverLinuxMicrophoneSources();
-    devices.removeDuplicates();
+    QList<QPair<QString, QString>> devices;
+    for (const QString &name : windowsAudioInputDevices()) devices.append(qMakePair(name, name));
     return devices;
+#else
+    return discoverLinuxMicrophoneDevices();
 #endif
 }
 
@@ -859,7 +858,7 @@ void CaptureOverlay::setupToolSettingsDrawer()
                       TranslationManager::audioMicrophone(), "videoMicrophoneEnabled", "videoMicrophoneVolume");
 
     const QStringList audioDevices = desktopAudioDevices();
-    const QStringList activeInputDevices = microphoneAudioDevices();
+    const auto activeInputDevices = microphoneAudioDevices();
     auto *desktopDeviceRow = new QHBoxLayout();
     desktopDeviceRow->addWidget(new QLabel(TranslationManager::audioSource(), m_toolSettingsDrawer));
     m_quickDesktopAudioDeviceCombo = new QComboBox(m_toolSettingsDrawer);
@@ -898,18 +897,20 @@ void CaptureOverlay::setupToolSettingsDrawer()
     if (activeInputDevices.isEmpty() && audioDevices.isEmpty()) {
         m_quickMicrophoneDeviceCombo->addItem(QStringLiteral("Default"), QStringLiteral("default"));
     } else {
-        m_quickMicrophoneDeviceCombo->addItem(QStringLiteral("Default"), activeInputDevices.isEmpty() ? audioDevices.first() : activeInputDevices.first());
+        m_quickMicrophoneDeviceCombo->addItem(QStringLiteral("Default"), activeInputDevices.isEmpty() ? QStringLiteral("default") : activeInputDevices.first().second);
     }
-    for (const QString &device : activeInputDevices) {
-        if (m_quickMicrophoneDeviceCombo->findData(device) >= 0)
+    for (const auto &device : activeInputDevices) {
+        if (m_quickMicrophoneDeviceCombo->findData(device.second) >= 0)
             continue;
-        m_quickMicrophoneDeviceCombo->addItem(device, device);
+        m_quickMicrophoneDeviceCombo->addItem(device.first, device.second);
     }
+#ifdef Q_OS_WIN
     for (const QString &device : audioDevices) {
         if (m_quickMicrophoneDeviceCombo->findData(device) >= 0)
             continue;
         m_quickMicrophoneDeviceCombo->addItem(device, device);
     }
+#endif
     micDeviceRow->addWidget(m_quickMicrophoneDeviceCombo);
     drawerLayout->addLayout(micDeviceRow);
     m_quickMicrophoneDeviceCombo->setEnabled(m_quickMicrophoneCheck && m_quickMicrophoneCheck->isChecked());

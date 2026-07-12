@@ -5,5 +5,7 @@
 
 QString pipeWireSourcePath(uint nodeId);
 QSize evenRecordingSize(const QSize &size);
-QStringList linuxMicrophoneSources(const QString &pactlShortSources);
-QStringList discoverLinuxMicrophoneSources();
+QString preferredGstAacEncoder(const QStringList &availableElements);
+QString discoverGstAacEncoder();
+QList<QPair<QString, QString>> linuxMicrophoneDevices(const QString &pactlSources);
+QList<QPair<QString, QString>> discoverLinuxMicrophoneDevices();

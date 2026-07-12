@@ -182,15 +182,14 @@ QString defaultDesktopAudioDevice()
 #endif
 }
 
-QStringList microphoneAudioDevices()
+QList<QPair<QString, QString>> microphoneAudioDevices()
 {
 #ifdef Q_OS_WIN
-    return windowsAudioInputDevices();
-#else
-    QStringList devices{QStringLiteral("default"), QStringLiteral("@DEFAULT_SOURCE@")};
-    devices << discoverLinuxMicrophoneSources();
-    devices.removeDuplicates();
+    QList<QPair<QString, QString>> devices;
+    for (const QString &name : windowsAudioInputDevices()) devices.append(qMakePair(name, name));
     return devices;
+#else
+    return discoverLinuxMicrophoneDevices();
 #endif
 }
 }
@@ -1121,10 +1120,8 @@ QWidget* SettingsDialog::createRecordingTab()
 
     m_videoMicrophoneDeviceCombo = new QComboBox(videoGroup);
     m_videoMicrophoneDeviceCombo->addItem(QStringLiteral("Default"), QStringLiteral("default"));
-    for (const QString &device : microphoneAudioDevices()) {
-        if (device == QStringLiteral("default"))
-            continue;
-        m_videoMicrophoneDeviceCombo->addItem(device, device);
+    for (const auto &device : microphoneAudioDevices()) {
+        m_videoMicrophoneDeviceCombo->addItem(device.first, device.second);
     }
     m_videoMicrophoneDeviceCombo->setToolTip(uiLabel("Video kaydinda kullanilacak mikrofon kaynagi.", "Microphone source used for video recording."));
     videoForm->addRow(TranslationManager::audioMicrophoneDevice(), m_videoMicrophoneDeviceCombo);

@@ -78,6 +78,7 @@ private:
     bool m_microphoneEnabled = false;
     int m_microphoneVolume = 80;
     QString m_microphoneDevice;
+    QString m_portalSessionHandle;
     int m_lastElapsedSeconds = -1;
     bool m_recording = false;
     bool m_paused = false;

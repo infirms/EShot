@@ -58,6 +58,7 @@ private:
     QString gstLaunchPath() const;
     QString ffmpegPath() const;
     bool convertPortalVideoToGif();
+    void closePortalSession();
 
     GifEncoder *m_encoder = nullptr;
     QProcess *m_process = nullptr;
@@ -78,6 +79,7 @@ private:
     QString m_outputPath;
     QString m_portalVideoPath;
     int m_loopCount = 0;
+    QString m_portalSessionHandle;
     QDateTime m_recordingStartedAt;
 
 #ifdef Q_OS_WIN
