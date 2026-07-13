@@ -12,7 +12,7 @@ EShot keeps the complete screenshot workflow in one compact tray application: se
 
 ## Screenshots
 
-| Windows | Linux — CachyOS / KDE Plasma 6 |
+| Windows | Linux (CachyOS / KDE Plasma 6) |
 | --- | --- |
 | <img src="image.png" alt="EShot on Windows" width="760"> | <img src="docs/images/cachyos-desktop.png" alt="EShot on CachyOS with KDE Plasma 6" width="760"> |
 
@@ -22,7 +22,7 @@ EShot keeps the complete screenshot workflow in one compact tray application: se
 | --- | --- | --- |
 | Windows 10/11 x64 | Stable | Installer and portable ZIP |
 | Windows 11 ARM64 | Stable | Native ARM64 installer and portable ZIP |
-| Linux x86_64 — KDE Plasma 6 | **Experimental** | AppImage, `.deb`, and portable archive |
+| Linux x86_64 (KDE Plasma 6) | **Experimental** | AppImage, `.deb`, and portable archive |
 | Other Linux desktops | Untested | No support guarantee yet |
 
 > [!IMPORTANT]
@@ -64,7 +64,7 @@ Download the latest build from [GitHub Releases](https://github.com/Benoks/EShot
 
 Portable x64 and ARM64 ZIP archives are also attached to each release.
 
-### Linux — experimental KDE Plasma 6 build
+### Linux: experimental KDE Plasma 6 build
 
 1. Download `EShot-v<version>-x86_64.AppImage`.
 2. Mark it executable if required:
