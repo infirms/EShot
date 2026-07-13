@@ -11,13 +11,12 @@ permissions:
   contents: read
 
 env:
-  APP_VERSION: '4.0.2'
+  APP_VERSION: '4.0.3'
   QT_VERSION: '6.8.2'
 
 jobs:
   linux-build:
     name: Build Linux x64
-    if: false # Linux releases are built and published locally.
     runs-on: ubuntu-22.04
     env:
       BUILD_DIR: ${{ github.workspace }}/build-linux
@@ -117,6 +116,9 @@ jobs:
         run: |
           mkdir -p appimage-test-home
           xvfb-run -a env HOME="$PWD/appimage-test-home" packages/EShot-v${APP_VERSION}-x86_64.AppImage --appimage-extract-and-run --test-gif
+
+      - name: Verify AppImage portability
+        run: bash scripts/linux/verify-appimage-portability.sh "packages/EShot-v${APP_VERSION}-x86_64.AppImage"
 
       - name: Inspect Linux packages
         run: |
@@ -356,6 +358,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     needs:
       - build
+      - linux-build
     runs-on: ubuntu-latest
     permissions:
       contents: write

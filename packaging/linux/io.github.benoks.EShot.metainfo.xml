@@ -29,6 +29,11 @@
   <url type="homepage">https://github.com/Benoks/EShot</url>
   <url type="bugtracker">https://github.com/Benoks/EShot/issues</url>
   <releases>
+    <release version="4.0.3" date="2026-07-13">
+      <description>
+        <p>Rebuilds the Linux AppImage for baseline x86-64 CPUs and older glibc versions instead of inheriting CachyOS build-host requirements.</p>
+      </description>
+    </release>
     <release version="4.0.2" date="2026-07-13">
       <description>
         <p>Reduces KDE Plasma 6 capture latency by preparing direct KWin screenshot access for integrated AppImages while preserving the cursor-free Spectacle fallback.</p>
