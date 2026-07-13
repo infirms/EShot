@@ -1501,6 +1501,17 @@ void CaptureOverlay::captureAllScreens()
             m_captureMonitors.append({logical, physical, scale});
         }
 
+        QPixmap workspaceSnapshot = LinuxPortalScreenshot::grabWorkspace(this);
+        if (!workspaceSnapshot.isNull()) {
+            workspaceSnapshot.setDevicePixelRatio(1.0);
+            m_screenSnapshot = workspaceSnapshot;
+            m_virtualDesktopRect = logicalRect;
+            m_physicalVirtualDesktopTopLeft = physicalRect.topLeft();
+            m_dpr = logicalRect.width() > 0
+                ? workspaceSnapshot.width() / static_cast<qreal>(logicalRect.width()) : 1.0;
+            return;
+        }
+
         QPixmap kwinSnapshot(physicalRect.size());
         kwinSnapshot.setDevicePixelRatio(1.0);
         kwinSnapshot.fill(Qt::black);
@@ -1629,6 +1640,10 @@ void CaptureOverlay::paintEvent(QPaintEvent *event)
     painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
 
     painter.drawPixmap(0, 0, width(), height(), m_screenSnapshot);
+    // Draw once beneath the dim layer so annotations outside the selection
+    // remain visible with the same darkening as the desktop background.
+    if (m_annotationEngine && m_selectionComplete)
+        m_annotationEngine->render(&painter, QPoint());
     painter.fillRect(rect(), QColor(0, 0, 0, m_overlayOpacity));
 
     QRect selRect = normalizedSelectionRect();
@@ -1642,6 +1657,7 @@ void CaptureOverlay::paintEvent(QPaintEvent *event)
 
         // Annotation
         if (m_annotationEngine && m_selectionComplete) {
+            painter.setClipRect(selRect);
             m_annotationEngine->render(&painter, QPoint());
             if (m_annotationEngine->selectedIndex() >= 0) {
                 QRect annotationRect = m_annotationEngine->boundingRectOf(m_annotationEngine->selectedIndex())
@@ -1655,6 +1671,7 @@ void CaptureOverlay::paintEvent(QPaintEvent *event)
                     painter.drawRoundedRect(annotationRect.adjusted(0, 0, -1, -1), 3, 3);
                 }
             }
+            painter.setClipping(false);
         }
 
     // Frame

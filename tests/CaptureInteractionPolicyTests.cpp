@@ -30,6 +30,24 @@ private slots:
         TranslationManager::setLanguage(TranslationManager::Turkish);
         QVERIFY(TranslationManager::rememberLastAnnotationTool().contains(QStringLiteral("ı")));
     }
+
+    void auditedTranslationsDoNotFallBackToEnglish()
+    {
+        const QList<QByteArray> keys = {
+            "ocrLanguagePackMissing", "uploadAuthHelpYandex",
+            "uploadAuthHelpGoogleDrive", "uploadAuthHelpApiKey",
+            "uploadErrorYandexScopeMissing", "uploadErrorGoogleAuthFailed",
+            "uploadErrorApiKeyMissing", "toolFontSize"
+        };
+        TranslationManager::setLanguage(TranslationManager::English);
+        QHash<QByteArray, QString> english;
+        for (const QByteArray &key : keys) english.insert(key, TranslationManager::tr(key.constData()));
+        for (int language = TranslationManager::German; language < TranslationManager::LangCount; ++language) {
+            TranslationManager::setLanguage(static_cast<TranslationManager::Language>(language));
+            for (const QByteArray &key : keys)
+                QVERIFY2(TranslationManager::tr(key.constData()) != english.value(key), key.constData());
+        }
+    }
 };
 
 QTEST_APPLESS_MAIN(CaptureInteractionPolicyTests)

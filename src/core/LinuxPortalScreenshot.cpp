@@ -112,6 +112,58 @@ QPixmap LinuxPortalScreenshot::grabScreen(QScreen *screen, QWidget *parent, int 
 #endif
 }
 
+QPixmap LinuxPortalScreenshot::grabWorkspace(QWidget *parent, int timeoutMs)
+{
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    Q_UNUSED(parent);
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected()) return QPixmap();
+    int pipeFds[2] = {-1, -1};
+    if (pipe2(pipeFds, O_CLOEXEC) != 0) return QPixmap();
+
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        QStringLiteral("org.kde.KWin.ScreenShot2"),
+        QStringLiteral("/org/kde/KWin/ScreenShot2"),
+        QStringLiteral("org.kde.KWin.ScreenShot2"),
+        QStringLiteral("CaptureWorkspace"));
+    QVariantMap options;
+    options.insert(QStringLiteral("native-resolution"), true);
+    options.insert(QStringLiteral("include-cursor"), false);
+    message.setArguments(QList<QVariant>{QVariant(options),
+                          QVariant::fromValue(QDBusUnixFileDescriptor(pipeFds[1]))});
+    close(pipeFds[1]);
+
+    QDBusPendingCallWatcher watcher(bus.asyncCall(message, timeoutMs));
+    QEventLoop loop;
+    QPixmap result;
+    QObject::connect(&watcher, &QDBusPendingCallWatcher::finished, &loop, [&]() {
+        QDBusPendingReply<QVariantMap> reply = watcher;
+        if (reply.isError()) { close(pipeFds[0]); loop.quit(); return; }
+        const QVariantMap metadata = reply.value();
+        const int width = metadata.value(QStringLiteral("width")).toInt();
+        const int height = metadata.value(QStringLiteral("height")).toInt();
+        const int format = metadata.value(QStringLiteral("format")).toInt();
+        const qreal scale = metadata.value(QStringLiteral("scale"), 1.0).toReal();
+        if (metadata.value(QStringLiteral("type")).toString() != QStringLiteral("raw")
+            || width <= 0 || height <= 0
+            || format <= QImage::Format_Invalid || format >= QImage::NImageFormats) {
+            close(pipeFds[0]); loop.quit(); return;
+        }
+        QImage image(width, height, static_cast<QImage::Format>(format));
+        image.setDevicePixelRatio(scale > 0.0 ? scale : 1.0);
+        QFile file;
+        if (file.open(pipeFds[0], QIODevice::ReadOnly, QFileDevice::AutoCloseHandle)
+            && file.read(reinterpret_cast<char *>(image.bits()), image.sizeInBytes()) == image.sizeInBytes())
+            result = QPixmap::fromImage(image);
+        loop.quit();
+    });
+    loop.exec();
+    return result;
+#else
+    Q_UNUSED(parent); Q_UNUSED(timeoutMs); return QPixmap();
+#endif
+}
+
 QPixmap LinuxPortalScreenshot::waitForScreenshot(QWidget *parent, int timeoutMs)
 {
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
@@ -133,6 +185,8 @@ QPixmap LinuxPortalScreenshot::waitForScreenshot(QWidget *parent, int timeoutMs)
     options.insert(QStringLiteral("handle_token"), token);
     options.insert(QStringLiteral("interactive"), false);
     options.insert(QStringLiteral("modal"), false);
+    options.insert(QStringLiteral("include-cursor"), false);
+    options.insert(QStringLiteral("include_cursor"), false);
 
     const bool isX11 = QGuiApplication::platformName().contains(QStringLiteral("xcb"), Qt::CaseInsensitive);
     const QString parentWindow = isX11 && parent && parent->windowHandle()
