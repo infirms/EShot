@@ -27,11 +27,18 @@ awk -v executable="${escaped_launcher}" '
 ' "${repo_root}/packaging/linux/io.github.benoks.EShot.desktop" >"${desktop_file}.new"
 mv -f "${desktop_file}.new" "${desktop_file}"
 chmod 0644 "${desktop_file}"
-rm -f "${icon_dir}/io.github.benoks.EShot.png" "${pixmap_dir}/io.github.benoks.EShot.png"
+rm -f "${icon_dir}/io.github.benoks.EShot.png" \
+  "${icon_dir}/io.github.benoks.EShot-v4.png" \
+  "${pixmap_dir}/io.github.benoks.EShot.png" \
+  "${pixmap_dir}/io.github.benoks.EShot-v4.png"
 install -Dm644 "${repo_root}/packaging/linux/io.github.benoks.EShot.svg" \
   "${icon_dir}/io.github.benoks.EShot.svg"
 install -Dm644 "${repo_root}/packaging/linux/io.github.benoks.EShot.svg" \
+  "${icon_dir}/io.github.benoks.EShot-v4.svg"
+install -Dm644 "${repo_root}/packaging/linux/io.github.benoks.EShot.svg" \
   "${pixmap_dir}/io.github.benoks.EShot.svg"
+install -Dm644 "${repo_root}/packaging/linux/io.github.benoks.EShot.svg" \
+  "${pixmap_dir}/io.github.benoks.EShot-v4.svg"
 
 if command -v update-desktop-database >/dev/null 2>&1; then
   update-desktop-database "${desktop_dir}" >/dev/null 2>&1 || true

@@ -32,6 +32,7 @@ set(SOURCES
     src/core/LinuxPortalGlobalShortcuts.cpp
     src/core/LinuxPortalScreenCast.cpp
     src/core/LinuxPortalScreenshot.cpp
+    src/core/LinuxScreenshotPolicy.cpp
     src/core/ImageUploader.cpp
     src/core/VisualSearch.cpp
     src/core/UpdateAssetSelector.cpp
@@ -66,6 +67,7 @@ set(HEADERS
     src/core/LinuxPortalGlobalShortcuts.h
     src/core/LinuxPortalScreenCast.h
     src/core/LinuxPortalScreenshot.h
+    src/core/LinuxScreenshotPolicy.h
     src/core/ImageUploader.h
     src/core/VisualSearch.h
     src/core/UpdateAssetSelector.h
@@ -252,6 +254,19 @@ if(BUILD_TESTING)
     add_test(NAME linux_dependency_selection COMMAND eshot_linux_dependency_selection_tests)
 
     if(UNIX AND NOT APPLE)
+        qt_add_executable(eshot_linux_screenshot_policy_tests
+            tests/LinuxScreenshotPolicyTests.cpp
+            src/core/LinuxPortalScreenshot.cpp
+            src/core/LinuxPortalScreenshot.h
+            src/core/LinuxScreenshotPolicy.cpp
+            src/core/LinuxScreenshotPolicy.h
+        )
+        target_include_directories(eshot_linux_screenshot_policy_tests PRIVATE src)
+        target_link_libraries(eshot_linux_screenshot_policy_tests PRIVATE
+            Qt6::Core Qt6::Gui Qt6::Widgets Qt6::DBus Qt6::Test)
+        add_test(NAME linux_screenshot_policy COMMAND eshot_linux_screenshot_policy_tests)
+        set_tests_properties(linux_screenshot_policy PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
         qt_add_executable(eshot_linux_portal_shortcut_tests
             tests/LinuxPortalShortcutTests.cpp
             src/core/LinuxPortalGlobalShortcuts.cpp
@@ -288,6 +303,17 @@ if(UNIX AND NOT APPLE)
     )
     install(FILES packaging/linux/io.github.benoks.EShot.svg
         DESTINATION share/icons/hicolor/scalable/apps
+    )
+    install(FILES packaging/linux/io.github.benoks.EShot.svg
+        DESTINATION share/icons/hicolor/scalable/apps
+        RENAME io.github.benoks.EShot-v4.svg
+    )
+    install(FILES packaging/linux/io.github.benoks.EShot.svg
+        DESTINATION share/pixmaps
+    )
+    install(FILES packaging/linux/io.github.benoks.EShot.svg
+        DESTINATION share/pixmaps
+        RENAME io.github.benoks.EShot-v4.svg
     )
     install(FILES packaging/linux/io.github.benoks.EShot.metainfo.xml
         DESTINATION share/metainfo

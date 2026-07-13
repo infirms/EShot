@@ -27,6 +27,8 @@ cp "${repo_root}/packaging/linux/io.github.benoks.EShot.desktop" \
   "${appdir}/usr/share/applications/io.github.benoks.EShot.desktop"
 cp "${repo_root}/packaging/linux/io.github.benoks.EShot.svg" \
   "${appdir}/usr/share/icons/hicolor/scalable/apps/io.github.benoks.EShot.svg"
+cp "${repo_root}/packaging/linux/io.github.benoks.EShot.svg" \
+  "${appdir}/usr/share/icons/hicolor/scalable/apps/io.github.benoks.EShot-v4.svg"
 
 # A normal first launch must run the application without silently installing
 # desktop files or copying the AppImage.
@@ -50,6 +52,8 @@ bash "${repo_root}/packaging/linux/AppRun" --integrate-only
 installed="${home_dir}/.local/opt/EShot/EShot.AppImage"
 desktop="${data_home}/applications/io.github.benoks.EShot.desktop"
 icon="${data_home}/icons/hicolor/scalable/apps/io.github.benoks.EShot.svg"
+versioned_icon="${data_home}/icons/hicolor/scalable/apps/io.github.benoks.EShot-v4.svg"
+pixmap="${data_home}/pixmaps/io.github.benoks.EShot-v4.svg"
 
 [[ -f "${installed}" ]] || { echo "installed AppImage missing" >&2; exit 1; }
 cmp -s "${source_appimage}" "${installed}" || { echo "installed AppImage differs" >&2; exit 1; }
@@ -58,6 +62,9 @@ if [[ "$(uname -s)" != MINGW* ]]; then
 fi
 [[ -f "${desktop}" ]] || { echo "desktop entry missing" >&2; exit 1; }
 [[ -f "${icon}" ]] || { echo "icon missing" >&2; exit 1; }
+[[ -f "${versioned_icon}" ]] || { echo "versioned icon missing" >&2; exit 1; }
+[[ -f "${pixmap}" ]] || { echo "versioned pixmap missing" >&2; exit 1; }
+cmp -s "${icon}" "${versioned_icon}" || { echo "icon compatibility copy differs" >&2; exit 1; }
 grep -F "Exec=/usr/bin/env ESHOT_DESKTOP_LAUNCH=1 \"${installed}\"" "${desktop}" >/dev/null || {
   echo "desktop Exec does not point to installed AppImage" >&2
   exit 1

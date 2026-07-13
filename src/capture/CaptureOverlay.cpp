@@ -7,6 +7,7 @@
 #include "ui/UploadDialog.h"
 #include "core/ImageUploader.h"
 #include "core/LinuxPortalScreenshot.h"
+#include "core/LinuxScreenshotPolicy.h"
 #include "core/VisualSearch.h"
 #include "recording/LinuxRecordingSupport.h"
 
@@ -1365,6 +1366,11 @@ void CaptureOverlay::startCaptureForRecording()
 void CaptureOverlay::performCapture()
 {
     captureAllScreens();
+    if (!LinuxScreenshotPolicy::canPresentCapture(!m_screenSnapshot.isNull())) {
+        qCritical() << "[CaptureOverlay] capture aborted: no usable cursor-free snapshot";
+        cancelCapture();
+        return;
+    }
 
     // Pass screenshot to annotation engine (for blur effect)
     if (m_annotationEngine) {
@@ -1409,6 +1415,7 @@ void CaptureOverlay::performCapture()
 void CaptureOverlay::captureAllScreens()
 {
     m_captureScreen = nullptr;
+    m_screenSnapshot = QPixmap();
 #ifdef Q_OS_WIN
     int vx = GetSystemMetrics(SM_XVIRTUALSCREEN);
     int vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
@@ -1485,6 +1492,10 @@ void CaptureOverlay::captureAllScreens()
     DeleteDC(hMem);
     ReleaseDC(nullptr, hScreen);
 #else
+    const bool kdeWaylandSession = LinuxScreenshotPolicy::isKdeWaylandSession(
+        qEnvironmentVariable("XDG_CURRENT_DESKTOP"),
+        qEnvironmentVariable("XDG_SESSION_DESKTOP"),
+        qEnvironmentVariable("XDG_SESSION_TYPE"));
     const bool useXwaylandVirtualOverlay =
         qEnvironmentVariableIntValue("ESHOT_WAYLAND_XWAYLAND_OVERLAY") == 1
         && QGuiApplication::platformName().contains(QStringLiteral("xcb"), Qt::CaseInsensitive);
@@ -1509,6 +1520,25 @@ void CaptureOverlay::captureAllScreens()
             m_physicalVirtualDesktopTopLeft = physicalRect.topLeft();
             m_dpr = logicalRect.width() > 0
                 ? workspaceSnapshot.width() / static_cast<qreal>(logicalRect.width()) : 1.0;
+            return;
+        }
+
+        QPixmap spectacleSnapshot = LinuxPortalScreenshot::grabSpectacleWorkspace(this);
+        if (!spectacleSnapshot.isNull()) {
+            spectacleSnapshot.setDevicePixelRatio(1.0);
+            m_screenSnapshot = spectacleSnapshot;
+            m_virtualDesktopRect = logicalRect;
+            m_physicalVirtualDesktopTopLeft = physicalRect.topLeft();
+            m_dpr = logicalRect.width() > 0
+                ? spectacleSnapshot.width() / static_cast<qreal>(logicalRect.width()) : 1.0;
+            qInfo() << "[CaptureOverlay] selected capture backend=spectacle-workspace";
+            return;
+        }
+
+        if (!LinuxScreenshotPolicy::allowCursorBearingFallback(kdeWaylandSession)) {
+            m_screenSnapshot = QPixmap();
+            qCritical() << "[CaptureOverlay] no cursor-free screenshot backend is available;"
+                           " refusing KDE Wayland portal/QScreen fallback";
             return;
         }
 
@@ -1570,8 +1600,32 @@ void CaptureOverlay::captureAllScreens()
 
         m_screenSnapshot = LinuxPortalScreenshot::grabScreen(screen, this);
         m_screenSnapshot.setDevicePixelRatio(1.0);
-        if (!m_screenSnapshot.isNull())
+        if (!m_screenSnapshot.isNull()) {
+            qInfo() << "[CaptureOverlay] selected capture backend=kwin-screen";
             return;
+        }
+
+        QPixmap spectacleSnapshot = LinuxPortalScreenshot::grabSpectacleWorkspace(this);
+        if (!spectacleSnapshot.isNull()) {
+            QRect virtualPhysical;
+            for (QScreen *candidate : QGuiApplication::screens())
+                virtualPhysical = virtualPhysical.united(
+                    physicalRectFromLogical(candidate->geometry(), candidate->devicePixelRatio()));
+            const QRect crop = portalCropRect(physical, virtualPhysical);
+            if (spectacleSnapshot.rect().contains(crop))
+                spectacleSnapshot = spectacleSnapshot.copy(crop);
+            spectacleSnapshot.setDevicePixelRatio(1.0);
+            m_screenSnapshot = spectacleSnapshot;
+            qInfo() << "[CaptureOverlay] selected capture backend=spectacle-screen-crop";
+            return;
+        }
+
+        if (!LinuxScreenshotPolicy::allowCursorBearingFallback(kdeWaylandSession)) {
+            m_screenSnapshot = QPixmap();
+            qCritical() << "[CaptureOverlay] no cursor-free screenshot backend is available;"
+                           " refusing KDE Wayland portal/QScreen fallback";
+            return;
+        }
 
         QPixmap portalSnapshot = LinuxPortalScreenshot::grab(this);
         if (!portalSnapshot.isNull()) {

@@ -16,6 +16,7 @@ public:
     static QPixmap grab(QWidget *parent = nullptr, int timeoutMs = 120000);
     static QPixmap grabScreen(QScreen *screen, QWidget *parent = nullptr, int timeoutMs = 5000);
     static QPixmap grabWorkspace(QWidget *parent = nullptr, int timeoutMs = 5000);
+    static QPixmap grabSpectacleWorkspace(QWidget *parent = nullptr, int timeoutMs = 15000);
 
 private:
     explicit LinuxPortalScreenshot(QObject *parent = nullptr);
