@@ -7,6 +7,7 @@
 #include <QPoint>
 #include <QRect>
 #include <QTimer>
+#include <QElapsedTimer>
 #include <QList>
 #include <QTextEdit>
 #include <QPointer>
@@ -192,6 +193,8 @@ private:
     EShotNativeWindowHandle m_foregroundHwnd = nullptr;
 
     QTimer *m_captureDelayTimer;
+    QElapsedTimer m_captureLatencyTimer;
+    bool m_logNextCapturePaint = false;
 
     // Opacity setting
     int m_overlayOpacity;

@@ -35,10 +35,12 @@
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QProcess>
+#include <QElapsedTimer>
 
 #include "core/HotkeyManager.h"
 #include "core/TranslationManager.h"
 #include "core/UpdateManager.h"
+#include "core/LinuxScreenshotPolicy.h"
 #include "capture/CaptureOverlay.h"
 #include "capture/PinnedWindow.h"
 #include "capture/PinManager.h"
@@ -52,6 +54,58 @@
 #ifdef Q_OS_WIN
 #include <windows.h>
 #endif
+
+namespace {
+
+void prepareKWinScreenshotPermission()
+{
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    const QString executablePath = QFileInfo(QCoreApplication::applicationFilePath())
+                                       .canonicalFilePath();
+    if (!LinuxScreenshotPolicy::shouldPrepareKWinPermission(
+            qEnvironmentVariable("XDG_CURRENT_DESKTOP"),
+            qEnvironmentVariable("XDG_SESSION_DESKTOP"),
+            qEnvironmentVariable("XDG_SESSION_TYPE"),
+            qEnvironmentVariable("APPIMAGE"),
+            executablePath)) {
+        return;
+    }
+
+    const QString dataLocation = QStandardPaths::writableLocation(
+        QStandardPaths::GenericDataLocation);
+    const QString applicationsDirectory = QDir(dataLocation).filePath(
+        QStringLiteral("applications"));
+    QString desktopPath;
+    QString error;
+    if (!LinuxScreenshotPolicy::installKWinPermissionDesktopEntry(
+            applicationsDirectory, executablePath, &desktopPath, &error)) {
+        qWarning() << "[KWinPermission] could not install restricted-interface entry:"
+                   << error;
+        return;
+    }
+
+    const QString cacheBuilder = QStandardPaths::findExecutable(
+        QStringLiteral("kbuildsycoca6"));
+    if (cacheBuilder.isEmpty()) {
+        qWarning() << "[KWinPermission] kbuildsycoca6 is unavailable;"
+                      " direct KWin capture may remain unauthorized";
+        return;
+    }
+
+    QElapsedTimer timer;
+    timer.start();
+    const int exitCode = QProcess::execute(cacheBuilder, {});
+    if (exitCode != 0) {
+        qWarning() << "[KWinPermission] cache refresh failed with exit code="
+                   << exitCode << "desktop=" << desktopPath;
+        return;
+    }
+    qInfo() << "[KWinPermission] direct KWin capture prepared in"
+            << timer.elapsed() << "ms executable=" << executablePath;
+#endif
+}
+
+}
 
 QString localizedRecordingFailureReason(const QString &reason)
 {
@@ -78,6 +132,7 @@ public:
     {
         TranslationManager::init();
         loadSettings();
+        prepareKWinScreenshotPermission();
         setupUpdater();
         setupTrayIcon();
         setupHotkey();

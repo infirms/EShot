@@ -26,6 +26,57 @@ private slots:
             QStringLiteral("KDE"), QString(), QStringLiteral("x11")));
     }
 
+    void preparesKWinPermissionOnlyForKdeWaylandAppImages()
+    {
+        const QString executable = QStringLiteral("/tmp/.mount_EShot.test/usr/bin/EShot");
+
+        QVERIFY(LinuxScreenshotPolicy::shouldPrepareKWinPermission(
+            QStringLiteral("KDE"), QString(), QStringLiteral("wayland"),
+            QStringLiteral("/home/user/EShot.AppImage"), executable));
+        QVERIFY(!LinuxScreenshotPolicy::shouldPrepareKWinPermission(
+            QStringLiteral("GNOME"), QString(), QStringLiteral("wayland"),
+            QStringLiteral("/home/user/EShot.AppImage"), executable));
+        QVERIFY(!LinuxScreenshotPolicy::shouldPrepareKWinPermission(
+            QStringLiteral("KDE"), QString(), QStringLiteral("x11"),
+            QStringLiteral("/home/user/EShot.AppImage"), executable));
+        QVERIFY(!LinuxScreenshotPolicy::shouldPrepareKWinPermission(
+            QStringLiteral("KDE"), QString(), QStringLiteral("wayland"),
+            QString(), executable));
+    }
+
+    void buildsHiddenKWinPermissionDesktopEntry()
+    {
+        const QString entry = LinuxScreenshotPolicy::kwinPermissionDesktopEntry(
+            QStringLiteral("/tmp/.mount_EShot.test/usr/bin/EShot"));
+
+        QVERIFY(entry.contains(QStringLiteral("NoDisplay=true\n")));
+        QVERIFY(entry.contains(QStringLiteral(
+            "Exec=\"/tmp/.mount_EShot.test/usr/bin/EShot\"\n")));
+        QVERIFY(entry.contains(QStringLiteral(
+            "X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2\n")));
+    }
+
+    void installsKWinPermissionDesktopEntryAtomically()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+
+        QString desktopPath;
+        QString error;
+        QVERIFY(LinuxScreenshotPolicy::installKWinPermissionDesktopEntry(
+            directory.path(), QStringLiteral("/tmp/.mount_EShot.test/usr/bin/EShot"),
+            &desktopPath, &error));
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QCOMPARE(desktopPath, directory.filePath(
+            QStringLiteral("io.github.benoks.EShot.KWinScreenshot.desktop")));
+
+        QFile desktopFile(desktopPath);
+        QVERIFY(desktopFile.open(QIODevice::ReadOnly | QIODevice::Text));
+        QCOMPARE(QString::fromUtf8(desktopFile.readAll()),
+                 LinuxScreenshotPolicy::kwinPermissionDesktopEntry(
+                     QStringLiteral("/tmp/.mount_EShot.test/usr/bin/EShot")));
+    }
+
     void buildsCursorFreeSpectacleArguments()
     {
         const QStringList arguments = LinuxScreenshotPolicy::spectacleWorkspaceArguments(

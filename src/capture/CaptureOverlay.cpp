@@ -1335,6 +1335,8 @@ void CaptureOverlay::prewarm()
 
 void CaptureOverlay::startCapture()
 {
+    m_captureLatencyTimer.start();
+    m_logNextCapturePaint = true;
     if (m_captureDelayTimer) m_captureDelayTimer->stop();
     m_captureMode = ModeNormal;
     m_isSelecting = false;
@@ -1871,6 +1873,12 @@ void CaptureOverlay::paintEvent(QPaintEvent *event)
                 painter.drawText(lx + 6, ly + fm.ascent() + 3, colorName);
             }
         }
+    }
+
+    if (m_logNextCapturePaint) {
+        m_logNextCapturePaint = false;
+        qInfo() << "[CaptureOverlay] first frame painted after"
+                << m_captureLatencyTimer.elapsed() << "ms";
     }
 }
 
