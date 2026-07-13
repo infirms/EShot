@@ -929,7 +929,7 @@ QWidget* SettingsDialog::createCaptureTab()
     m_formatCombo->addItem(TranslationManager::formatPng(), "PNG");
     m_formatCombo->addItem(TranslationManager::formatJpeg(), "JPEG");
     m_formatCombo->addItem(TranslationManager::formatBmp(), "BMP");
-    m_formatCombo->setToolTip(uiLabel("Kaydedilen ekran goruntusunun dosya bicimi.", "File format for saved screenshots."));
+    m_formatCombo->setToolTip(uiLabel("Kaydedilen ekran görüntüsünün dosya biçimi.", "File format for saved screenshots."));
     fmtLayout->addRow("Format:", m_formatCombo);
 
     QHBoxLayout *qLayout = new QHBoxLayout();
@@ -938,7 +938,7 @@ QWidget* SettingsDialog::createCaptureTab()
     m_qualitySpin = new QSpinBox();
     m_qualitySpin->setRange(10, 100);
     m_qualitySpin->setSuffix("%");
-    m_qualitySlider->setToolTip(uiLabel("Sadece JPEG icin kalite ayari.", "Quality setting for JPEG only."));
+    m_qualitySlider->setToolTip(uiLabel("Yalnızca JPEG için kalite ayarı.", "Quality setting for JPEG only."));
     m_qualitySpin->setToolTip(m_qualitySlider->toolTip());
     connect(m_qualitySlider, &QSlider::valueChanged, m_qualitySpin, &QSpinBox::setValue);
     connect(m_qualitySpin, QOverload<int>::of(&QSpinBox::valueChanged), m_qualitySlider, &QSlider::setValue);
@@ -961,22 +961,18 @@ QWidget* SettingsDialog::createCaptureTab()
     m_delaySpin->setSingleStep(500);
     m_delaySpin->setSuffix(" ms");
     m_delaySpin->setSpecialValueText(TranslationManager::noDelay());
-    m_delaySpin->setToolTip(uiLabel("Kisayola bastiktan sonra yakalama ekraninin acilmasi icin bekleme suresi.", "Delay before opening the capture overlay after the shortcut is pressed."));
+    m_delaySpin->setToolTip(uiLabel("Kısayola bastıktan sonra yakalama ekranının açılması için bekleme süresi.", "Delay before opening the capture overlay after the shortcut is pressed."));
     capLayout->addRow(TranslationManager::delay(), m_delaySpin);
     m_copyAfterCaptureCheck = new QCheckBox(TranslationManager::copyAfterCapture());
     m_copyAfterCaptureCheck->hide();
     m_closeAfterCopyCheck = new QCheckBox(TranslationManager::closeAfterCopy());
-    m_closeAfterCopyCheck->setToolTip(uiLabel("Kopyala komutundan sonra secim ekranini otomatik kapatir.", "Automatically closes the capture overlay after copying."));
+    m_closeAfterCopyCheck->setToolTip(uiLabel("Kopyala komutundan sonra seçim ekranını otomatik kapatır.", "Automatically closes the capture overlay after copying."));
     m_instantCopyAfterSelectionCheck = new QCheckBox(uiLabel("Alan secimi bitince hemen kopyala", "Copy immediately after selecting a region"));
     m_instantCopyAfterSelectionCheck->setToolTip(uiLabel("Varsayilan kapali. Aciksa alan secimini bitirdigin anda goruntu panoya kopyalanir.", "Off by default. When enabled, the image is copied as soon as you finish selecting a region."));
     capLayout->addRow(m_closeAfterCopyCheck);
     capLayout->addRow(m_instantCopyAfterSelectionCheck);
-    m_rememberLastAnnotationToolCheck = new QCheckBox(uiLabel(
-        "Son kullanilan anotasyon aracini hatirla",
-        "Remember the last annotation tool"));
-    m_rememberLastAnnotationToolCheck->setToolTip(uiLabel(
-        "Varsayilan kapali. Aciksa yeni yakalama son kullandigin aracla baslar.",
-        "Off by default. When enabled, new captures start with the last tool you used."));
+    m_rememberLastAnnotationToolCheck = new QCheckBox(TranslationManager::rememberLastAnnotationTool());
+    m_rememberLastAnnotationToolCheck->setToolTip(TranslationManager::rememberLastAnnotationToolHint());
     capLayout->addRow(m_rememberLastAnnotationToolCheck);
     layout->addWidget(capGroup);
 
@@ -1290,8 +1286,8 @@ QWidget* SettingsDialog::createInterfaceTab()
         return column;
     };
 
-    QWidget *drawingColumn = makeColumn(uiLabel("Çizim araçları", "Drawing tools"), &m_toolVisibilityList);
-    QWidget *controlColumn = makeColumn(uiLabel("Alt toolbar kontrolleri", "Bottom toolbar controls"), &m_toolbarControlVisibilityList);
+    QWidget *drawingColumn = makeColumn(TranslationManager::drawingTools(), &m_toolVisibilityList);
+    QWidget *controlColumn = makeColumn(TranslationManager::bottomToolbarControls(), &m_toolbarControlVisibilityList);
     columnsLayout->addWidget(drawingColumn, 1);
     columnsLayout->addWidget(controlColumn, 1);
 

@@ -63,6 +63,7 @@ QPixmap LinuxPortalScreenshot::grabScreen(QScreen *screen, QWidget *parent, int 
         QStringLiteral("CaptureScreen"));
     QVariantMap options;
     options.insert(QStringLiteral("native-resolution"), true);
+    options.insert(QStringLiteral("include-cursor"), false);
     message.setArguments(QList<QVariant>{QVariant(screen->name()), QVariant(options),
                           QVariant::fromValue(QDBusUnixFileDescriptor(pipeFds[1]))});
     close(pipeFds[1]);

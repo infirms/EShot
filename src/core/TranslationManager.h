@@ -111,6 +111,10 @@ public:
     static QString noDelay()          { return tr("noDelay"); }
     static QString copyAfterCapture() { return tr("copyAfterCapture"); }
     static QString closeAfterCopy()   { return tr("closeAfterCopy"); }
+    static QString rememberLastAnnotationTool() { return tr("rememberLastAnnotationTool"); }
+    static QString rememberLastAnnotationToolHint() { return tr("rememberLastAnnotationToolHint"); }
+    static QString drawingTools() { return tr("drawingTools"); }
+    static QString bottomToolbarControls() { return tr("bottomToolbarControls"); }
     static QString scrollingCapture() { return tr("scrollingCapture"); }
     static QString scrollingCaptureDesc() { return tr("scrollingCaptureDesc"); }
 
@@ -462,6 +466,10 @@ private:
         {"noDelay",        {"Gecikme yok", "No delay", "Keine Verzögerung", "Pas de délai", "Sin retraso", "遅延なし", "无延迟", "Без задержки"}},
         {"copyAfterCapture",{"Yakaladıktan sonra kopyala", "Copy after capture", "Nach Erfassung kopieren", "Copier après capture", "Copiar después de capturar", "キャプチャ後にコピー", "捕获后复制", "Копировать после захвата"}},
         {"closeAfterCopy", {"Kopyaladıktan sonra kapat", "Close after copy", "Nach Kopieren schließen", "Fermer après copie", "Cerrar después de copiar", "コピー後に閉じる", "复制后关闭", "Закрыть после копирования"}},
+        {"rememberLastAnnotationTool", {"Son kullanılan anotasyon aracını hatırla", "Remember the last annotation tool", "Letztes Anmerkungswerkzeug merken", "Mémoriser le dernier outil d’annotation", "Recordar la última herramienta de anotación", "最後に使った注釈ツールを記憶", "记住上次使用的标注工具", "Запоминать последний инструмент аннотации"}},
+        {"rememberLastAnnotationToolHint", {"Varsayılan olarak kapalıdır. Açıldığında yeni yakalamalar son kullandığınız araçla başlar.", "Off by default. When enabled, new captures start with the last tool you used.", "Standardmäßig aus. Neue Aufnahmen starten dann mit dem zuletzt verwendeten Werkzeug.", "Désactivé par défaut. Les nouvelles captures démarrent avec le dernier outil utilisé.", "Desactivado de forma predeterminada. Las capturas nuevas comienzan con la última herramienta usada.", "既定ではオフです。有効にすると新しいキャプチャは最後に使ったツールで開始します。", "默认关闭。启用后，新截图会以上次使用的工具开始。", "По умолчанию выключено. Новые снимки будут открываться с последним использованным инструментом."}},
+        {"drawingTools", {"Çizim araçları", "Drawing tools", "Zeichenwerkzeuge", "Outils de dessin", "Herramientas de dibujo", "描画ツール", "绘图工具", "Инструменты рисования"}},
+        {"bottomToolbarControls", {"Alt araç çubuğu kontrolleri", "Bottom toolbar controls", "Steuerelemente der unteren Werkzeugleiste", "Commandes de la barre d’outils inférieure", "Controles de la barra inferior", "下部ツールバーのコントロール", "底部工具栏控件", "Элементы нижней панели инструментов"}},
         {"scrollingCapture",{"Kaydırmalı Yakalama", "Scrolling Capture", "Scrollaufnahme", "Capture défilante", "Captura con desplazamiento", "スクロールキャプチャ", "滚动截图", "Захват с прокруткой"}},
         {"scrollingCaptureDesc",{"Sayfayı otomatik kaydırarak uzun ekran görüntüsü al", "Auto-scroll and capture long screenshot", "Automatisch scrollen und langes Bildschirmfoto aufnehmen", "Défiler et capturer une longue capture", "Desplazamiento automático para captura larga", "自動スクロールで長いスクリーンショット", "自动滚动以截取长截图", "Автопрокрутка для длинного скриншота"}},
 

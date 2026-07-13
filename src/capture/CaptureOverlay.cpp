@@ -1501,6 +1501,32 @@ void CaptureOverlay::captureAllScreens()
             m_captureMonitors.append({logical, physical, scale});
         }
 
+        QPixmap kwinSnapshot(physicalRect.size());
+        kwinSnapshot.setDevicePixelRatio(1.0);
+        kwinSnapshot.fill(Qt::black);
+        QPainter kwinPainter(&kwinSnapshot);
+        bool capturedAllScreens = !m_captureMonitors.isEmpty();
+        for (QScreen *screen : QGuiApplication::screens()) {
+            QPixmap screenGrab = LinuxPortalScreenshot::grabScreen(screen, this);
+            if (screenGrab.isNull()) {
+                capturedAllScreens = false;
+                break;
+            }
+            const QRect destination = physicalRectFromLogical(screen->geometry(), screen->devicePixelRatio())
+                                          .translated(-physicalRect.topLeft());
+            kwinPainter.drawPixmap(destination, screenGrab, screenGrab.rect());
+        }
+        kwinPainter.end();
+        if (capturedAllScreens) {
+            m_screenSnapshot = kwinSnapshot;
+            m_virtualDesktopRect = logicalRect;
+            m_physicalVirtualDesktopTopLeft = physicalRect.topLeft();
+            m_dpr = logicalRect.width() > 0
+                ? kwinSnapshot.width() / static_cast<qreal>(logicalRect.width())
+                : 1.0;
+            return;
+        }
+
         QPixmap portalSnapshot = LinuxPortalScreenshot::grab(this);
         if (!portalSnapshot.isNull()) {
             portalSnapshot.setDevicePixelRatio(1.0);
@@ -1616,7 +1642,6 @@ void CaptureOverlay::paintEvent(QPaintEvent *event)
 
         // Annotation
         if (m_annotationEngine && m_selectionComplete) {
-            painter.setClipRect(selRect);
             m_annotationEngine->render(&painter, QPoint());
             if (m_annotationEngine->selectedIndex() >= 0) {
                 QRect annotationRect = m_annotationEngine->boundingRectOf(m_annotationEngine->selectedIndex())
@@ -1630,7 +1655,6 @@ void CaptureOverlay::paintEvent(QPaintEvent *event)
                     painter.drawRoundedRect(annotationRect.adjusted(0, 0, -1, -1), 3, 3);
                 }
             }
-            painter.setClipping(false);
         }
 
     // Frame

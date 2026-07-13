@@ -23,3 +23,7 @@ The Linux desktop entry continues to use the stable `io.github.benoks.EShot` ico
 ## Testing and Delivery
 
 Add focused tests for screen-fixed annotation coordinates, resize-handle priority, and the default/opt-in tool persistence policy. Extend Linux package contract coverage for the desktop icon identity and cache refresh. Run the focused tests, full CTest suite, Linux shell tests, then build a local v4.0.1 AppImage in `packages/`. Do not push any commits.
+
+## v4.0.1 Test Feedback
+
+Annotations render across the entire dimmed overlay so users can still see portions outside the current selection, while export remains cropped to the selection. KDE Wayland screenshots explicitly request `include-cursor=false` to prevent the pre-capture pointer from being frozen into the background. Newly introduced annotation persistence and toolbar-section labels use TranslationManager entries for all eight supported languages, with native Turkish characters.
