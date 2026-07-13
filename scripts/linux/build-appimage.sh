@@ -94,6 +94,6 @@ rm -f -- "${package_dir}"/EShot-v*-x86_64.AppImage
 ARCH=x86_64 "${appimagetool}" "${appdir}" "${output}"
 chmod 0755 "${output}"
 test -s "${output}"
-"${repo_root}/scripts/linux/verify-appimage-portability.sh" "${output}"
+bash "${repo_root}/scripts/linux/verify-appimage-portability.sh" "${output}"
 
 printf '\nBuilt EShot AppImage:\n  %s\n' "${output}"

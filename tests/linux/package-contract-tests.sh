@@ -24,7 +24,7 @@ if grep -F 'if: false # Linux releases are built and published locally.' "${work
   exit 1
 fi
 grep -F 'scripts/linux/verify-appimage-portability.sh' "${workflow}" >/dev/null
-grep -F 'scripts/linux/verify-appimage-portability.sh' "${build_script}" >/dev/null
+grep -F 'bash "${repo_root}/scripts/linux/verify-appimage-portability.sh"' "${build_script}" >/dev/null
 grep -F 'x86-64-v[234]' "${portability_script}" >/dev/null
 grep -F 'max_glibc="2.35"' "${portability_script}" >/dev/null
 grep -F 'release-assets/EShot-Setup-x64/*.exe' "${workflow}" >/dev/null
