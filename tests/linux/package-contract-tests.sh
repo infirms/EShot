@@ -52,6 +52,14 @@ grep -F '#include "../core/LinuxAutoStartPolicy.h"' "${repo_root}/src/ui/Setting
   exit 1
 }
 grep -F 'Icon=io.github.benoks.EShot-v4' "${repo_root}/src/ui/SettingsDialog.cpp" >/dev/null
+grep -F 'm_textFocusProxy = new QTextEdit(nullptr);' "${repo_root}/src/capture/CaptureOverlay.cpp" >/dev/null
+grep -F 'm_textFocusProxy->activateWindow();' "${repo_root}/src/capture/CaptureOverlay.cpp" >/dev/null
+grep -F ':/icons/drag.svg' "${repo_root}/src/capture/CaptureOverlay.cpp" >/dev/null
+grep -F ':/icons/chevron_down.svg' "${repo_root}/src/capture/CaptureOverlay.cpp" >/dev/null
+grep -F ':/icons/chevron_up.svg' "${repo_root}/src/capture/CaptureOverlay.cpp" >/dev/null
+grep -F ':/icons/check.svg' "${repo_root}/src/capture/CaptureOverlay.cpp" >/dev/null
+grep -F 'connect(m_textCommitButton' "${repo_root}/src/capture/CaptureOverlay.cpp" >/dev/null
+grep -F 'connect(m_textCancelButton' "${repo_root}/src/capture/CaptureOverlay.cpp" >/dev/null
 grep -F 'X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2' "${repo_root}/packaging/linux/io.github.benoks.EShot.desktop" >/dev/null
 grep -F '"${pixmap_dir}/io.github.benoks.EShot.svg"' "${repo_root}/scripts/linux/install-user.sh" >/dev/null
 grep -F '"${pixmap_dir}/io.github.benoks.EShot-v4.svg"' "${repo_root}/scripts/linux/install-user.sh" >/dev/null

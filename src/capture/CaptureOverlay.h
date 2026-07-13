@@ -28,6 +28,7 @@ class QFontComboBox;
 class QSpinBox;
 class QSlider;
 class QPushButton;
+class QToolButton;
 class QCheckBox;
 class QPropertyAnimation;
 class QLabel;
@@ -123,10 +124,13 @@ private:
     QString m_visualSearchImagePath;
 
     // Text editing — multi-line support
+    QTextEdit *m_textFocusProxy = nullptr;
     QTextEdit *m_textEdit;
     QPoint m_textEditPosition;
     QWidget *m_textEditPanel = nullptr;
-    QPushButton *m_textMoveHandle = nullptr;
+    QToolButton *m_textMoveHandle = nullptr;
+    QToolButton *m_textCommitButton = nullptr;
+    QToolButton *m_textCancelButton = nullptr;
     QFontComboBox *m_textInlineFontCombo = nullptr;
     QSpinBox *m_textInlineSizeSpin = nullptr;
     bool m_textPanelDragging = false;
@@ -137,6 +141,8 @@ private:
     void moveTextEditorTo(const QPoint &pos);
     void updateTextEditorStyle();
     void updateTextEditPanelPosition();
+    void acquireTextKeyboardFocus();
+    void releaseTextKeyboardFocus();
     void updateUndoRedoState();
     bool matchesOverlayShortcut(QKeyEvent *event, const QString &key, const QString &fallback) const;
     void selectAnnotationTool(int toolId);

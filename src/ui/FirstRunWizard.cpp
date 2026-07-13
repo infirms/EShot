@@ -331,6 +331,14 @@ void FirstRunWizard::loadDefaults()
     QSettings s("EShot", "EShot");
 
     int langInt = s.value("language", static_cast<int>(TranslationManager::currentLanguage())).toInt();
+#ifdef Q_OS_LINUX
+    // A configuration carried over from another platform must not silently
+    // choose the language for Linux's first-run setup. main.cpp deliberately
+    // starts that fresh onboarding flow in English; preserve that choice until
+    // the user explicitly selects a language in this wizard.
+    if (!s.value(QStringLiteral("linuxSetupCompleted"), false).toBool())
+        langInt = static_cast<int>(TranslationManager::currentLanguage());
+#endif
     static const char* langCodes[] = {"tr","en","de","fr","es","ja","zh","ru"};
     QString lang = (langInt >= 0 && langInt < TranslationManager::LangCount) ? langCodes[langInt] : "en";
     int li = m_langCombo->findData(lang);

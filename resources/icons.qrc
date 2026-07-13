@@ -36,5 +36,9 @@
         <file alias="icons/video.svg">../icons/video.svg</file>
         <file alias="icons/scroll.svg">../icons/scroll.svg</file>
         <file alias="icons/menu.svg">../icons/menu.svg</file>
+        <file alias="icons/drag.svg">../icons/drag.svg</file>
+        <file alias="icons/chevron_down.svg">../icons/chevron_down.svg</file>
+        <file alias="icons/chevron_up.svg">../icons/chevron_up.svg</file>
+        <file alias="icons/check.svg">../icons/check.svg</file>
     </qresource>
 </RCC>

@@ -335,8 +335,28 @@ CaptureOverlay::CaptureOverlay(QWidget *parent)
         setWindowFlag(Qt::X11BypassWindowManagerHint, true);
     setAttribute(Qt::WA_TranslucentBackground, false);
     setAttribute(Qt::WA_DeleteOnClose, false);
+    setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
     setCursor(Qt::CrossCursor);
+
+#ifdef Q_OS_LINUX
+    if (qEnvironmentVariableIntValue("ESHOT_WAYLAND_XWAYLAND_OVERLAY") == 1) {
+        // The capture canvas stays unmanaged so it can span the XWayland
+        // virtual desktop. A tiny managed editor receives real KWin keyboard
+        // focus and mirrors its input into the visible editor over the canvas.
+        m_textFocusProxy = new QTextEdit(nullptr);
+        m_textFocusProxy->setWindowFlags(
+            Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool);
+        m_textFocusProxy->setAttribute(Qt::WA_DeleteOnClose, false);
+        m_textFocusProxy->setWindowOpacity(0.01);
+        m_textFocusProxy->setFixedSize(24, 24);
+        m_textFocusProxy->setAcceptRichText(false);
+        m_textFocusProxy->setFocusPolicy(Qt::StrongFocus);
+        m_textFocusProxy->setWindowTitle(QStringLiteral("EShot Text Input"));
+        m_textFocusProxy->hide();
+        m_textFocusProxy->installEventFilter(this);
+    }
+#endif
 
     // Text editor (multi-line support)
     m_textEdit = new QTextEdit(this);
@@ -356,6 +376,16 @@ CaptureOverlay::CaptureOverlay(QWidget *parent)
     )");
     m_textEdit->hide();
     m_textEdit->installEventFilter(this);
+    if (m_textFocusProxy) {
+        connect(m_textFocusProxy, &QTextEdit::textChanged, this, [this]() {
+            if (!m_textEdit || !m_textFocusProxy || !m_textFocusProxy->isVisible())
+                return;
+            m_textEdit->setPlainText(m_textFocusProxy->toPlainText());
+            QTextCursor cursor = m_textEdit->textCursor();
+            cursor.movePosition(QTextCursor::End);
+            m_textEdit->setTextCursor(cursor);
+        });
+    }
     connect(m_textEdit, &QTextEdit::textChanged, this, [this]() {
         // Auto height adjust
         if (m_textEdit && m_textEdit->isVisible()) {
@@ -371,28 +401,31 @@ CaptureOverlay::CaptureOverlay(QWidget *parent)
     m_textEditPanel->setObjectName(QStringLiteral("textEditPanel"));
     m_textEditPanel->setStyleSheet(R"(
         QWidget#textEditPanel {
-            background-color: rgba(34, 34, 34, 235);
-            border: 1px solid rgba(255, 255, 255, 55);
+            background-color: rgba(31, 32, 35, 245);
+            border: 1px solid #56585d;
+            border-radius: 8px;
+        }
+        QToolButton {
+            background-color: #34363a;
+            color: white;
+            border: 1px solid #505258;
             border-radius: 6px;
         }
-        QPushButton {
-            background-color: rgba(255, 255, 255, 24);
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 42);
-            border-radius: 4px;
-            padding: 2px 8px;
-            font-size: 11px;
-            font-weight: 600;
+        QToolButton:hover { background-color: #45484e; border-color: #6f7279; }
+        QToolButton:pressed { background-color: #25272a; }
+        QToolButton#textCommitButton {
+            background-color: #0878c9;
+            border-color: #1593e6;
         }
-        QPushButton:hover { background-color: rgba(255, 255, 255, 38); }
+        QToolButton#textCommitButton:hover { background-color: #0b8de8; }
         QFontComboBox, QSpinBox {
-            background: #2b2b2b;
+            background: #292b2f;
             color: white;
-            border: 1px solid #555;
-            border-radius: 4px;
-            padding: 2px 5px;
-            min-height: 22px;
+            border: 1px solid #55585f;
+            border-radius: 6px;
+            min-height: 0px;
         }
+        QFontComboBox { padding: 0px 8px; }
         QFontComboBox:hover, QSpinBox:hover {
             border-color: #6a6a6a;
             background: #303030;
@@ -403,75 +436,87 @@ CaptureOverlay::CaptureOverlay(QWidget *parent)
         QFontComboBox::drop-down {
             subcontrol-origin: padding;
             subcontrol-position: top right;
-            width: 22px;
-            border-left: 1px solid #444;
-            border-top-right-radius: 4px;
-            border-bottom-right-radius: 4px;
-            background: #252525;
+            width: 28px;
+            border-left: 1px solid #4b4d52;
+            border-top-right-radius: 6px;
+            border-bottom-right-radius: 6px;
+            background: #34363a;
         }
         QFontComboBox::down-arrow {
-            image: none;
-            width: 0;
-            height: 0;
-            border-left: 4px solid transparent;
-            border-right: 4px solid transparent;
-            border-top: 5px solid #d8d8d8;
-            margin-right: 7px;
+            image: url(:/icons/chevron_down.svg);
+            width: 14px;
+            height: 14px;
         }
         QSpinBox {
-            padding-right: 20px;
+            padding: 0px;
         }
         QSpinBox::up-button, QSpinBox::down-button {
             subcontrol-origin: border;
-            width: 18px;
-            background: #252525;
-            border-left: 1px solid #444;
+            width: 22px;
+            background: #34363a;
+            border-left: 1px solid #4b4d52;
         }
         QSpinBox::up-button {
             subcontrol-position: top right;
-            border-top-right-radius: 4px;
+            border-top-right-radius: 6px;
         }
         QSpinBox::down-button {
             subcontrol-position: bottom right;
-            border-bottom-right-radius: 4px;
+            border-bottom-right-radius: 6px;
         }
         QSpinBox::up-button:hover, QSpinBox::down-button:hover {
             background: #3a3a3a;
         }
         QSpinBox::up-arrow {
-            image: none;
-            width: 0;
-            height: 0;
-            border-left: 4px solid transparent;
-            border-right: 4px solid transparent;
-            border-bottom: 5px solid #d8d8d8;
+            image: url(:/icons/chevron_up.svg);
+            width: 11px;
+            height: 11px;
         }
         QSpinBox::down-arrow {
-            image: none;
-            width: 0;
-            height: 0;
-            border-left: 4px solid transparent;
-            border-right: 4px solid transparent;
-            border-top: 5px solid #d8d8d8;
+            image: url(:/icons/chevron_down.svg);
+            width: 11px;
+            height: 11px;
         }
     )");
     QHBoxLayout *textPanelLayout = new QHBoxLayout(m_textEditPanel);
-    textPanelLayout->setContentsMargins(4, 4, 4, 4);
-    textPanelLayout->setSpacing(4);
-    m_textMoveHandle = new QPushButton(TranslationManager::toolMove(), m_textEditPanel);
+    textPanelLayout->setContentsMargins(6, 6, 6, 6);
+    textPanelLayout->setSpacing(6);
+    m_textMoveHandle = new QToolButton(m_textEditPanel);
+    m_textMoveHandle->setIcon(QIcon(QStringLiteral(":/icons/drag.svg")));
+    m_textMoveHandle->setIconSize(QSize(17, 17));
+    m_textMoveHandle->setFixedSize(30, 30);
     m_textMoveHandle->setToolTip(TranslationManager::toolMove());
     m_textMoveHandle->setCursor(Qt::SizeAllCursor);
+    m_textMoveHandle->setFocusPolicy(Qt::NoFocus);
     m_textMoveHandle->installEventFilter(this);
     m_textEditPanel->installEventFilter(this);
     m_textInlineFontCombo = new QFontComboBox(m_textEditPanel);
-    m_textInlineFontCombo->setFixedWidth(132);
+    m_textInlineFontCombo->setFixedSize(158, 32);
     m_textInlineSizeSpin = new QSpinBox(m_textEditPanel);
     m_textInlineSizeSpin->setRange(8, 72);
-    m_textInlineSizeSpin->setFixedWidth(54);
+    m_textInlineSizeSpin->setAlignment(Qt::AlignCenter);
+    m_textInlineSizeSpin->setFixedSize(68, 32);
+    m_textCommitButton = new QToolButton(m_textEditPanel);
+    m_textCommitButton->setObjectName(QStringLiteral("textCommitButton"));
+    m_textCommitButton->setIcon(QIcon(QStringLiteral(":/icons/check.svg")));
+    m_textCommitButton->setIconSize(QSize(18, 18));
+    m_textCommitButton->setFixedSize(30, 30);
+    m_textCommitButton->setToolTip(TranslationManager::save() + QStringLiteral(" (Enter)"));
+    m_textCommitButton->setFocusPolicy(Qt::NoFocus);
+    m_textCancelButton = new QToolButton(m_textEditPanel);
+    m_textCancelButton->setIcon(QIcon(QStringLiteral(":/icons/close.svg")));
+    m_textCancelButton->setIconSize(QSize(16, 16));
+    m_textCancelButton->setFixedSize(30, 30);
+    m_textCancelButton->setToolTip(TranslationManager::cancel() + QStringLiteral(" (Esc)"));
+    m_textCancelButton->setFocusPolicy(Qt::NoFocus);
     textPanelLayout->addWidget(m_textMoveHandle);
     textPanelLayout->addWidget(m_textInlineFontCombo);
     textPanelLayout->addWidget(m_textInlineSizeSpin);
+    textPanelLayout->addWidget(m_textCommitButton);
+    textPanelLayout->addWidget(m_textCancelButton);
     m_textEditPanel->hide();
+    connect(m_textCommitButton, &QToolButton::clicked, this, &CaptureOverlay::commitText);
+    connect(m_textCancelButton, &QToolButton::clicked, this, &CaptureOverlay::cancelTextEdit);
     connect(m_textInlineFontCombo, &QFontComboBox::currentFontChanged, this, [this](const QFont &font) {
         if (m_annotationEngine) m_annotationEngine->setTextFontFamily(font.family());
         updateTextEditorStyle();
@@ -609,6 +654,8 @@ CaptureOverlay::CaptureOverlay(QWidget *parent)
 
 CaptureOverlay::~CaptureOverlay()
 {
+    delete m_textFocusProxy;
+    m_textFocusProxy = nullptr;
     if (m_googleLensUploader) {
         m_googleLensUploader->disconnect(this);
         m_googleLensUploader->cancel();
@@ -1302,6 +1349,7 @@ void CaptureOverlay::startCapture()
 
     if (m_textEdit) m_textEdit->hide();
     if (m_textEditPanel) m_textEditPanel->hide();
+    if (m_textFocusProxy) m_textFocusProxy->hide();
     m_textJustCommitted = false;
     if (m_annotationEngine) m_annotationEngine->clear();
     hideToolbar();
@@ -1408,7 +1456,7 @@ void CaptureOverlay::performCapture()
 #endif
 
     activateWindow();
-    setFocus();
+    setFocus(Qt::ActiveWindowFocusReason);
     raise();
 }
 
@@ -2243,7 +2291,7 @@ bool CaptureOverlay::eventFilter(QObject *obj, QEvent *event)
             QMouseEvent *me = static_cast<QMouseEvent*>(event);
             if (me->button() == Qt::LeftButton) {
                 m_textPanelDragging = true;
-                m_textPanelDragOffset = mapFromGlobal(me->globalPosition().toPoint()) - m_textEdit->pos();
+                m_textPanelDragOffset = mapFromGlobal(me->globalPosition().toPoint()) - m_textEditPosition;
                 return true;
             }
         } else if (event->type() == QEvent::MouseMove && m_textPanelDragging) {
@@ -2256,12 +2304,17 @@ bool CaptureOverlay::eventFilter(QObject *obj, QEvent *event)
         }
     }
 
-    if (obj == m_textEdit && event->type() == QEvent::KeyPress) {
+    if ((obj == m_textEdit || obj == m_textFocusProxy) && event->type() == QEvent::KeyPress) {
         QKeyEvent *ke = static_cast<QKeyEvent*>(event);
+        if (ke->key() == Qt::Key_Escape) {
+            cancelTextEdit();
+            return true;
+        }
         if (ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter) {
             // Shift+Enter → newline
             if (ke->modifiers() & Qt::ShiftModifier) {
-                m_textEdit->insertPlainText("\n");
+                if (auto *edit = qobject_cast<QTextEdit *>(obj))
+                    edit->insertPlainText("\n");
                 return true;
             }
             // Enter → confirm directly
@@ -2462,6 +2515,7 @@ void CaptureOverlay::hideToolbar()
     if (m_toolSettingsButton) m_toolSettingsButton->hide();
     if (m_toolSettingsDrawer) m_toolSettingsDrawer->hide();
     if (m_textEditPanel) m_textEditPanel->hide();
+    if (m_textFocusProxy) m_textFocusProxy->hide();
 }
 
 void CaptureOverlay::finishCapture()
@@ -2521,6 +2575,8 @@ void CaptureOverlay::beginTextEditAt(const QPoint &pos)
     }
 
     m_textEdit->clear();
+    if (m_textFocusProxy)
+        m_textFocusProxy->clear();
     m_textEdit->setFixedHeight(30);
     updateTextEditorStyle();
     moveTextEditorTo(pos);
@@ -2528,7 +2584,36 @@ void CaptureOverlay::beginTextEditAt(const QPoint &pos)
     if (m_textEditPanel)
         m_textEditPanel->show();
     updateTextEditPanelPosition();
-    m_textEdit->setFocus();
+    acquireTextKeyboardFocus();
+}
+
+void CaptureOverlay::acquireTextKeyboardFocus()
+{
+    if (!m_textEdit)
+        return;
+
+    if (!m_textFocusProxy) {
+        m_textEdit->setFocus(Qt::MouseFocusReason);
+        return;
+    }
+
+    const QPoint proxyPosition = mapToGlobal(m_textEditPosition + QPoint(4, 4));
+    m_textFocusProxy->move(proxyPosition);
+    m_textFocusProxy->show();
+    m_textFocusProxy->raise();
+    if (QWindow *window = m_textFocusProxy->windowHandle())
+        window->requestActivate();
+    m_textFocusProxy->activateWindow();
+    m_textFocusProxy->setFocus(Qt::MouseFocusReason);
+    qInfo() << "[CaptureOverlay] requested managed text input focus; activeWindow="
+            << QApplication::activeWindow()
+            << "focusWidget=" << QApplication::focusWidget();
+}
+
+void CaptureOverlay::releaseTextKeyboardFocus()
+{
+    if (QWidget::keyboardGrabber() == m_textEdit)
+        m_textEdit->releaseKeyboard();
 }
 
 void CaptureOverlay::moveTextEditorTo(const QPoint &pos)
@@ -2596,21 +2681,26 @@ void CaptureOverlay::commitText()
     if (!m_textEdit || m_textEdit->isHidden()) return;
     QString text = m_textEdit->toPlainText().trimmed();
     if (!text.isEmpty() && m_annotationEngine) {
-        m_textEditPosition = m_textEdit->pos();
         m_annotationEngine->addTextAnnotation(m_textEditPosition, text);
         update();
         updateUndoRedoState();
     }
+    releaseTextKeyboardFocus();
     m_textEdit->hide();
     if (m_textEditPanel) m_textEditPanel->hide();
+    if (m_textFocusProxy) m_textFocusProxy->hide();
     m_textJustCommitted = true;
     setFocus();
 }
 
 void CaptureOverlay::cancelTextEdit()
 {
-    if (m_textEdit) m_textEdit->hide();
+    if (m_textEdit) {
+        releaseTextKeyboardFocus();
+        m_textEdit->hide();
+    }
     if (m_textEditPanel) m_textEditPanel->hide();
+    if (m_textFocusProxy) m_textFocusProxy->hide();
     setFocus();
 }
 
@@ -2865,6 +2955,7 @@ void CaptureOverlay::selectMonitorAt(const QPoint &pos)
     if (monitorRect.isEmpty()) return;
 
     if (m_textEdit) m_textEdit->hide();
+    if (m_textFocusProxy) m_textFocusProxy->hide();
     if (m_annotationEngine) m_annotationEngine->clear();
 
     m_isSelecting = false;
