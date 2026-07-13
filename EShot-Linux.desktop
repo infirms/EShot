@@ -7,5 +7,6 @@ Icon=io.github.benoks.EShot
 Terminal=false
 StartupNotify=false
 X-KDE-StartupNotify=false
+X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2
 Categories=Utility;Graphics;Photography;
 Keywords=screenshot;screen capture;annotation;ocr;
