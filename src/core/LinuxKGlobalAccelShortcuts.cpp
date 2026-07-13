@@ -4,6 +4,7 @@
 #include <QDBusInterface>
 #include <QDBusObjectPath>
 #include <QDBusReply>
+#include <QDebug>
 #include <QKeyCombination>
 
 namespace {
@@ -105,6 +106,19 @@ uint LinuxKGlobalAccelShortcuts::registrationFlags()
     return SetPresent | NoAutoloading;
 }
 
+uint LinuxKGlobalAccelShortcuts::defaultRegistrationFlags()
+{
+    constexpr uint NoAutoloading = 4;
+    constexpr uint IsDefault = 8;
+    return NoAutoloading | IsDefault;
+}
+
+bool LinuxKGlobalAccelShortcuts::shouldUsePortalFallback(bool kdeRegistrationSucceeded,
+                                                          bool portalAvailable)
+{
+    return !kdeRegistrationSucceeded && portalAvailable;
+}
+
 bool LinuxKGlobalAccelShortcuts::setShortcuts(const QHash<int, QPair<UINT, UINT>> &shortcuts)
 {
     if (!m_available) return false;
@@ -115,12 +129,33 @@ bool LinuxKGlobalAccelShortcuts::setShortcuts(const QHash<int, QPair<UINT, UINT>
         if (it.value().second == 0) continue;
         const QStringList id = actionId(it.key());
         const QDBusReply<void> registered = accel.call(QStringLiteral("doRegister"), id);
-        if (!registered.isValid()) return false;
+        if (!registered.isValid()) {
+            qWarning() << "[HotkeyManager] KGlobalAccel doRegister failed:"
+                       << registered.error().name() << registered.error().message();
+            return false;
+        }
         const int key = combinedKey(it.value().first, it.value().second);
         if (key == 0) return false;
-        const QDBusReply<QList<int>> assigned = accel.call(QStringLiteral("setShortcut"), id,
-                                                            QVariant::fromValue(QList<int>{key}), registrationFlags());
-        if (!assigned.isValid() || !assigned.value().contains(key)) return false;
+        const QVariant keys = QVariant::fromValue(QList<int>{key});
+        const QDBusReply<QList<int>> defaults = accel.call(
+            QStringLiteral("setShortcut"), id, keys, defaultRegistrationFlags());
+        if (!defaults.isValid()) {
+            qWarning() << "[HotkeyManager] KGlobalAccel default shortcut registration failed:"
+                       << defaults.error().name() << defaults.error().message();
+            return false;
+        }
+        const QDBusReply<QList<int>> assigned = accel.call(
+            QStringLiteral("setShortcut"), id, keys, registrationFlags());
+        if (!assigned.isValid()) {
+            qWarning() << "[HotkeyManager] KGlobalAccel shortcut registration failed:"
+                       << assigned.error().name() << assigned.error().message();
+            return false;
+        }
+        if (!assigned.value().contains(key)) {
+            qWarning() << "[HotkeyManager] KGlobalAccel rejected shortcut because it is unavailable:"
+                       << id << "requested=" << key << "assigned=" << assigned.value();
+            return false;
+        }
         m_ids.insert(id.at(1), it.key());
     }
     return ensureSignalConnection();
@@ -132,14 +167,21 @@ bool LinuxKGlobalAccelShortcuts::ensureSignalConnection()
                          QString::fromLatin1(RootInterface), QDBusConnection::sessionBus());
     const QDBusReply<QDBusObjectPath> component = accel.call(QStringLiteral("getComponent"),
                                                               QString::fromLatin1(Component));
-    if (!component.isValid() || component.value().path().isEmpty()) return false;
+    if (!component.isValid() || component.value().path().isEmpty()) {
+        qWarning() << "[HotkeyManager] KGlobalAccel component lookup failed:"
+                   << component.error().name() << component.error().message();
+        return false;
+    }
     if (m_componentPath == component.value().path()) return true;
     m_componentPath = component.value().path();
-    return QDBusConnection::sessionBus().connect(
+    const bool connected = QDBusConnection::sessionBus().connect(
         QString::fromLatin1(Service), m_componentPath,
         QStringLiteral("org.kde.kglobalaccel.Component"),
         QStringLiteral("globalShortcutPressed"), this,
         SLOT(onGlobalShortcutPressed(QString,QString,qlonglong)));
+    if (!connected)
+        qWarning() << "[HotkeyManager] Could not subscribe to KGlobalAccel activation signals.";
+    return connected;
 }
 
 void LinuxKGlobalAccelShortcuts::onGlobalShortcutPressed(const QString &componentUnique,

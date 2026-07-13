@@ -29,6 +29,7 @@
 #ifdef Q_OS_LINUX
 #include <QCheckBox>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QCoreApplication>
 #include <QLocale>
 #include <QDBusInterface>
@@ -594,6 +595,9 @@ void FirstRunWizard::startLinuxDependencyInstaller()
     if (!QFileInfo::exists(script)) { m_linuxInstallStatus->setText(tr("Installer script was not found. Retry after reinstalling EShot, or skip optional setup.")); return; }
     m_finishButton->setEnabled(false); m_linuxInstallStatus->setText(tr("Installing selected dependencies…"));
     m_linuxInstallerProcess = new QProcess(this);
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    environment.insert(QStringLiteral("ESHOT_LANGUAGE"), TranslationManager::langCode());
+    m_linuxInstallerProcess->setProcessEnvironment(environment);
     const QString program = QStringLiteral("bash");
     const QStringList processArgs = QStringList{script} + args;
     qInfo() << "[FirstRunWizard] Starting optional setup:" << program << processArgs << "packages/options; no credentials are logged";

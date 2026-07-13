@@ -105,7 +105,10 @@ HotkeyManager::HotkeyManager(QObject *parent) : QObject(parent)
     }
     m_portalShortcuts = new LinuxPortalGlobalShortcuts(this);
     const bool kdeAvailable = m_kdeShortcuts && m_kdeShortcuts->isAvailable();
-    const bool portalAvailable = !kdeAvailable && m_portalShortcuts->isAvailable();
+    const bool portalAvailable = m_portalShortcuts->isAvailable();
+    connect(m_portalShortcuts, &LinuxPortalGlobalShortcuts::shortcutActivated,
+            this, &HotkeyManager::emitHotkey, Qt::UniqueConnection);
+    m_usePortalShortcuts = !kdeAvailable && portalAvailable;
     bool x11Available = false;
 #if defined(ESHOT_HAVE_X11)
     const bool useX11Hotkeys = QGuiApplication::platformName().contains(
@@ -117,10 +120,8 @@ HotkeyManager::HotkeyManager(QObject *parent) : QObject(parent)
 
     const LinuxHotkeyBackend backend = LinuxPortalGlobalShortcuts::preferredBackend(
         portalAvailable, x11Available);
-    if (!kdeAvailable && backend == LinuxHotkeyBackend::Portal) {
-        connect(m_portalShortcuts, &LinuxPortalGlobalShortcuts::shortcutActivated,
-                this, &HotkeyManager::emitHotkey);
-    }
+    if (!kdeAvailable && backend == LinuxHotkeyBackend::Portal)
+        m_usePortalShortcuts = true;
 #if defined(ESHOT_HAVE_X11)
     else if (backend == LinuxHotkeyBackend::X11) {
         m_x11RootWindow = DefaultRootWindow(static_cast<Display *>(m_x11Display));
@@ -234,11 +235,20 @@ bool HotkeyManager::registerHotkey(int id, UINT modifiers, UINT virtualKey)
     }
     return false;
 #elif defined(ESHOT_HAVE_X11)
-    if (m_kdeShortcuts && m_kdeShortcuts->isAvailable()) {
+    if (m_kdeShortcuts && m_kdeShortcuts->isAvailable() && !m_usePortalShortcuts) {
         const auto previous = m_registeredHotkeyDefs;
         if (!m_registeredHotkeys.contains(id)) m_registeredHotkeys.append(id);
         m_registeredHotkeyDefs.insert(id, qMakePair(modifiers, virtualKey));
         if (m_kdeShortcuts->setShortcuts(m_registeredHotkeyDefs)) return true;
+        if (id == HOTKEY_CAPTURE && previous.isEmpty()
+            && LinuxKGlobalAccelShortcuts::shouldUsePortalFallback(
+                false, m_portalShortcuts && m_portalShortcuts->isAvailable())) {
+            qWarning() << "[HotkeyManager] KGlobalAccel could not claim PrintScreen;"
+                          " falling back to the GlobalShortcuts portal.";
+            m_usePortalShortcuts = true;
+            refreshPortalShortcuts();
+            return true;
+        }
         m_registeredHotkeyDefs = previous;
         m_registeredHotkeys.removeAll(id);
         return false;
@@ -274,11 +284,20 @@ bool HotkeyManager::registerHotkey(int id, UINT modifiers, UINT virtualKey)
     m_registeredHotkeyDefs.insert(id, qMakePair(modifiers, virtualKey));
     return true;
 #elif defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
-    if (m_kdeShortcuts && m_kdeShortcuts->isAvailable()) {
+    if (m_kdeShortcuts && m_kdeShortcuts->isAvailable() && !m_usePortalShortcuts) {
         const auto previous = m_registeredHotkeyDefs;
         if (!m_registeredHotkeys.contains(id)) m_registeredHotkeys.append(id);
         m_registeredHotkeyDefs.insert(id, qMakePair(modifiers, virtualKey));
         if (m_kdeShortcuts->setShortcuts(m_registeredHotkeyDefs)) return true;
+        if (id == HOTKEY_CAPTURE && previous.isEmpty()
+            && LinuxKGlobalAccelShortcuts::shouldUsePortalFallback(
+                false, m_portalShortcuts && m_portalShortcuts->isAvailable())) {
+            qWarning() << "[HotkeyManager] KGlobalAccel could not claim PrintScreen;"
+                          " falling back to the GlobalShortcuts portal.";
+            m_usePortalShortcuts = true;
+            refreshPortalShortcuts();
+            return true;
+        }
         m_registeredHotkeyDefs = previous;
         m_registeredHotkeys.removeAll(id);
         return false;
@@ -365,7 +384,7 @@ void HotkeyManager::unregisterHotkey(int id)
     m_registeredHotkeys.removeAll(id);
     m_registeredHotkeyDefs.remove(id);
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
-    if (m_kdeShortcuts && m_kdeShortcuts->isAvailable())
+    if (m_kdeShortcuts && m_kdeShortcuts->isAvailable() && !m_usePortalShortcuts)
         m_kdeShortcuts->setShortcuts(m_registeredHotkeyDefs);
 #endif
     refreshPortalShortcuts();
@@ -518,8 +537,7 @@ void HotkeyManager::emitHotkey(int id)
 void HotkeyManager::refreshPortalShortcuts()
 {
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
-    if ((!m_kdeShortcuts || !m_kdeShortcuts->isAvailable())
-        && m_portalShortcuts && m_portalShortcuts->isAvailable())
+    if (m_usePortalShortcuts && m_portalShortcuts && m_portalShortcuts->isAvailable())
         m_portalShortcuts->setShortcuts(m_registeredHotkeyDefs);
 #endif
 }

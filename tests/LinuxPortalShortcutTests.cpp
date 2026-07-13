@@ -62,6 +62,14 @@ private slots:
     void marksKdeShortcutsAsPresent()
     {
         QCOMPARE(LinuxKGlobalAccelShortcuts::registrationFlags(), uint(6));
+        QCOMPARE(LinuxKGlobalAccelShortcuts::defaultRegistrationFlags(), uint(12));
+    }
+
+    void fallsBackToPortalWhenKdeCannotClaimShortcut()
+    {
+        QVERIFY(LinuxKGlobalAccelShortcuts::shouldUsePortalFallback(false, true));
+        QVERIFY(!LinuxKGlobalAccelShortcuts::shouldUsePortalFallback(true, true));
+        QVERIFY(!LinuxKGlobalAccelShortcuts::shouldUsePortalFallback(false, false));
     }
 };
 

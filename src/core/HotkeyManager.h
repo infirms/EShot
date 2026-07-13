@@ -70,6 +70,7 @@ private:
     unsigned long m_x11RootWindow = 0;
     LinuxPortalGlobalShortcuts *m_portalShortcuts = nullptr;
     LinuxKGlobalAccelShortcuts *m_kdeShortcuts = nullptr;
+    bool m_usePortalShortcuts = false;
 
     void emitHotkey(int id);
     void refreshPortalShortcuts();

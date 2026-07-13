@@ -29,6 +29,11 @@
   <url type="homepage">https://github.com/Benoks/EShot</url>
   <url type="bugtracker">https://github.com/Benoks/EShot/issues</url>
   <releases>
+    <release version="4.0.4" date="2026-07-13">
+      <description>
+        <p>Adds DNF dependency setup for Fedora and Nobara, localizes setup errors, makes the tray respond to a normal click, and falls back to the desktop shortcut portal when KDE cannot claim PrintScreen.</p>
+      </description>
+    </release>
     <release version="4.0.3" date="2026-07-13">
       <description>
         <p>Rebuilds the Linux AppImage for baseline x86-64 CPUs and older glibc versions instead of inheriting CachyOS build-host requirements.</p>

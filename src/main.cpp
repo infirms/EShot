@@ -219,7 +219,12 @@ public slots:
 
     void onTrayActivated(QSystemTrayIcon::ActivationReason reason)
     {
-        if (reason == QSystemTrayIcon::DoubleClick) onCaptureRequested();
+        if (reason == QSystemTrayIcon::DoubleClick) {
+            onCaptureRequested();
+        } else if (reason == QSystemTrayIcon::Trigger && m_trayMenu) {
+            rebuildTrayMenu();
+            m_trayMenu->popup(QCursor::pos());
+        }
     }
 
     void onQuitAction() { qApp->quit(); }

@@ -17,6 +17,9 @@ public:
     static bool isKdeDesktop(const QString &desktop);
     static QStringList actionId(int id);
     static uint registrationFlags();
+    static uint defaultRegistrationFlags();
+    static bool shouldUsePortalFallback(bool kdeRegistrationSucceeded,
+                                        bool portalAvailable);
 
 signals:
     void shortcutActivated(int id);

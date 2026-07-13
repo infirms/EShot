@@ -44,6 +44,7 @@ assert_eq "gtk" "$(XDG_CURRENT_DESKTOP=sway XDG_SESSION_DESKTOP=sway eshot_deskt
 kde_pacman="$(XDG_CURRENT_DESKTOP=KDE eshot_runtime_packages pacman)"
 gnome_pacman="$(XDG_CURRENT_DESKTOP=GNOME eshot_runtime_packages pacman)"
 gnome_apt="$(XDG_CURRENT_DESKTOP=GNOME eshot_runtime_packages apt)"
+kde_dnf="$(XDG_CURRENT_DESKTOP=KDE eshot_runtime_packages dnf)"
 
 assert_contains "xdg-desktop-portal-kde" "${kde_pacman}" "KDE portal package"
 assert_not_contains "xdg-desktop-portal-gnome" "${kde_pacman}" "KDE excludes GNOME portal"
@@ -55,10 +56,14 @@ assert_contains "gstreamer1.0-pipewire" "${gnome_apt}" "Debian PipeWire GStreame
 assert_contains "gstreamer1.0-libav" "${gnome_apt}" "Debian AAC encoder package"
 assert_contains "ffmpeg" "${kde_pacman}" "FFmpeg runtime"
 assert_contains "tesseract" "${kde_pacman}" "Tesseract runtime"
+assert_contains "pipewire-gstreamer" "${kde_dnf}" "Fedora PipeWire GStreamer package"
+assert_contains "gstreamer1-plugins-ugly-free" "${kde_dnf}" "Fedora GStreamer ugly package"
+assert_contains "xdg-desktop-portal-kde" "${kde_dnf}" "Fedora KDE portal package"
 
 pacman_ffmpeg="$(eshot_selected_packages pacman 1 0 '')"
 pacman_ocr="$(eshot_selected_packages pacman 0 1 'eng,tur,bogus')"
 apt_ocr="$(eshot_selected_packages apt 0 1 'eng,tur,bogus')"
+dnf_ocr="$(eshot_selected_packages dnf 0 1 'eng,tur,bogus')"
 assert_contains "ffmpeg" "${pacman_ffmpeg}" "pacman FFmpeg-only"
 assert_not_contains "tesseract" "${pacman_ffmpeg}" "pacman FFmpeg-only excludes OCR"
 assert_contains "tesseract-data-tur" "${pacman_ocr}" "pacman Turkish OCR"
@@ -66,6 +71,8 @@ assert_not_contains "ffmpeg" "${pacman_ocr}" "pacman OCR-only excludes FFmpeg"
 assert_not_contains "tesseract-data-bogus" "${pacman_ocr}" "unsupported pacman OCR language"
 assert_contains "tesseract-ocr-tur" "${apt_ocr}" "apt Turkish OCR"
 assert_not_contains "tesseract-ocr-bogus" "${apt_ocr}" "unsupported apt OCR language"
+assert_contains "tesseract-langpack-tur" "${dnf_ocr}" "dnf Turkish OCR"
+assert_not_contains "tesseract-langpack-bogus" "${dnf_ocr}" "unsupported dnf OCR language"
 apt_chinese="$(eshot_selected_packages apt 0 1 'chi_sim,chi_tra')"
 assert_contains "tesseract-ocr-chi-sim" "${apt_chinese}" "apt simplified Chinese OCR"
 assert_contains "tesseract-ocr-chi-tra" "${apt_chinese}" "apt traditional Chinese OCR"
@@ -73,6 +80,13 @@ assert_not_contains "tesseract-ocr-chi_sim" "${apt_chinese}" "apt package names 
 
 assert_eq "pacman" "$(ESHOT_PACKAGE_MANAGER=pacman eshot_package_manager)" "forced pacman"
 assert_eq "apt" "$(ESHOT_PACKAGE_MANAGER=apt eshot_package_manager)" "forced apt"
+assert_eq "dnf" "$(ESHOT_PACKAGE_MANAGER=dnf eshot_package_manager)" "forced dnf"
+assert_eq "No supported package manager was found (pacman, apt or dnf)." \
+  "$(ESHOT_LANGUAGE=en eshot_setup_text unsupported_manager)" "English setup error"
+assert_eq "Desteklenen bir paket yoneticisi bulunamadi (pacman, apt veya dnf)." \
+  "$(ESHOT_LANGUAGE=tr eshot_setup_text unsupported_manager)" "Turkish setup error"
+assert_eq "No supported package manager was found (pacman, apt or dnf)." \
+  "$(ESHOT_LANGUAGE=ru eshot_setup_text unsupported_manager)" "unsupported language falls back to English"
 assert_eq "/home/test/.local/opt/EShot/EShot.AppImage" \
   "$(HOME=/home/test XDG_DATA_HOME= eshot_installed_appimage_path)" "default AppImage install path"
 assert_eq "/home/test/share/applications/io.github.benoks.EShot.desktop" \

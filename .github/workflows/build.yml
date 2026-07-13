@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 env:
-  APP_VERSION: '4.0.3'
+  APP_VERSION: '4.0.4'
   QT_VERSION: '6.8.2'
 
 jobs:
@@ -363,6 +363,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout release notes
+        uses: actions/checkout@v4
+
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
@@ -379,9 +382,10 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          body_path: packaging/release-notes/v4.0.4.md
           files: |
             release-assets/EShot-Setup-x64/*.exe
             release-assets/EShot-Setup-arm64/*.exe
             release-assets/EShot-${{ github.ref_name }}-x64-portable.zip
             release-assets/EShot-${{ github.ref_name }}-arm64-portable.zip
+            release-assets/EShot-linux-packages/EShot-v${{ env.APP_VERSION }}-x86_64.AppImage

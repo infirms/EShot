@@ -10,7 +10,7 @@ while (( $# )); do
     --ffmpeg) ffmpeg=1;; --ocr) ocr=1;; --desktop) desktop=1;;
     --integrate-appimage) integrate_appimage=1;;
     --ocr-languages) shift; [[ $# -gt 0 ]] || exit 2; languages="$1";;
-    *) eshot_show_error "Bilinmeyen secenek: $1"; exit 2;;
+    *) eshot_show_error "$(eshot_setup_text unknown_option "$1")"; exit 2;;
   esac
   shift
 done
@@ -20,7 +20,7 @@ packages=()
 manager=""
 if (( ffmpeg || ocr || desktop )); then
   manager="$(eshot_package_manager)" || {
-    eshot_show_error "Desteklenen bir paket yoneticisi bulunamadi (pacman veya apt)."
+    eshot_show_error "$(eshot_setup_text unsupported_manager)"
     exit 1
   }
   read -r -a packages <<<"$(eshot_missing_selected_packages "${manager}" "${ffmpeg}" "${ocr}" "${languages}" "${desktop}")"
@@ -28,7 +28,7 @@ fi
 
 printf '[EShot setup] attempted packages: %s\n' "${packages[*]:-(none)}" >&2
 if (( ${#packages[@]} > 0 )) && ! command -v pkexec >/dev/null 2>&1; then
-  eshot_show_error "Paket kurulumu icin PolicyKit (pkexec) bulunamadi."
+  eshot_show_error "$(eshot_setup_text missing_pkexec)"
   exit 1
 fi
 
@@ -40,11 +40,14 @@ if (( ${#packages[@]} > 0 )); then case "${manager}" in
     pkexec apt-get update
     pkexec apt-get install -y "${packages[@]}"
     ;;
+  dnf)
+    pkexec dnf install -y "${packages[@]}"
+    ;;
 esac; fi
 
 if (( integrate_appimage )); then
   if [[ -z "${APPIMAGE:-}" || ! -x "${APPIMAGE}" ]]; then
-    eshot_show_error "AppImage masaustu entegrasyonu kullanilamiyor."
+    eshot_show_error "$(eshot_setup_text integration_unavailable)"
     exit 1
   fi
   "${APPIMAGE}" --integrate-only
