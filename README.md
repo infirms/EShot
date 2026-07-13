@@ -8,6 +8,9 @@ Native screenshot, annotation, OCR, visual-search, upload, GIF, and video captur
 [![Qt](https://img.shields.io/badge/Qt-6.x-41cd52)](https://www.qt.io/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
+> [!IMPORTANT]
+> The Linux build has currently been developed and tested only on KDE Plasma 6 with Wayland, primarily on CachyOS. Other desktop environments and compositors are not supported yet and are unlikely to work correctly. GNOME support is planned for a future release.
+
 EShot keeps the complete screenshot workflow in one compact tray application: select a region, annotate it, copy or save it, extract text, search the image, upload it, pin it above other windows, or record it as GIF/MP4.
 
 ## Screenshots
@@ -23,10 +26,7 @@ EShot keeps the complete screenshot workflow in one compact tray application: se
 | Windows 10/11 x64 | Stable | Installer and portable ZIP |
 | Windows 11 ARM64 | Stable | Native ARM64 installer and portable ZIP |
 | Linux x86_64 (KDE Plasma 6) | **Experimental** | AppImage, `.deb`, and portable archive |
-| Other Linux desktops | Untested | No support guarantee yet |
-
-> [!IMPORTANT]
-> Linux support is experimental and currently tested only on KDE Plasma 6, primarily on CachyOS/Arch with Wayland. GNOME, wlroots compositors, older Plasma versions, and other distributions may work through XDG Desktop Portal, but they are not considered supported until they have been tested properly.
+| Other Linux desktops | Unsupported | Unlikely to work correctly |
 
 ## Features
 
