@@ -32,6 +32,7 @@ set(SOURCES
     src/core/LinuxPortalGlobalShortcuts.cpp
     src/core/LinuxPortalScreenCast.cpp
     src/core/LinuxPortalScreenshot.cpp
+    src/core/LinuxAutoStartPolicy.cpp
     src/core/LinuxScreenshotPolicy.cpp
     src/core/ImageUploader.cpp
     src/core/VisualSearch.cpp
@@ -67,6 +68,7 @@ set(HEADERS
     src/core/LinuxPortalGlobalShortcuts.h
     src/core/LinuxPortalScreenCast.h
     src/core/LinuxPortalScreenshot.h
+    src/core/LinuxAutoStartPolicy.h
     src/core/LinuxScreenshotPolicy.h
     src/core/ImageUploader.h
     src/core/VisualSearch.h
@@ -254,6 +256,15 @@ if(BUILD_TESTING)
     add_test(NAME linux_dependency_selection COMMAND eshot_linux_dependency_selection_tests)
 
     if(UNIX AND NOT APPLE)
+        qt_add_executable(eshot_linux_autostart_policy_tests
+            tests/LinuxAutoStartPolicyTests.cpp
+            src/core/LinuxAutoStartPolicy.cpp
+            src/core/LinuxAutoStartPolicy.h
+        )
+        target_include_directories(eshot_linux_autostart_policy_tests PRIVATE src)
+        target_link_libraries(eshot_linux_autostart_policy_tests PRIVATE Qt6::Core Qt6::Test)
+        add_test(NAME linux_autostart_policy COMMAND eshot_linux_autostart_policy_tests)
+
         qt_add_executable(eshot_linux_screenshot_policy_tests
             tests/LinuxScreenshotPolicyTests.cpp
             src/core/LinuxPortalScreenshot.cpp

@@ -1,5 +1,6 @@
 #include "SettingsDialog.h"
 #include "../core/HotkeyManager.h"
+#include "../core/LinuxAutoStartPolicy.h"
 #include "../core/OcrEngine.h"
 #include "../core/TranslationManager.h"
 #include "../recording/LinuxRecordingSupport.h"
@@ -492,7 +493,9 @@ bool SettingsDialog::isAutoStartEnabled()
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
         return false;
     const QString text = QString::fromUtf8(file.readAll());
-    return text.contains(QCoreApplication::applicationFilePath());
+    const QString appPath = LinuxAutoStartPolicy::executablePath(
+        qEnvironmentVariable("APPIMAGE"), QCoreApplication::applicationFilePath());
+    return text.contains(appPath);
 #endif
 }
 
@@ -539,7 +542,8 @@ static bool setAutoStartTask(bool enabled)
     if (!dir.exists() && !dir.mkpath(QStringLiteral(".")))
         return false;
 
-    QString appPath = QCoreApplication::applicationFilePath();
+    QString appPath = LinuxAutoStartPolicy::executablePath(
+        qEnvironmentVariable("APPIMAGE"), QCoreApplication::applicationFilePath());
     appPath.replace(QStringLiteral("\\"), QStringLiteral("\\\\"));
     appPath.replace(QStringLiteral("\""), QStringLiteral("\\\""));
     QString execLine = QStringLiteral("\"") + appPath + QStringLiteral("\" --silent");
@@ -557,7 +561,7 @@ static bool setAutoStartTask(bool enabled)
         "Name=EShot\n"
         "Comment=Start EShot in the system tray\n"
         "Exec=%1\n"
-        "Icon=io.github.benoks.EShot\n"
+        "Icon=io.github.benoks.EShot-v4\n"
         "Terminal=false\n"
         "StartupNotify=false\n"
         "X-KDE-StartupNotify=false\n"

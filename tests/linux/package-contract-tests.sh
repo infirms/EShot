@@ -46,6 +46,12 @@ grep -F 'Terminal=false' "${source_desktop_entry}" >/dev/null
 grep -F 'StartupNotify=false' "${source_desktop_entry}" >/dev/null
 grep -F 'Icon=io.github.benoks.EShot-v4' "${repo_root}/packaging/linux/io.github.benoks.EShot.desktop" >/dev/null
 grep -F 'StartupWMClass=EShot' "${repo_root}/packaging/linux/io.github.benoks.EShot.desktop" >/dev/null
+grep -F '#include "../core/LinuxAutoStartPolicy.h"' "${repo_root}/src/ui/SettingsDialog.cpp" >/dev/null
+[[ "$(grep -Fc 'LinuxAutoStartPolicy::executablePath(' "${repo_root}/src/ui/SettingsDialog.cpp")" -ge 2 ]] || {
+  echo 'Linux autostart creation and detection must share the stable AppImage path policy' >&2
+  exit 1
+}
+grep -F 'Icon=io.github.benoks.EShot-v4' "${repo_root}/src/ui/SettingsDialog.cpp" >/dev/null
 grep -F 'X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2' "${repo_root}/packaging/linux/io.github.benoks.EShot.desktop" >/dev/null
 grep -F '"${pixmap_dir}/io.github.benoks.EShot.svg"' "${repo_root}/scripts/linux/install-user.sh" >/dev/null
 grep -F '"${pixmap_dir}/io.github.benoks.EShot-v4.svg"' "${repo_root}/scripts/linux/install-user.sh" >/dev/null
