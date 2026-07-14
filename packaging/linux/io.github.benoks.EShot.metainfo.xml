@@ -29,6 +29,11 @@
   <url type="homepage">https://github.com/Benoks/EShot</url>
   <url type="bugtracker">https://github.com/Benoks/EShot/issues</url>
   <releases>
+    <release version="4.0.6" date="2026-07-14">
+      <description>
+        <p>Adds automatic OCR language selection, a configurable capture help panel, dynamic settings tab sizing, immediate update state sharing, safer KDE Wayland capture authorization, and allows unrelated settings to save when an unchanged hotkey is unavailable.</p>
+      </description>
+    </release>
     <release version="4.0.5" date="2026-07-14">
       <description>
         <p>Redesigns the GIF and video recording controls, adds GIF pause and resume, fixes clickable KDE Plasma notifications, and prevents translation tests from changing the saved application language.</p>

@@ -15,7 +15,8 @@ public:
     explicit OcrEngine(QObject *parent = nullptr);
     ~OcrEngine() override;
 
-    void recognize(const QPixmap &pixmap, const QString &languageTag = "en-US");
+    void recognize(const QPixmap &pixmap, const QString &languageTag = "auto",
+                   const QString &preferredLanguageTag = QString());
 
     static QString tesseractPath();
     static QString tessdataDir();
@@ -24,8 +25,15 @@ public:
 signals:
     void textReady(const QString &text);
     void failed(const QString &reason);
+    void languageResolved(const QString &languageArgument);
 
 private:
+    void startAutomaticRecognition(const QString &imagePath, const QString &tessdataDirectory,
+                                   const QString &preferredLanguage);
+    void startRecognitionProcess(const QString &imagePath, const QString &tessdataDirectory,
+                                 const QString &languageArgument);
+    void failAndRemoveImage(const QString &imagePath, const QString &reason);
+
     QProcess *m_proc = nullptr;
     QSet<QString> m_pendingFiles;
 };

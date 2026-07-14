@@ -34,6 +34,8 @@ public:
     void setElapsedSeconds(int seconds);
     void setPaused(bool paused);
     void setDetails(const QStringList &details);
+    void setShortcutHints(const QString &pauseResume, const QString &stop,
+                          const QString &cancel);
     void stop();
 
     bool controlsInside() const;

@@ -5,9 +5,6 @@
 
 class QLabel;
 class QPushButton;
-class QNetworkAccessManager;
-class QNetworkReply;
-
 class AboutDialog : public QDialog {
     Q_OBJECT
 
@@ -15,9 +12,14 @@ public:
     explicit AboutDialog(QWidget *parent = nullptr);
     ~AboutDialog();
 
+    void setUpdateInfo(bool available, const QString &version, bool busy, const QString &status);
+
+signals:
+    void checkForUpdatesRequested();
+    void updateRequested();
+
 private slots:
     void onCheckForUpdates();
-    void onUpdateReplyFinished(QNetworkReply *reply);
 
 private:
     void setupUI();
@@ -25,7 +27,7 @@ private:
 
     QLabel *m_updateStatusLabel = nullptr;
     QPushButton *m_checkUpdateBtn = nullptr;
-    QNetworkAccessManager *m_updateManager = nullptr;
+    bool m_updateAvailable = false;
 };
 
 #endif // ABOUTDIALOG_H

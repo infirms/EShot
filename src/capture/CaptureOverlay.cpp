@@ -67,6 +67,116 @@
 #endif
 
 namespace {
+void drawCaptureHintShortcut(QPainter &painter, int &x, int y,
+                             const QString &key, const QString &label,
+                             bool compact)
+{
+    QFont keyFont = painter.font();
+    keyFont.setPointSize(9);
+    keyFont.setWeight(QFont::DemiBold);
+    QFontMetrics keyMetrics(keyFont);
+    const int keyWidth = keyMetrics.horizontalAdvance(key) + 14;
+    const QRect keyRect(x, y, keyWidth, 24);
+
+    painter.setPen(QPen(QColor(255, 255, 255, 55), 1));
+    painter.setBrush(QColor(255, 255, 255, 24));
+    painter.drawRoundedRect(keyRect, 5, 5);
+    painter.setFont(keyFont);
+    painter.setPen(QColor(246, 248, 251, 235));
+    painter.drawText(keyRect, Qt::AlignCenter, key);
+    x = keyRect.right() + 1;
+
+    if (!compact) {
+        QFont labelFont = painter.font();
+        labelFont.setPointSize(9);
+        labelFont.setWeight(QFont::Normal);
+        painter.setFont(labelFont);
+        painter.setPen(QColor(220, 224, 230, 220));
+        const int labelWidth = QFontMetrics(labelFont).horizontalAdvance(label);
+        painter.drawText(QRect(x + 7, y, labelWidth, 24), Qt::AlignVCenter, label);
+        x += labelWidth + 7;
+    }
+}
+
+void drawCaptureHints(QPainter &painter, const QRect &monitorRect, bool recordingMode)
+{
+    QFont primaryFont = painter.font();
+    primaryFont.setPointSize(11);
+    primaryFont.setWeight(QFont::DemiBold);
+    const QString primaryText = QStringLiteral("%1  •  %2").arg(
+        recordingMode ? TranslationManager::captureHintRecording()
+                      : TranslationManager::captureHintDrag(),
+        TranslationManager::captureHintScreen());
+    const int primaryWidth = QFontMetrics(primaryFont).horizontalAdvance(primaryText) + 36;
+    QFont secondaryFont = primaryFont;
+    secondaryFont.setPointSize(9);
+    secondaryFont.setWeight(QFont::Normal);
+    const QString quickSettingsText = recordingMode
+        ? QString()
+        : TranslationManager::captureHintQuickSettings();
+    const int secondaryWidth = quickSettingsText.isEmpty()
+        ? 0 : QFontMetrics(secondaryFont).horizontalAdvance(quickSettingsText) + 36;
+    const int preferredWidth = qBound(440, qMax(primaryWidth, secondaryWidth), 840);
+    const QRect hintRect = captureHintRect(
+        monitorRect, QSize(preferredWidth, recordingMode ? 76 : 104));
+    if (!hintRect.isValid())
+        return;
+
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setPen(QPen(QColor(255, 255, 255, 42), 1));
+    painter.setBrush(QColor(20, 20, 22, 178));
+    painter.drawRoundedRect(hintRect, 10, 10);
+
+    painter.setFont(primaryFont);
+    painter.setPen(QColor(246, 248, 251, 238));
+    const QRect primaryRect = hintRect.adjusted(16, 9, -16,
+                                                recordingMode ? -42 : -78);
+    const QString visiblePrimary = QFontMetrics(primaryFont).elidedText(
+        primaryText, Qt::ElideRight, primaryRect.width());
+    painter.drawText(primaryRect, Qt::AlignCenter, visiblePrimary);
+
+    const bool compact = hintRect.width() < 390;
+    struct HintShortcut { QString key; QString label; };
+    const QList<HintShortcut> shortcuts = recordingMode
+        ? QList<HintShortcut>{{QStringLiteral("Esc"), TranslationManager::captureHintCancel()}}
+        : QList<HintShortcut>{
+              {QStringLiteral("Ctrl+C"), TranslationManager::captureHintCopy()},
+              {QStringLiteral("Ctrl+S"), TranslationManager::captureHintSave()},
+              {QStringLiteral("Esc"), TranslationManager::captureHintCancel()}};
+
+    QFont keyFont = painter.font();
+    keyFont.setPointSize(9);
+    keyFont.setWeight(QFont::DemiBold);
+    QFont labelFont = keyFont;
+    labelFont.setWeight(QFont::Normal);
+    int shortcutsWidth = 0;
+    for (int i = 0; i < shortcuts.size(); ++i) {
+        shortcutsWidth += QFontMetrics(keyFont).horizontalAdvance(shortcuts[i].key) + 14;
+        if (!compact)
+            shortcutsWidth += QFontMetrics(labelFont).horizontalAdvance(shortcuts[i].label) + 7;
+        if (i + 1 < shortcuts.size())
+            shortcutsWidth += compact ? 8 : 16;
+    }
+
+    int x = hintRect.left() + qMax(10, (hintRect.width() - shortcutsWidth) / 2);
+    const int y = hintRect.top() + (recordingMode ? 42 : 35);
+    for (int i = 0; i < shortcuts.size(); ++i) {
+        drawCaptureHintShortcut(painter, x, y, shortcuts[i].key, shortcuts[i].label, compact);
+        if (i + 1 < shortcuts.size())
+            x += compact ? 8 : 16;
+    }
+    if (!quickSettingsText.isEmpty()) {
+        painter.setFont(secondaryFont);
+        painter.setPen(QColor(190, 196, 205, 205));
+        const QRect secondaryRect = hintRect.adjusted(16, 60, -16, -14);
+        const QString visibleSecondary = QFontMetrics(secondaryFont).elidedText(
+            quickSettingsText, Qt::ElideRight, secondaryRect.width());
+        painter.drawText(secondaryRect, Qt::AlignCenter, visibleSecondary);
+    }
+    painter.restore();
+}
+
 #ifdef Q_OS_WIN
 BOOL CALLBACK collectPhysicalMonitorGeometries(HMONITOR monitor, HDC, LPRECT, LPARAM data)
 {
@@ -323,6 +433,7 @@ CaptureOverlay::CaptureOverlay(QWidget *parent)
     , m_copyAfterCapture(false)
     , m_closeAfterCopy(false)
     , m_instantCopyAfterSelection(false)
+    , m_showCaptureHints(true)
     , m_resizeMode(ResNone)
     , m_foregroundHwnd(nullptr)
     , m_isDraggingAnnotation(false)
@@ -1384,6 +1495,7 @@ void CaptureOverlay::startCapture()
     m_copyAfterCapture = s.value("copyAfterCapture", true).toBool();
     m_closeAfterCopy = s.value("closeAfterCopy", true).toBool();
     m_instantCopyAfterSelection = s.value("instantCopyAfterSelection", false).toBool();
+    m_showCaptureHints = s.value("showCaptureHints", true).toBool();
 
     // Load blur strength setting
     int blurIntensity = s.value("blurIntensity", 16).toInt();
@@ -1838,6 +1950,12 @@ void CaptureOverlay::paintEvent(QPaintEvent *event)
         painter.setPen(cp);
         painter.drawLine(cur.x(), 0, cur.x(), height());
         painter.drawLine(0, cur.y(), width(), cur.y());
+    }
+
+    if (shouldShowCaptureHints(m_showCaptureHints, m_isSelecting,
+                               m_selectionComplete, m_eyedropperActive)) {
+        const QPoint cursorPos = mapFromGlobal(QCursor::pos());
+        drawCaptureHints(painter, monitorRectAt(cursorPos), m_captureMode == ModeRecording);
     }
 
     // Eyedropper: color preview circle

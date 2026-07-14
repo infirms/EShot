@@ -1,4 +1,5 @@
 #include "OcrEngine.h"
+#include "OcrLanguageSelector.h"
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QFile>
@@ -37,6 +38,18 @@ QString OcrEngine::tesseractPath() {
 QString OcrEngine::tessdataDir() {
     const QString exe = tesseractPath();
     if (exe.isEmpty()) return QString();
+
+    const QString environmentPath = QProcessEnvironment::systemEnvironment().value(
+        QStringLiteral("TESSDATA_PREFIX"));
+    if (!environmentPath.isEmpty()) {
+        const QString direct = QDir::cleanPath(environmentPath);
+        if (QFileInfo::exists(QDir(direct).filePath(QStringLiteral("eng.traineddata"))))
+            return direct;
+        const QString nested = QDir(direct).filePath(QStringLiteral("tessdata"));
+        if (QFileInfo::exists(QDir(nested).filePath(QStringLiteral("eng.traineddata"))))
+            return nested;
+    }
+
     QFileInfo fi(exe);
     QString dir = fi.absoluteDir().absoluteFilePath(QStringLiteral("tessdata"));
     if (QFileInfo::exists(dir)) return dir;
@@ -46,6 +59,20 @@ QString OcrEngine::tessdataDir() {
     };
     for (const QString &p : fallbacks) {
         if (QFileInfo::exists(p)) return p;
+    }
+
+    const QString located = QStandardPaths::locate(
+        QStandardPaths::GenericDataLocation, QStringLiteral("tessdata"),
+        QStandardPaths::LocateDirectory);
+    if (!located.isEmpty()) return located;
+
+    const QStringList systemFallbacks = {
+        QStringLiteral("/usr/share/tesseract-ocr/5/tessdata"),
+        QStringLiteral("/usr/share/tesseract-ocr/4.00/tessdata"),
+        QStringLiteral("/usr/local/share/tessdata")
+    };
+    for (const QString &path : systemFallbacks) {
+        if (QFileInfo::exists(path)) return path;
     }
     return QString();
 }
@@ -95,6 +122,7 @@ OcrEngine::OcrEngine(QObject *parent) : QObject(parent) {}
 OcrEngine::~OcrEngine()
 {
     if (m_proc) {
+        disconnect(m_proc, nullptr, this, nullptr);
         m_proc->kill();
         m_proc->waitForFinished(2000);
     }
@@ -104,7 +132,8 @@ OcrEngine::~OcrEngine()
     m_pendingFiles.clear();
 }
 
-void OcrEngine::recognize(const QPixmap &pixmap, const QString &languageTag) {
+void OcrEngine::recognize(const QPixmap &pixmap, const QString &languageTag,
+                          const QString &preferredLanguageTag) {
     if (pixmap.isNull()) {
         emit failed(QStringLiteral("empty image"));
         return;
@@ -130,16 +159,98 @@ void OcrEngine::recognize(const QPixmap &pixmap, const QString &languageTag) {
         .arg(QDateTime::currentMSecsSinceEpoch());
     const QString baseName = QStringLiteral("eshot_ocr_%1").arg(unique);
     const QString imagePath = QDir(tempDir).filePath(baseName + QStringLiteral(".png"));
-    const QString outBase  = QDir(tempDir).filePath(baseName);
-
     if (!pixmap.save(imagePath, "PNG")) {
         emit failed(QStringLiteral("cannot save temp image"));
         return;
     }
     m_pendingFiles.insert(imagePath);
 
-    const QString tessLang = mapLanguageTag(languageTag);
+    const QString td = tessdataDir();
+    if (languageTag.compare(QStringLiteral("auto"), Qt::CaseInsensitive) == 0) {
+        QString preferred = mapLanguageTag(preferredLanguageTag);
+        if (preferredLanguageTag.trimmed().isEmpty())
+            preferred = QStringLiteral("eng");
+        startAutomaticRecognition(imagePath, td, preferred);
+    } else {
+        startRecognitionProcess(imagePath, td, mapLanguageTag(languageTag));
+    }
+}
 
+void OcrEngine::startAutomaticRecognition(const QString &imagePath,
+                                          const QString &tessdataDirectory,
+                                          const QString &preferredLanguage)
+{
+    const QStringList installed = installedOcrLanguageCodes(tessdataDirectory);
+    if (installed.isEmpty()) {
+        failAndRemoveImage(imagePath, QStringLiteral("No OCR language packs are installed"));
+        return;
+    }
+
+    auto continueWithScript = [this, imagePath, tessdataDirectory, installed,
+                               preferredLanguage](const QString &script) {
+        const QString languages = automaticOcrLanguageArgument(
+            installed, script, preferredLanguage);
+        qInfo() << "[EShot] OCR automatic selection script=" << script
+                << "languages=" << languages;
+        startRecognitionProcess(imagePath, tessdataDirectory, languages);
+    };
+
+    if (!ocrScriptDetectionAvailable(tessdataDirectory)) {
+        qInfo() << "[EShot] OCR script detection data is unavailable; using preferred fallback";
+        continueWithScript(QString());
+        return;
+    }
+
+    m_proc = new QProcess(this);
+    m_proc->setProcessChannelMode(QProcess::SeparateChannels);
+    connect(m_proc, &QProcess::errorOccurred, this, [](QProcess::ProcessError error) {
+        qWarning() << "[EShot] OCR script detection process error:" << error;
+    });
+    connect(m_proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this, continueWithScript](int exitCode, QProcess::ExitStatus status) {
+        const QString output = QString::fromUtf8(m_proc->readAllStandardOutput())
+            + QLatin1Char('\n')
+            + QString::fromUtf8(m_proc->readAllStandardError());
+        const QString script = ocrScriptFromOsdOutput(output);
+        qInfo() << "[EShot] OCR script detection finished exit=" << exitCode
+                << "status=" << status << "script=" << script;
+        m_proc->deleteLater();
+        m_proc = nullptr;
+        continueWithScript(script);
+    });
+
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    if (!tessdataDirectory.isEmpty())
+        environment.insert(QStringLiteral("TESSDATA_PREFIX"), tessdataDirectory);
+    m_proc->setProcessEnvironment(environment);
+
+    QStringList arguments{
+        QDir::toNativeSeparators(imagePath), QStringLiteral("stdout"),
+        QStringLiteral("-l"), QStringLiteral("osd"),
+        QStringLiteral("--psm"), QStringLiteral("0")
+    };
+    if (!tessdataDirectory.isEmpty())
+        arguments << QStringLiteral("--tessdata-dir")
+                  << QDir::toNativeSeparators(tessdataDirectory);
+    m_proc->start(tesseractPath(), arguments);
+    if (!m_proc->waitForStarted(10000)) {
+        qWarning() << "[EShot] OCR script detection could not start:" << m_proc->errorString();
+        m_proc->deleteLater();
+        m_proc = nullptr;
+        continueWithScript(QString());
+    }
+}
+
+void OcrEngine::startRecognitionProcess(const QString &imagePath,
+                                        const QString &tessdataDirectory,
+                                        const QString &languageArgument)
+{
+    if (languageArgument.trimmed().isEmpty()) {
+        failAndRemoveImage(imagePath, QStringLiteral("No usable OCR language pack is installed"));
+        return;
+    }
+
+    emit languageResolved(languageArgument);
     m_proc = new QProcess(this);
     m_proc->setProcessChannelMode(QProcess::SeparateChannels);
 
@@ -177,26 +288,32 @@ void OcrEngine::recognize(const QPixmap &pixmap, const QString &languageTag) {
     });
 
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-    const QString td = tessdataDir();
-    if (!td.isEmpty()) env.insert(QStringLiteral("TESSDATA_PREFIX"), td);
+    if (!tessdataDirectory.isEmpty())
+        env.insert(QStringLiteral("TESSDATA_PREFIX"), tessdataDirectory);
     m_proc->setProcessEnvironment(env);
 
     QStringList args;
     args << QDir::toNativeSeparators(imagePath)
          << QStringLiteral("stdout")
-         << QStringLiteral("-l") << tessLang
+         << QStringLiteral("-l") << languageArgument
          << QStringLiteral("--psm") << QStringLiteral("6");
-    if (!td.isEmpty()) {
-        args << QStringLiteral("--tessdata-dir") << QDir::toNativeSeparators(td);
+    if (!tessdataDirectory.isEmpty()) {
+        args << QStringLiteral("--tessdata-dir")
+             << QDir::toNativeSeparators(tessdataDirectory);
     }
 
-    m_proc->start(exe, args);
+    m_proc->start(tesseractPath(), args);
     if (!m_proc->waitForStarted(10000)) {
-        QFile::remove(imagePath);
-        m_pendingFiles.remove(imagePath);
         QString errStr = m_proc->errorString();
         m_proc->deleteLater();
         m_proc = nullptr;
-        emit failed(QStringLiteral("Cannot start Tesseract: ") + errStr);
+        failAndRemoveImage(imagePath, QStringLiteral("Cannot start Tesseract: ") + errStr);
     }
+}
+
+void OcrEngine::failAndRemoveImage(const QString &imagePath, const QString &reason)
+{
+    QFile::remove(imagePath);
+    m_pendingFiles.remove(imagePath);
+    emit failed(reason);
 }

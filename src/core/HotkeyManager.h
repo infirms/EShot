@@ -29,6 +29,9 @@ public:
     bool requestLinuxPortalShortcutRebind();
     UINT captureModifiers() const { return m_captureModifiers; }
     UINT captureVirtualKey() const { return m_captureVirtualKey; }
+    QString recordingPauseShortcutText() const;
+    QString recordingStopShortcutText() const;
+    QString recordingCancelShortcutText() const;
     static bool isPlainPrintScreen(UINT modifiers, UINT virtualKey);
     static bool isWindowsPrintScreenSnippingEnabled();
     static bool setWindowsPrintScreenSnippingEnabled(bool enabled);

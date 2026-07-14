@@ -24,8 +24,8 @@ bool shouldPrepareKWinPermission(const QString &currentDesktop,
                                  const QString &appImagePath,
                                  const QString &executablePath)
 {
-    return !appImagePath.trimmed().isEmpty()
-        && !executablePath.trimmed().isEmpty()
+    Q_UNUSED(appImagePath);
+    return !executablePath.trimmed().isEmpty()
         && isKdeWaylandSession(currentDesktop, sessionDesktop, sessionType);
 }
 

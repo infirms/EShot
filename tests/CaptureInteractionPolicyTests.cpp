@@ -19,6 +19,23 @@ private slots:
         QCOMPARE(initialAnnotationTool(true, 5, 0), 5);
     }
 
+    void captureHintsOnlyAppearBeforeInteraction()
+    {
+        QVERIFY(shouldShowCaptureHints(true, false, false, false));
+        QVERIFY(!shouldShowCaptureHints(false, false, false, false));
+        QVERIFY(!shouldShowCaptureHints(true, true, false, false));
+        QVERIFY(!shouldShowCaptureHints(true, false, true, false));
+        QVERIFY(!shouldShowCaptureHints(true, false, false, true));
+    }
+
+    void captureHintStaysCenteredInsideTheActiveMonitor()
+    {
+        QCOMPARE(captureHintRect(QRect(1920, 0, 1920, 1080), QSize(640, 76)),
+                 QRect(2560, 24, 640, 76));
+        QCOMPARE(captureHintRect(QRect(0, 0, 480, 320), QSize(640, 76)),
+                 QRect(16, 24, 448, 76));
+    }
+
     void annotationPersistenceLabelsExistInEveryLanguage()
     {
         for (int language = 0; language < TranslationManager::LangCount; ++language) {
@@ -39,7 +56,11 @@ private slots:
             "uploadAuthHelpGoogleDrive", "uploadAuthHelpApiKey",
             "uploadErrorYandexScopeMissing", "uploadErrorGoogleAuthFailed",
             "uploadErrorApiKeyMissing", "toolFontSize", "openFolder",
-            "recordingStopShort", "recordingDetails"
+            "recordingStopShort", "recordingDetails", "ocrAutomatic",
+            "captureHintDrag", "captureHintScreen", "captureHintRecording",
+            "captureHintCopy", "captureHintSave", "captureHintCancel",
+            "captureHintQuickSettings",
+            "showCaptureHints", "showCaptureHintsTip"
         };
         TranslationManager::setLanguage(TranslationManager::English, false);
         QHash<QByteArray, QString> english;

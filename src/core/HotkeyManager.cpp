@@ -5,6 +5,7 @@
 #include <QSettings>
 #include <QDebug>
 #include <QGuiApplication>
+#include <QKeySequence>
 #include <QTimer>
 
 #if defined(ESHOT_HAVE_X11)
@@ -87,6 +88,30 @@ HotkeyManager& HotkeyManager::instance()
 {
     static HotkeyManager inst;
     return inst;
+}
+
+namespace {
+QString displayShortcut(UINT modifiers, UINT virtualKey)
+{
+    const QString portable = LinuxPortalGlobalShortcuts::preferredTrigger(modifiers, virtualKey);
+    return QKeySequence::fromString(portable, QKeySequence::PortableText)
+        .toString(QKeySequence::NativeText);
+}
+}
+
+QString HotkeyManager::recordingPauseShortcutText() const
+{
+    return displayShortcut(m_recordingPauseModifiers, m_recordingPauseVirtualKey);
+}
+
+QString HotkeyManager::recordingStopShortcutText() const
+{
+    return displayShortcut(m_recordingStopModifiers, m_recordingStopVirtualKey);
+}
+
+QString HotkeyManager::recordingCancelShortcutText() const
+{
+    return displayShortcut(m_recordingCancelModifiers, m_recordingCancelVirtualKey);
 }
 
 HotkeyManager::HotkeyManager(QObject *parent) : QObject(parent)

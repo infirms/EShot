@@ -1,4 +1,6 @@
 #include "SettingsDialog.h"
+#include "SettingsHotkeyPolicy.h"
+#include "SettingsLayoutPolicy.h"
 #include "../core/HotkeyManager.h"
 #include "../core/LinuxAutoStartPolicy.h"
 #include "../core/OcrEngine.h"
@@ -40,6 +42,8 @@
 #include <QSysInfo>
 #include <QTimer>
 #include <QUrl>
+#include <QTabBar>
+#include <QStyle>
 #include <algorithm>
 
 #ifdef Q_OS_WIN
@@ -612,6 +616,14 @@ void SettingsDialog::setupUI()
     tabs->addTab(createHotkeyTab(),      TranslationManager::tabHotkey());
     mainLayout->addWidget(tabs);
 
+    const QMargins margins = mainLayout->contentsMargins();
+    const int frameWidth = tabs->style()->pixelMetric(QStyle::PM_DefaultFrameWidth, nullptr, tabs) * 2;
+    const int horizontalChrome = margins.left() + margins.right() + frameWidth + 4;
+    const int fittedWidth = settingsDialogWidthForTabs(
+        tabs->tabBar()->sizeHint().width(), horizontalChrome, 560);
+    setMinimumWidth(fittedWidth);
+    setMaximumWidth(qMax(750, fittedWidth));
+
     QHBoxLayout *btnLayout = new QHBoxLayout();
     btnLayout->addStretch();
 
@@ -1019,6 +1031,9 @@ QWidget* SettingsDialog::createAppearanceTab()
     m_crosshairStyleCombo->addItem(TranslationManager::crossNone(), "none");
     m_crosshairStyleCombo->setToolTip(uiLabel("Alan secmeden once imlec kilavuz cizgisi stili.", "Cursor guide line style before selecting an area."));
     overlayLayout->addRow(TranslationManager::crosshair(), m_crosshairStyleCombo);
+    m_captureHintsCheck = new QCheckBox(TranslationManager::showCaptureHints());
+    m_captureHintsCheck->setToolTip(TranslationManager::showCaptureHintsTip());
+    overlayLayout->addRow(m_captureHintsCheck);
     layout->addWidget(overlayGroup);
 
     layout->addStretch();
@@ -2056,6 +2071,8 @@ void SettingsDialog::loadSettings()
     QString cross = m_settings->value("crosshairStyle", "dash").toString();
     int ci = m_crosshairStyleCombo->findData(cross);
     if (ci >= 0) m_crosshairStyleCombo->setCurrentIndex(ci);
+    if (m_captureHintsCheck)
+        m_captureHintsCheck->setChecked(m_settings->value("showCaptureHints", true).toBool());
 
     m_highContrastCheck->setChecked(m_settings->value("highContrast", false).toBool());
     if (m_blackTrayIconCheck)
@@ -2278,7 +2295,11 @@ void SettingsDialog::onSave()
         newVKey = VK_SNAPSHOT;
     }
 
-    if (!HotkeyManager::instance().reRegisterCaptureHotkey(newMod, newVKey)) {
+    const bool captureHotkeyChanged = settingsHotkeyChanged(
+        {newMod, newVKey},
+        {static_cast<quint32>(m_settings->value("hotkeyModifiers", 0).toUInt()),
+         static_cast<quint32>(m_settings->value("hotkeyVKey", VK_SNAPSHOT).toUInt())});
+    if (captureHotkeyChanged && !HotkeyManager::instance().reRegisterCaptureHotkey(newMod, newVKey)) {
         QMessageBox::warning(
             this,
             TranslationManager::errInvalidHotkeyTitle(),
@@ -2298,7 +2319,17 @@ void SettingsDialog::onSave()
         QMessageBox::warning(this, TranslationManager::errInvalidHotkeyTitle(), TranslationManager::errInvalidHotkey());
         return;
     }
-    if (!HotkeyManager::instance().reRegisterRecordingHotkeys(pauseMod, pauseVKey, stopMod, stopVKey, cancelMod, cancelVKey)) {
+    const bool recordingHotkeysChanged =
+        settingsHotkeyChanged({pauseMod, pauseVKey},
+                              {static_cast<quint32>(m_settings->value("recordingPauseHotkeyModifiers", MOD_CONTROL | MOD_ALT).toUInt()),
+                               static_cast<quint32>(m_settings->value("recordingPauseHotkeyVKey", 'P').toUInt())}) ||
+        settingsHotkeyChanged({stopMod, stopVKey},
+                              {static_cast<quint32>(m_settings->value("recordingStopHotkeyModifiers", MOD_CONTROL | MOD_ALT).toUInt()),
+                               static_cast<quint32>(m_settings->value("recordingStopHotkeyVKey", 'S').toUInt())}) ||
+        settingsHotkeyChanged({cancelMod, cancelVKey},
+                              {static_cast<quint32>(m_settings->value("recordingCancelHotkeyModifiers", MOD_CONTROL | MOD_ALT).toUInt()),
+                               static_cast<quint32>(m_settings->value("recordingCancelHotkeyVKey", 'X').toUInt())});
+    if (recordingHotkeysChanged && !HotkeyManager::instance().reRegisterRecordingHotkeys(pauseMod, pauseVKey, stopMod, stopVKey, cancelMod, cancelVKey)) {
         QMessageBox::warning(
             this,
             TranslationManager::errInvalidHotkeyTitle(),
@@ -2322,7 +2353,17 @@ void SettingsDialog::onSave()
         QMessageBox::warning(this, TranslationManager::errInvalidHotkeyTitle(), TranslationManager::errInvalidHotkey());
         return;
     }
-    if (!HotkeyManager::instance().reRegisterActionHotkeys(instantMod, instantVKey, gifMod, gifVKey, videoMod, videoVKey)) {
+    const bool actionHotkeysChanged =
+        settingsHotkeyChanged({instantMod, instantVKey},
+                              {static_cast<quint32>(m_settings->value("instantCaptureHotkeyModifiers", 0).toUInt()),
+                               static_cast<quint32>(m_settings->value("instantCaptureHotkeyVKey", 0).toUInt())}) ||
+        settingsHotkeyChanged({gifMod, gifVKey},
+                              {static_cast<quint32>(m_settings->value("gifCaptureHotkeyModifiers", 0).toUInt()),
+                               static_cast<quint32>(m_settings->value("gifCaptureHotkeyVKey", 0).toUInt())}) ||
+        settingsHotkeyChanged({videoMod, videoVKey},
+                              {static_cast<quint32>(m_settings->value("videoCaptureHotkeyModifiers", 0).toUInt()),
+                               static_cast<quint32>(m_settings->value("videoCaptureHotkeyVKey", 0).toUInt())});
+    if (actionHotkeysChanged && !HotkeyManager::instance().reRegisterActionHotkeys(instantMod, instantVKey, gifMod, gifVKey, videoMod, videoVKey)) {
         QMessageBox::warning(
             this,
             TranslationManager::errInvalidHotkeyTitle(),
@@ -2370,6 +2411,8 @@ void SettingsDialog::onSave()
     m_settings->setValue("darkMode",           m_darkModeCheck->isChecked());
     m_settings->setValue("overlayOpacity",     m_opacitySlider->value());
     m_settings->setValue("crosshairStyle",     m_crosshairStyleCombo->currentData().toString());
+    if (m_captureHintsCheck)
+        m_settings->setValue("showCaptureHints", m_captureHintsCheck->isChecked());
     m_settings->setValue("highContrast",       m_highContrastCheck->isChecked());
     m_settings->setValue("blackTrayIcon",      m_blackTrayIconCheck ? m_blackTrayIconCheck->isChecked() : false);
     if (m_visualSearchProviderCombo)
@@ -2498,6 +2541,7 @@ void SettingsDialog::onExportSettings()
     obj["darkMode"] = m_darkModeCheck->isChecked();
     obj["overlayOpacity"] = m_opacitySlider->value();
     obj["crosshairStyle"] = m_crosshairStyleCombo->currentData().toString();
+    obj["showCaptureHints"] = m_captureHintsCheck ? m_captureHintsCheck->isChecked() : true;
     obj["highContrast"] = m_highContrastCheck->isChecked();
     obj["blackTrayIcon"] = m_blackTrayIconCheck ? m_blackTrayIconCheck->isChecked() : false;
 
@@ -2642,6 +2686,8 @@ void SettingsDialog::onImportSettings()
         int ci = m_crosshairStyleCombo->findData(obj["crosshairStyle"].toString());
         if (ci >= 0) m_crosshairStyleCombo->setCurrentIndex(ci);
     }
+    if (obj.contains("showCaptureHints") && m_captureHintsCheck)
+        m_captureHintsCheck->setChecked(obj["showCaptureHints"].toBool());
     if (obj.contains("highContrast")) m_highContrastCheck->setChecked(obj["highContrast"].toBool());
     if (obj.contains("blackTrayIcon") && m_blackTrayIconCheck)
         m_blackTrayIconCheck->setChecked(obj["blackTrayIcon"].toBool());

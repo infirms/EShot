@@ -281,6 +281,22 @@ void RecordingIndicator::setDetails(const QStringList &details)
     m_detailsButton->setVisible(!details.isEmpty());
 }
 
+void RecordingIndicator::setShortcutHints(const QString &pauseResume, const QString &stop,
+                                          const QString &cancel)
+{
+    auto tooltip = [](const QString &label, const QString &shortcut) {
+        return shortcut.trimmed().isEmpty()
+            ? label
+            : QStringLiteral("%1 (%2)").arg(label, shortcut);
+    };
+    if (m_pauseButton)
+        m_pauseButton->setToolTip(tooltip(TranslationManager::recordingPauseResume(), pauseResume));
+    if (m_stopButton)
+        m_stopButton->setToolTip(tooltip(TranslationManager::recordingStop(), stop));
+    if (m_cancelButton)
+        m_cancelButton->setToolTip(tooltip(TranslationManager::recordingCancel(), cancel));
+}
+
 void RecordingIndicator::stop()
 {
     m_running = false;

@@ -37,7 +37,8 @@ private:
 
     QPixmap m_pixmap;
     OcrEngine *m_engine;
-    QString m_languageTag = "en-US";
+    QString m_languageTag = "auto";
+    QString m_preferredLanguageTag = "en";
 
     QComboBox *m_langCombo;
     QLabel *m_statusLabel;

@@ -139,6 +139,7 @@ private:
     QSlider *m_opacitySlider = nullptr;
     QLabel *m_opacityValueLabel = nullptr;
     QComboBox *m_crosshairStyleCombo = nullptr;
+    QCheckBox *m_captureHintsCheck = nullptr;
 
     // Accessibility
     QCheckBox *m_highContrastCheck = nullptr;

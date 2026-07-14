@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(EShot VERSION 4.0.5 LANGUAGES CXX)
+project(EShot VERSION 4.0.6 LANGUAGES CXX)
 
 include(CTest)
 
@@ -29,6 +29,7 @@ set(SOURCES
     src/main.cpp
     src/core/HotkeyManager.cpp
     src/core/OcrEngine.cpp
+    src/core/OcrLanguageSelector.cpp
     src/core/LinuxPortalGlobalShortcuts.cpp
     src/core/LinuxPortalScreenCast.cpp
     src/core/LinuxPortalScreenshot.cpp
@@ -51,6 +52,8 @@ set(SOURCES
     src/annotation/AnnotationEngine.cpp
     src/ui/AnnotationToolbar.cpp
     src/ui/SettingsDialog.cpp
+    src/ui/SettingsHotkeyPolicy.cpp
+    src/ui/SettingsLayoutPolicy.cpp
     src/ui/AboutDialog.cpp
     src/ui/FirstRunWizard.cpp
     src/ui/OcrDialog.cpp
@@ -68,6 +71,7 @@ set(HEADERS
     src/core/HotkeyManager.h
     src/core/PlatformHotkey.h
     src/core/OcrEngine.h
+    src/core/OcrLanguageSelector.h
     src/core/LinuxPortalGlobalShortcuts.h
     src/core/LinuxPortalScreenCast.h
     src/core/LinuxPortalScreenshot.h
@@ -90,6 +94,8 @@ set(HEADERS
     src/annotation/AnnotationEngine.h
     src/ui/AnnotationToolbar.h
     src/ui/SettingsDialog.h
+    src/ui/SettingsHotkeyPolicy.h
+    src/ui/SettingsLayoutPolicy.h
     src/ui/AboutDialog.h
     src/ui/FirstRunWizard.h
     src/ui/OcrDialog.h
@@ -236,6 +242,34 @@ if(BUILD_TESTING)
     target_link_libraries(eshot_capture_interaction_policy_tests PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME capture_interaction_policy COMMAND eshot_capture_interaction_policy_tests)
 
+    qt_add_executable(eshot_settings_layout_policy_tests
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/SettingsLayoutPolicyTests.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/SettingsLayoutPolicy.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/SettingsLayoutPolicy.h
+    )
+    target_include_directories(eshot_settings_layout_policy_tests PRIVATE src)
+    target_link_libraries(eshot_settings_layout_policy_tests PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME settings_layout_policy COMMAND eshot_settings_layout_policy_tests)
+
+    qt_add_executable(eshot_settings_hotkey_policy_tests
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/SettingsHotkeyPolicyTests.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/SettingsHotkeyPolicy.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/SettingsHotkeyPolicy.h
+    )
+    target_include_directories(eshot_settings_hotkey_policy_tests PRIVATE src)
+    target_link_libraries(eshot_settings_hotkey_policy_tests PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME settings_hotkey_policy COMMAND eshot_settings_hotkey_policy_tests)
+
+    qt_add_executable(eshot_about_dialog_tests
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/AboutDialogTests.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/AboutDialog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/AboutDialog.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/resources/icons.qrc
+    )
+    target_include_directories(eshot_about_dialog_tests PRIVATE src)
+    target_link_libraries(eshot_about_dialog_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::Test)
+    add_test(NAME about_dialog COMMAND eshot_about_dialog_tests)
+
     qt_add_executable(eshot_update_asset_tests
         tests/UpdateAssetSelectorTests.cpp
         src/core/UpdateAssetSelector.cpp
@@ -262,6 +296,15 @@ if(BUILD_TESTING)
     target_include_directories(eshot_linux_dependency_selection_tests PRIVATE src)
     target_link_libraries(eshot_linux_dependency_selection_tests PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME linux_dependency_selection COMMAND eshot_linux_dependency_selection_tests)
+
+    qt_add_executable(eshot_ocr_language_selector_tests
+        tests/OcrLanguageSelectorTests.cpp
+        src/core/OcrLanguageSelector.cpp
+        src/core/OcrLanguageSelector.h
+    )
+    target_include_directories(eshot_ocr_language_selector_tests PRIVATE src)
+    target_link_libraries(eshot_ocr_language_selector_tests PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME ocr_language_selector COMMAND eshot_ocr_language_selector_tests)
 
     if(UNIX AND NOT APPLE)
         qt_add_executable(eshot_linux_autostart_policy_tests

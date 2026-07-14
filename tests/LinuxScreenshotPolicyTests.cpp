@@ -26,7 +26,7 @@ private slots:
             QStringLiteral("KDE"), QString(), QStringLiteral("x11")));
     }
 
-    void preparesKWinPermissionOnlyForKdeWaylandAppImages()
+    void preparesKWinPermissionForAnyKdeWaylandExecutable()
     {
         const QString executable = QStringLiteral("/tmp/.mount_EShot.test/usr/bin/EShot");
 
@@ -39,7 +39,7 @@ private slots:
         QVERIFY(!LinuxScreenshotPolicy::shouldPrepareKWinPermission(
             QStringLiteral("KDE"), QString(), QStringLiteral("x11"),
             QStringLiteral("/home/user/EShot.AppImage"), executable));
-        QVERIFY(!LinuxScreenshotPolicy::shouldPrepareKWinPermission(
+        QVERIFY(LinuxScreenshotPolicy::shouldPrepareKWinPermission(
             QStringLiteral("KDE"), QString(), QStringLiteral("wayland"),
             QString(), executable));
     }

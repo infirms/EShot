@@ -114,6 +114,15 @@ public:
     static QString noDelay()          { return tr("noDelay"); }
     static QString copyAfterCapture() { return tr("copyAfterCapture"); }
     static QString closeAfterCopy()   { return tr("closeAfterCopy"); }
+    static QString captureHintDrag()  { return tr("captureHintDrag"); }
+    static QString captureHintScreen(){ return tr("captureHintScreen"); }
+    static QString captureHintRecording() { return tr("captureHintRecording"); }
+    static QString captureHintCopy()  { return tr("captureHintCopy"); }
+    static QString captureHintSave()  { return tr("captureHintSave"); }
+    static QString captureHintCancel(){ return tr("captureHintCancel"); }
+    static QString captureHintQuickSettings() { return tr("captureHintQuickSettings"); }
+    static QString showCaptureHints() { return tr("showCaptureHints"); }
+    static QString showCaptureHintsTip() { return tr("showCaptureHintsTip"); }
     static QString rememberLastAnnotationTool() { return tr("rememberLastAnnotationTool"); }
     static QString rememberLastAnnotationToolHint() { return tr("rememberLastAnnotationToolHint"); }
     static QString drawingTools() { return tr("drawingTools"); }
@@ -319,6 +328,7 @@ public:
     static QString ocrRetry()         { return tr("ocrRetry"); }
     static QString ocrProcessing()    { return tr("ocrProcessing"); }
     static QString ocrNoText()        { return tr("ocrNoText"); }
+    static QString ocrAutomatic()     { return tr("ocrAutomatic"); }
     static QString ocrLanguagePackMissing() { return tr("ocrLanguagePackMissing"); }
 
     // ─── Kayıt (Recording) ───
@@ -472,6 +482,15 @@ private:
         {"noDelay",        {"Gecikme yok", "No delay", "Keine Verzögerung", "Pas de délai", "Sin retraso", "遅延なし", "无延迟", "Без задержки"}},
         {"copyAfterCapture",{"Yakaladıktan sonra kopyala", "Copy after capture", "Nach Erfassung kopieren", "Copier après capture", "Copiar después de capturar", "キャプチャ後にコピー", "捕获后复制", "Копировать после захвата"}},
         {"closeAfterCopy", {"Kopyaladıktan sonra kapat", "Close after copy", "Nach Kopieren schließen", "Fermer après copie", "Cerrar después de copiar", "コピー後に閉じる", "复制后关闭", "Закрыть после копирования"}},
+        {"captureHintDrag", {"Alan seçmek için sürükleyin", "Drag to select an area", "Ziehen, um einen Bereich auszuwählen", "Faites glisser pour sélectionner une zone", "Arrastra para seleccionar un área", "ドラッグして範囲を選択", "拖动以选择区域", "Перетащите, чтобы выбрать область"}},
+        {"captureHintScreen", {"Ekranı seçmek için çift tıklayın", "Double-click to select a screen", "Doppelklicken, um einen Bildschirm auszuwählen", "Double-cliquez pour sélectionner un écran", "Haz doble clic para seleccionar una pantalla", "ダブルクリックで画面を選択", "双击以选择屏幕", "Дважды щёлкните, чтобы выбрать экран"}},
+        {"captureHintRecording", {"Kaydedilecek alanı seçmek için sürükleyin", "Drag to select the recording area", "Ziehen, um den Aufnahmebereich auszuwählen", "Faites glisser pour sélectionner la zone d'enregistrement", "Arrastra para seleccionar el área de grabación", "ドラッグして録画範囲を選択", "拖动以选择录制区域", "Перетащите, чтобы выбрать область записи"}},
+        {"captureHintCopy", {"Kopyala", "Copy", "Kopieren", "Copier", "Copiar", "コピー", "复制", "Копировать"}},
+        {"captureHintSave", {"Kaydet", "Save", "Speichern", "Enregistrer", "Guardar", "保存", "保存", "Сохранить"}},
+        {"captureHintCancel", {"İptal", "Cancel", "Abbrechen", "Annuler", "Cancelar", "キャンセル", "取消", "Отмена"}},
+        {"captureHintQuickSettings", {"Alanı seçtikten sonra çizim ve kayıt ayarları için soldaki Hızlı Ayarlar sekmesini kullanın.", "After selecting, use the Quick Settings tab on the left for drawing and recording options.", "Nutzen Sie nach der Auswahl die Registerkarte Schnelleinstellungen links für Zeichen- und Aufnahmeoptionen.", "Après la sélection, utilisez l'onglet Réglages rapides à gauche pour les options de dessin et d'enregistrement.", "Después de seleccionar, usa la pestaña Ajustes rápidos de la izquierda para las opciones de dibujo y grabación.", "選択後、左側のクイック設定タブで描画と録画のオプションを設定できます。", "选择后，使用左侧的快速设置标签调整绘图和录制选项。", "После выбора используйте вкладку быстрых настроек слева для параметров рисования и записи."}},
+        {"showCaptureHints", {"Yakalama ipuçlarını göster", "Show capture hints", "Aufnahmehinweise anzeigen", "Afficher les conseils de capture", "Mostrar consejos de captura", "キャプチャのヒントを表示", "显示截图提示", "Показывать подсказки захвата"}},
+        {"showCaptureHintsTip", {"Alan seçmeden önce temel hareketleri ve kısayolları gösterir.", "Shows basic gestures and shortcuts before you select an area.", "Zeigt grundlegende Gesten und Tastenkürzel vor der Bereichsauswahl.", "Affiche les gestes et raccourcis essentiels avant la sélection d'une zone.", "Muestra gestos y atajos básicos antes de seleccionar un área.", "範囲を選択する前に基本操作とショートカットを表示します。", "在选择区域前显示基本操作和快捷键。", "Показывает основные жесты и сочетания клавиш до выбора области."}},
         {"rememberLastAnnotationTool", {"Son kullanılan anotasyon aracını hatırla", "Remember the last annotation tool", "Letztes Anmerkungswerkzeug merken", "Mémoriser le dernier outil d’annotation", "Recordar la última herramienta de anotación", "最後に使った注釈ツールを記憶", "记住上次使用的标注工具", "Запоминать последний инструмент аннотации"}},
         {"rememberLastAnnotationToolHint", {"Varsayılan olarak kapalıdır. Açıldığında yeni yakalamalar son kullandığınız araçla başlar.", "Off by default. When enabled, new captures start with the last tool you used.", "Standardmäßig aus. Neue Aufnahmen starten dann mit dem zuletzt verwendeten Werkzeug.", "Désactivé par défaut. Les nouvelles captures démarrent avec le dernier outil utilisé.", "Desactivado de forma predeterminada. Las capturas nuevas comienzan con la última herramienta usada.", "既定ではオフです。有効にすると新しいキャプチャは最後に使ったツールで開始します。", "默认关闭。启用后，新截图会以上次使用的工具开始。", "По умолчанию выключено. Новые снимки будут открываться с последним использованным инструментом."}},
         {"drawingTools", {"Çizim araçları", "Drawing tools", "Zeichenwerkzeuge", "Outils de dessin", "Herramientas de dibujo", "描画ツール", "绘图工具", "Инструменты рисования"}},
@@ -677,6 +696,7 @@ private:
         {"ocrRetry",       {"Yeniden Dene", "Retry", "Erneut", "Réessayer", "Reintentar", "再試行", "重试", "Повторить"}},
         {"ocrProcessing",  {"Tanınıyor...", "Recognizing...", "Erkennung...", "Reconnaissance...", "Reconociendo...", "認識中...", "识别中...", "Распознавание..."}},
         {"ocrNoText",      {"Metin algılanmadı", "No text detected", "Kein Text erkannt", "Aucun texte détecté", "No se detectó texto", "テキストが検出されませんでした", "未检测到文字", "Текст не обнаружен"}},
+        {"ocrAutomatic",   {"Otomatik", "Automatic", "Automatisch", "Automatique", "Automático", "自動", "自动", "Автоматически"}},
         {"ocrLanguagePackMissing",{"Dil paketi yuklu degil", "Language pack is not installed", "Sprachpaket ist nicht installiert", "Le module de langue n'est pas installe", "El paquete de idioma no esta instalado", "Language pack is not installed", "Language pack is not installed", "Language pack is not installed"}},
 
         // ─── Kayıt (Recording) ───

@@ -206,6 +206,7 @@ private:
     bool m_copyAfterCapture;
     bool m_closeAfterCopy;
     bool m_instantCopyAfterSelection;
+    bool m_showCaptureHints;
 
     // Pinned windows list (for lifetime management)
     QList<QPointer<QWidget>> m_pinnedWindows;

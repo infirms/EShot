@@ -85,6 +85,25 @@ private slots:
         QCOMPARE(resumeSpy.count(), 1);
     }
 
+    void tooltipsExposeConfiguredRecordingShortcuts()
+    {
+        TranslationManager::setLanguage(TranslationManager::English, false);
+        RecordingIndicator indicator(QRect(120, 120, 640, 360), nullptr, 2, true);
+        indicator.setShortcutHints(QStringLiteral("Ctrl+Alt+P"),
+                                   QStringLiteral("Ctrl+Alt+S"),
+                                   QStringLiteral("Ctrl+Alt+X"));
+
+        auto *pause = indicator.findChild<QToolButton *>(QStringLiteral("recordingPauseButton"));
+        auto *stop = indicator.findChild<QPushButton *>(QStringLiteral("recordingStopButton"));
+        auto *cancel = indicator.findChild<QToolButton *>(QStringLiteral("recordingCancelButton"));
+        QVERIFY(pause);
+        QVERIFY(stop);
+        QVERIFY(cancel);
+        QCOMPARE(pause->toolTip(), QStringLiteral("Pause / Resume (Ctrl+Alt+P)"));
+        QCOMPARE(stop->toolTip(), QStringLiteral("Stop Recording (Ctrl+Alt+S)"));
+        QCOMPARE(cancel->toolTip(), QStringLiteral("Cancel (Ctrl+Alt+X)"));
+    }
+
     void pausesCaptureBeforePresentingInsideControls()
     {
         QScreen *screen = QGuiApplication::primaryScreen();

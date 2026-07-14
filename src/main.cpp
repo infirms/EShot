@@ -339,6 +339,22 @@ public slots:
     void onAboutRequested()
     {
         AboutDialog dlg;
+        if (m_updateManager) {
+            const auto refreshAboutUpdate = [this, &dlg]() {
+                dlg.setUpdateInfo(m_updateManager->updateAvailable(),
+                                  m_updateManager->latestVersion(),
+                                  m_updateManager->isBusy(),
+                                  m_updateManager->statusText());
+            };
+            refreshAboutUpdate();
+            connect(&dlg, &AboutDialog::checkForUpdatesRequested, this, [this]() {
+                if (m_updateManager) m_updateManager->checkForUpdates(true);
+            });
+            connect(&dlg, &AboutDialog::updateRequested, this, &EShotApp::onUpdateRequested);
+            connect(m_updateManager, &UpdateManager::statusChanged, &dlg, refreshAboutUpdate);
+            connect(m_updateManager, &UpdateManager::updateCheckFinished, &dlg,
+                    [refreshAboutUpdate](bool, const QString &) { refreshAboutUpdate(); });
+        }
         dlg.show();
         QApplication::processEvents();
         if (QScreen *screen = QGuiApplication::screenAt(QCursor::pos())) {
@@ -508,6 +524,10 @@ public slots:
                     .arg(m_screenRecorder->captureRect().height()),
                 QStringLiteral("%1 FPS").arg(settings.value("recordingFps", 10).toInt())
             });
+            m_recordingIndicator->setShortcutHints(
+                HotkeyManager::instance().recordingPauseShortcutText(),
+                HotkeyManager::instance().recordingStopShortcutText(),
+                HotkeyManager::instance().recordingCancelShortcutText());
             connect(m_recordingIndicator, &RecordingIndicator::stopRequested, this, [this]() {
                 if (m_screenRecorder && m_screenRecorder->isRecording())
                     m_screenRecorder->stop();
@@ -576,6 +596,10 @@ public slots:
                 QStringLiteral("%1 FPS").arg(settings.value("videoRecordingFps", 30).toInt()),
                 audio
             });
+            m_recordingIndicator->setShortcutHints(
+                HotkeyManager::instance().recordingPauseShortcutText(),
+                HotkeyManager::instance().recordingStopShortcutText(),
+                HotkeyManager::instance().recordingCancelShortcutText());
             connect(m_recordingIndicator, &RecordingIndicator::stopRequested, this, [this]() {
                 if (m_videoRecorder && m_videoRecorder->isRecording())
                     m_videoRecorder->stop();
@@ -1097,7 +1121,8 @@ static void runOcrTest(const QString &imagePath)
         done = true;
         loop.quit();
     });
-    engine.recognize(QPixmap::fromImage(img), "en-US");
+    engine.recognize(QPixmap::fromImage(img), QStringLiteral("auto"),
+                     TranslationManager::langCode());
     QTimer::singleShot(30000, &loop, [&loop, &done]() {
         if (!done) {
             writeTestLog("[TEST] OCR timeout (30s)");

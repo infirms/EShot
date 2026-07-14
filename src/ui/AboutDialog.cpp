@@ -5,27 +5,8 @@
 #include <QPushButton>
 #include <QPixmap>
 #include <QApplication>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QPainter>
 #include <QIcon>
-#include <QVersionNumber>
-#include <QNetworkRequest>
-#include <QUrl>
-#include <QDateTime>
-#include <QList>
-#include <algorithm>
-
-static bool isNewerVersion(const QString &latest, const QString &current)
-{
-    QVersionNumber latestVersion = QVersionNumber::fromString(latest.trimmed());
-    QVersionNumber currentVersion = QVersionNumber::fromString(current.trimmed());
-    if (latestVersion.isNull() || currentVersion.isNull())
-        return latest.trimmed() != current.trimmed();
-    return QVersionNumber::compare(latestVersion, currentVersion) > 0;
-}
 
 AboutDialog::AboutDialog(QWidget *parent) : QDialog(parent)
 {
@@ -39,21 +20,6 @@ AboutDialog::AboutDialog(QWidget *parent) : QDialog(parent)
 }
 
 AboutDialog::~AboutDialog() {}
-
-static QString updateStatusText(const QString &currentVersion, const QString &latestVersion, bool newer)
-{
-    if (TranslationManager::currentLanguage() == TranslationManager::Turkish) {
-        return newer
-            ? QString::fromUtf8("Yeni sürüm var: v%1 (yüklü: v%2). İndirmek için GitHub bağlantısını kullanın.")
-                  .arg(latestVersion, currentVersion)
-            : QString::fromUtf8("Güncel: v%1 (son sürüm: v%2)").arg(currentVersion, latestVersion);
-    }
-
-    return newer
-        ? QStringLiteral("New version available: v%1 (installed: v%2). Use the GitHub link to download.")
-              .arg(latestVersion, currentVersion)
-        : QStringLiteral("Up to date: v%1 (latest: v%2)").arg(currentVersion, latestVersion);
-}
 
 void AboutDialog::setUpdateStatus(const QString &text, const QString &color)
 {
@@ -165,79 +131,23 @@ void AboutDialog::setupUI()
 void AboutDialog::onCheckForUpdates()
 {
     if (!m_checkUpdateBtn) return;
-
-    static QList<QDateTime> recentChecks;
-    const QDateTime now = QDateTime::currentDateTimeUtc();
-    recentChecks.erase(std::remove_if(recentChecks.begin(), recentChecks.end(),
-        [now](const QDateTime &dt) { return dt.secsTo(now) > 600; }), recentChecks.end());
-    if (recentChecks.size() >= 3) {
-        setUpdateStatus(
-            TranslationManager::currentLanguage() == TranslationManager::Turkish
-                ? QString::fromUtf8("Güncelleme kontrolü sınırına ulaşıldı. Birkaç dakika sonra tekrar deneyin.")
-                : QStringLiteral("Update check limit reached. Try again in a few minutes."),
-            QStringLiteral("#ff9800"));
-        return;
-    }
-    recentChecks.append(now);
-
-    m_checkUpdateBtn->setEnabled(false);
-    m_checkUpdateBtn->setText(QStringLiteral("..."));
-    setUpdateStatus(
-        TranslationManager::currentLanguage() == TranslationManager::Turkish
-            ? QString::fromUtf8("Güncelleme kontrol ediliyor...")
-            : QStringLiteral("Checking for updates..."),
-        QStringLiteral("#888888"));
-
-    if (!m_updateManager) {
-        m_updateManager = new QNetworkAccessManager(this);
-        connect(m_updateManager, &QNetworkAccessManager::finished,
-                this, &AboutDialog::onUpdateReplyFinished);
-    }
-
-    QNetworkRequest request(QUrl(QStringLiteral("https://api.github.com/repos/Benoks/EShot/releases/latest")));
-    request.setRawHeader("Accept", "application/vnd.github+json");
-    m_updateManager->get(request);
+    if (m_updateAvailable)
+        emit updateRequested();
+    else
+        emit checkForUpdatesRequested();
 }
 
-void AboutDialog::onUpdateReplyFinished(QNetworkReply *reply)
+void AboutDialog::setUpdateInfo(bool available, const QString &version, bool busy, const QString &status)
 {
-    if (!reply) return;
-
-    const QString currentVersion = QApplication::applicationVersion();
-    QString statusColor = QStringLiteral("#ff5252");
-    QString statusText;
-
-    if (reply->error() == QNetworkReply::NoError) {
-        QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
-        QString latestTag;
-        if (doc.isObject()) {
-            QJsonObject obj = doc.object();
-            latestTag = obj.value(QStringLiteral("tag_name")).toString();
-        }
-
-        if (latestTag.startsWith("v", Qt::CaseInsensitive))
-            latestTag = latestTag.mid(1);
-
-        if (!latestTag.isEmpty()) {
-            const bool newer = isNewerVersion(latestTag, currentVersion);
-            statusText = updateStatusText(currentVersion, latestTag, newer);
-            statusColor = newer ? QStringLiteral("#ff9800") : QStringLiteral("#4caf50");
-        } else {
-            statusText = TranslationManager::currentLanguage() == TranslationManager::Turkish
-                ? QString::fromUtf8("Son sürüm bilgisi okunamadı. GitHub bağlantısını kontrol edin.")
-                : QStringLiteral("Could not read latest version. Please check the GitHub link.");
-        }
-    } else {
-        statusText = TranslationManager::currentLanguage() == TranslationManager::Turkish
-            ? QString::fromUtf8("Güncelleme kontrol edilemedi. GitHub bağlantısını kontrol edin.")
-            : QStringLiteral("Could not check for updates. Please check the GitHub link.");
-    }
-
-    setUpdateStatus(statusText, statusColor);
-
-    if (m_checkUpdateBtn) {
-        m_checkUpdateBtn->setEnabled(true);
-        m_checkUpdateBtn->setText(TranslationManager::checkForUpdates());
-    }
-    reply->deleteLater();
+    m_updateAvailable = available;
+    const QString visibleStatus = status.isEmpty()
+        ? (available ? TranslationManager::updateStatusAvailable(version)
+                     : TranslationManager::updateStatusIdle())
+        : status;
+    setUpdateStatus(visibleStatus,
+                    available ? QStringLiteral("#ff9800") : QStringLiteral("#888888"));
+    if (!m_checkUpdateBtn) return;
+    m_checkUpdateBtn->setEnabled(!busy);
+    m_checkUpdateBtn->setText(available ? TranslationManager::updateNow()
+                                       : TranslationManager::checkForUpdates());
 }

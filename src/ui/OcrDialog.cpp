@@ -1,5 +1,6 @@
 #include "OcrDialog.h"
 #include "core/OcrEngine.h"
+#include "core/OcrLanguageSelector.h"
 #include "core/TranslationManager.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -28,7 +29,20 @@ OcrDialog::OcrDialog(const QPixmap &pixmap, QWidget *parent)
     m_engine = new OcrEngine(this);
     connect(m_engine, &OcrEngine::textReady, this, &OcrDialog::onTextReady);
     connect(m_engine, &OcrEngine::failed, this, &OcrDialog::onOcrFailed);
-    m_languageTag = QSettings("EShot", "EShot").value("ocrLanguage", m_languageTag).toString();
+    QSettings settings(QStringLiteral("EShot"), QStringLiteral("EShot"));
+    m_languageTag = settings.value(QStringLiteral("ocrLanguage"), m_languageTag).toString();
+    m_preferredLanguageTag = settings.value(
+        QStringLiteral("ocrPreferredLanguage"), TranslationManager::langCode()).toString();
+    connect(m_engine, &OcrEngine::languageResolved, this, [this](const QString &languages) {
+        if (m_languageTag != QStringLiteral("auto"))
+            return;
+        const int automaticIndex = m_langCombo ? m_langCombo->findData(QStringLiteral("auto")) : -1;
+        if (automaticIndex >= 0) {
+            m_langCombo->setItemText(
+                automaticIndex,
+                QStringLiteral("%1 (%2)").arg(TranslationManager::ocrAutomatic(), languages));
+        }
+    });
 
     auto *layout = new QVBoxLayout(this);
 
@@ -78,7 +92,7 @@ OcrDialog::OcrDialog(const QPixmap &pixmap, QWidget *parent)
     connect(m_closeBtn, &QPushButton::clicked, this, &QDialog::accept);
 
     setBusy(true);
-    m_engine->recognize(m_pixmap, m_languageTag);
+    m_engine->recognize(m_pixmap, m_languageTag, m_preferredLanguageTag);
 }
 
 OcrDialog::~OcrDialog() = default;
@@ -119,6 +133,18 @@ void OcrDialog::populateLanguages()
     };
 
     const QString missingTip = TranslationManager::ocrLanguagePackMissing();
+
+    const bool automaticAvailable = !installedOcrLanguageCodes(OcrEngine::tessdataDir()).isEmpty();
+    m_langCombo->addItem(TranslationManager::ocrAutomatic(), QStringLiteral("auto"));
+    m_langCombo->setItemData(0, automaticAvailable, LanguageInstalledRole);
+    if (!automaticAvailable) {
+        auto *model = qobject_cast<QStandardItemModel *>(m_langCombo->model());
+        if (QStandardItem *item = model ? model->item(0) : nullptr) {
+            item->setEnabled(false);
+            item->setForeground(QColor(145, 145, 145));
+            item->setToolTip(missingTip);
+        }
+    }
 
     for (const auto &language : languages) {
         const QString tag = QString::fromLatin1(language.tag);
@@ -177,7 +203,7 @@ void OcrDialog::runOcr()
     setBusy(true);
     m_textEdit->clear();
     m_copyBtn->setEnabled(false);
-    m_engine->recognize(m_pixmap, m_languageTag);
+    m_engine->recognize(m_pixmap, m_languageTag, m_preferredLanguageTag);
 }
 
 void OcrDialog::onLanguageChanged(int index)
@@ -188,7 +214,12 @@ void OcrDialog::onLanguageChanged(int index)
     QString tag = m_langCombo->currentData().toString();
     if (!tag.isEmpty() && tag != m_languageTag) {
         m_languageTag = tag;
-        QSettings("EShot", "EShot").setValue("ocrLanguage", tag);
+        QSettings settings(QStringLiteral("EShot"), QStringLiteral("EShot"));
+        settings.setValue(QStringLiteral("ocrLanguage"), tag);
+        if (tag != QStringLiteral("auto")) {
+            m_preferredLanguageTag = tag;
+            settings.setValue(QStringLiteral("ocrPreferredLanguage"), tag);
+        }
         if (!m_textEdit->toPlainText().isEmpty()) {
             runOcr();
         }
