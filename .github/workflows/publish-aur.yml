@@ -1,0 +1,54 @@
+name: Publish AUR package
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: startsWith(github.event.release.tag_name, 'v')
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install packaging tools
+        run: pacman -Syu --noconfirm base-devel curl git openssh
+
+      - name: Configure AUR SSH access
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+
+      - name: Publish eshot-bin
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version="${TAG#v}"
+          appimage="EShot-v${version}-x86_64.AppImage"
+          curl --fail --location --retry 3 \
+            --output "/tmp/${appimage}" \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${appimage}"
+          checksum="$(sha256sum "/tmp/${appimage}" | awk '{print $1}')"
+
+          git clone ssh://aur@aur.archlinux.org/eshot-bin.git aur
+          cp packaging/aur/eshot-bin/PKGBUILD packaging/aur/eshot-bin/eshot aur/
+          bash scripts/linux/update-aur-package.sh "${version}" "${checksum}" aur
+          useradd -m builder
+          chown -R builder:builder aur
+          runuser -u builder -- sh -c 'cd aur && makepkg --printsrcinfo > .SRCINFO'
+          (
+            cd aur
+            git config user.name 'EShot release automation'
+            git config user.email 'github-actions[bot]@users.noreply.github.com'
+            git add PKGBUILD .SRCINFO eshot
+            git diff --cached --quiet || git commit -m "Update to ${version}"
+            git push
+          )

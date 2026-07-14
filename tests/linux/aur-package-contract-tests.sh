@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+aur_dir="${repo_root}/packaging/aur/eshot-bin"
+workflow="${repo_root}/.github/workflows/publish-aur.yml"
+update_script="${repo_root}/scripts/linux/update-aur-package.sh"
+
+test -f "${aur_dir}/PKGBUILD"
+test -f "${aur_dir}/eshot"
+grep -F "pkgname=eshot-bin" "${aur_dir}/PKGBUILD" >/dev/null
+grep -F "options=('!strip')" "${aur_dir}/PKGBUILD" >/dev/null
+grep -F "EShot-v\${pkgver}-x86_64.AppImage" "${aur_dir}/PKGBUILD" >/dev/null
+grep -F -- '--appimage-extract' "${aur_dir}/PKGBUILD" >/dev/null
+grep -F 'io.github.benoks.EShot.desktop' "${aur_dir}/PKGBUILD" >/dev/null
+grep -F 'AUR_SSH_PRIVATE_KEY' "${workflow}" >/dev/null
+grep -F 'aur.archlinux.org/eshot-bin.git' "${workflow}" >/dev/null
+grep -F 'runuser -u builder' "${workflow}" >/dev/null
+test -x "${update_script}"
+
+fixture="$(mktemp -d)"
+trap 'rm -rf "${fixture}"' EXIT
+cp "${aur_dir}/PKGBUILD" "${fixture}/PKGBUILD"
+bash "${update_script}" 4.0.7 \
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+    "${fixture}"
+grep -F 'pkgver=4.0.7' "${fixture}/PKGBUILD" >/dev/null
+grep -F "sha256sums=('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'" \
+    "${fixture}/PKGBUILD" >/dev/null
