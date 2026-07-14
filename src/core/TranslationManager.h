@@ -31,10 +31,12 @@ public:
         }
     }
 
-    static void setLanguage(Language lang) {
+    static void setLanguage(Language lang, bool persist = true) {
         m_lang = lang;
-        QSettings s("EShot", "EShot");
-        s.setValue("language", static_cast<int>(lang));
+        if (persist) {
+            QSettings s("EShot", "EShot");
+            s.setValue("language", static_cast<int>(lang));
+        }
     }
 
     static Language currentLanguage() { return m_lang; }
@@ -74,6 +76,7 @@ public:
     static QString cancel()           { return tr("cancel"); }
     static QString reset()            { return tr("reset"); }
     static QString browse()           { return tr("browse"); }
+    static QString openFolder()       { return tr("openFolder"); }
     static QString language()         { return tr("language"); }
 
     // ─── Tab ───
@@ -321,7 +324,9 @@ public:
     // ─── Kayıt (Recording) ───
     static QString recordingStart()   { return tr("recordingStart"); }
     static QString recordingStop()    { return tr("recordingStop"); }
+    static QString recordingStopShort() { return tr("recordingStopShort"); }
     static QString recordingPauseResume() { return tr("recordingPauseResume"); }
+    static QString recordingDetails() { return tr("recordingDetails"); }
     static QString recordingStartTitle() { return tr("recordingStartTitle"); }
     static QString recordingStartDesc() { return tr("recordingStartDesc"); }
     static QString recordingInProgress() { return tr("recordingInProgress"); }
@@ -429,6 +434,7 @@ private:
         {"cancel",         {"İptal", "Cancel", "Abbrechen", "Annuler", "Cancelar", "キャンセル", "取消", "Отмена"}},
         {"reset",          {"Varsayılana Sıfırla", "Reset to Default", "Auf Standard zurücksetzen", "Réinitialiser", "Restablecer predeterminado", "デフォルトにリセット", "恢复默认", "Сбросить"}},
         {"browse",         {"Gözat...", "Browse...", "Durchsuchen...", "Parcourir...", "Examinar...", "参照...", "浏览...", "Обзор..."}},
+        {"openFolder",     {"Klasörü Aç", "Open Folder", "Ordner öffnen", "Ouvrir le dossier", "Abrir carpeta", "フォルダーを開く", "打开文件夹", "Открыть папку"}},
         {"language",       {"Dil", "Language", "Sprache", "Langue", "Idioma", "言語", "语言", "Язык"}},
 
         // ─── Tab ───
@@ -676,7 +682,9 @@ private:
         // ─── Kayıt (Recording) ───
         {"recordingStart", {"Kaydı Başlat", "Start Recording", "Aufnahme starten", "Démarrer l'enregistrement", "Iniciar grabación", "録画開始", "开始录制", "Начать запись"}},
         {"recordingStop",  {"Kaydı Durdur", "Stop Recording", "Aufnahme stoppen", "Arrêter l'enregistrement", "Detener grabación", "録画停止", "停止录制", "Остановить запись"}},
+        {"recordingStopShort", {"Durdur", "Stop", "Stopp", "Arrêter", "Detener", "停止", "停止", "Стоп"}},
         {"recordingPauseResume",{"Duraklat / Sürdür", "Pause / Resume", "Pausieren / Fortsetzen", "Pause / Reprendre", "Pausar / Reanudar", "一時停止 / 再開", "暂停 / 继续", "Пауза / Продолжить"}},
+        {"recordingDetails", {"Ayrıntılar", "Details", "Einzelheiten", "Détails", "Detalles", "詳細", "详细", "Подробности"}},
         {"recordingStartTitle",{"GIF Kaydı", "GIF Recording", "GIF-Aufnahme", "Enregistrement GIF", "Grabación GIF", "GIF録画", "GIF 录制", "Запись GIF"}},
         {"recordingStartDesc",{"Kaydedilecek alanı seçin ve başlatın", "Select area to record and start", "Bereich wählen und starten", "Sélectionnez la zone et démarrez", "Seleccione el área e inicie", "録画する範囲を選択", "选择录制区域并开始", "Выберите область и начните"}},
         {"recordingInProgress",{"Kayıt devam ediyor...", "Recording in progress...", "Aufnahme läuft...", "Enregistrement en cours...", "Grabación en curso...", "録画中...", "录制中...", "Идёт запись..."}},

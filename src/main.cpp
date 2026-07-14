@@ -41,6 +41,10 @@
 #include "core/TranslationManager.h"
 #include "core/UpdateManager.h"
 #include "core/LinuxScreenshotPolicy.h"
+#include "core/NotificationFolderOpener.h"
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+#include "core/LinuxDesktopNotification.h"
+#endif
 #include "capture/CaptureOverlay.h"
 #include "capture/PinnedWindow.h"
 #include "capture/PinManager.h"
@@ -167,6 +171,13 @@ public slots:
             return;
         if (!path.isEmpty())
             m_lastNotificationPath = path;
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+        if (!path.isEmpty() && m_linuxNotification
+            && m_linuxNotification->show(TranslationManager::notifCaptureTitle(), message,
+                                         path, TranslationManager::openFolder(), timeoutMs)) {
+            return;
+        }
+#endif
         if (!m_trayIcon->isVisible())
             m_trayIcon->show();
         m_trayIcon->showMessage(TranslationManager::notifCaptureTitle(),
@@ -231,20 +242,24 @@ public slots:
 
     void onNotificationClicked()
     {
-        if (!m_lastNotificationPath.isEmpty()) {
-            QFileInfo fi(m_lastNotificationPath);
-            QString dir = fi.isDir() ? fi.absoluteFilePath() : fi.absolutePath();
-            if (dir.isEmpty() || !QDir(dir).exists())
-                dir = fi.absoluteDir().absolutePath();
-            if (!dir.isEmpty() && QDir(dir).exists()) {
-                if (!QDesktopServices::openUrl(QUrl::fromLocalFile(dir)))
 #ifdef Q_OS_WIN
-                    QProcess::startDetached(QStringLiteral("explorer.exe"), {QDir::toNativeSeparators(dir)});
+        constexpr NotificationDesktop desktop = NotificationDesktop::Windows;
+#elif defined(Q_OS_LINUX)
+        constexpr NotificationDesktop desktop = NotificationDesktop::Linux;
 #else
-                    QProcess::startDetached(QStringLiteral("xdg-open"), {dir});
+        constexpr NotificationDesktop desktop = NotificationDesktop::Other;
 #endif
-            }
-        }
+        qInfo() << "[Notification] clicked path=" << m_lastNotificationPath;
+        const bool opened = openNotificationFolder(
+            m_lastNotificationPath, desktop,
+            [](const QString &program, const QStringList &arguments) {
+                return QProcess::startDetached(program, arguments);
+            },
+            [](const QUrl &url) {
+                return QDesktopServices::openUrl(url);
+            });
+        qInfo() << "[Notification] folder open requested=" << opened
+                << "directory=" << notificationDirectoryForPath(m_lastNotificationPath);
     }
 
     void onUpdateRequested()
@@ -458,6 +473,12 @@ public slots:
         connect(m_screenRecorder, &ScreenRecorder::remainingTimeChanged, this, [this](int sec) {
             if (m_recordingIndicator) m_recordingIndicator->setRemainingSeconds(sec);
         });
+        connect(m_screenRecorder, &ScreenRecorder::elapsedTimeChanged, this, [this](int sec) {
+            if (m_recordingIndicator) m_recordingIndicator->setElapsedSeconds(sec);
+        });
+        connect(m_screenRecorder, &ScreenRecorder::pausedChanged, this, [this](bool paused) {
+            if (m_recordingIndicator) m_recordingIndicator->setPaused(paused);
+        });
 
         QSettings s("EShot", "EShot");
         int fps = s.value("recordingFps", 10).toInt();
@@ -477,11 +498,37 @@ public slots:
     void onRecordingStarted()
     {
         if (m_screenRecorder) {
-            m_recordingIndicator = new RecordingIndicator(m_screenRecorder->captureRect(), nullptr);
+            m_recordingIndicator = new RecordingIndicator(
+                m_screenRecorder->captureRect(), nullptr, 2, true,
+                RecordingIndicatorMode::Gif);
+            QSettings settings(QStringLiteral("EShot"), QStringLiteral("EShot"));
+            m_recordingIndicator->setDetails({
+                QStringLiteral("%1 × %2")
+                    .arg(m_screenRecorder->captureRect().width())
+                    .arg(m_screenRecorder->captureRect().height()),
+                QStringLiteral("%1 FPS").arg(settings.value("recordingFps", 10).toInt())
+            });
             connect(m_recordingIndicator, &RecordingIndicator::stopRequested, this, [this]() {
                 if (m_screenRecorder && m_screenRecorder->isRecording())
                     m_screenRecorder->stop();
             });
+            connect(m_recordingIndicator, &RecordingIndicator::pauseRequested, this, [this]() {
+                if (m_screenRecorder && m_screenRecorder->isRecording())
+                    m_screenRecorder->pause();
+            });
+            connect(m_recordingIndicator, &RecordingIndicator::resumeRequested, this, [this]() {
+                if (m_screenRecorder && m_screenRecorder->isRecording())
+                    m_screenRecorder->resume();
+            });
+            connect(m_recordingIndicator, &RecordingIndicator::cancelRequested, this, [this]() {
+                if (m_screenRecorder && m_screenRecorder->isRecording())
+                    m_screenRecorder->cancel();
+                if (m_recordingIndicator) {
+                    m_recordingIndicator->stop();
+                    m_recordingIndicator = nullptr;
+                }
+            });
+            m_recordingIndicator->startCaptureSafePresentation();
         }
         rebuildTrayMenu();
     }
@@ -511,7 +558,24 @@ public slots:
     void onVideoRecordingStarted()
     {
         if (m_videoRecorder) {
-            m_recordingIndicator = new RecordingIndicator(m_videoRecorder->captureRect(), nullptr, 2, true);
+            m_recordingIndicator = new RecordingIndicator(
+                m_videoRecorder->captureRect(), nullptr, 2, true,
+                RecordingIndicatorMode::Video);
+            QSettings settings(QStringLiteral("EShot"), QStringLiteral("EShot"));
+            const bool desktopAudio = settings.value("videoDesktopAudioEnabled", false).toBool();
+            const bool microphone = settings.value("videoMicrophoneEnabled", false).toBool();
+            const QString audio = desktopAudio && microphone
+                ? TranslationManager::audioDesktopMic()
+                : desktopAudio ? TranslationManager::audioDesktop()
+                               : microphone ? TranslationManager::audioMicrophone()
+                                            : TranslationManager::audioNone();
+            m_recordingIndicator->setDetails({
+                QStringLiteral("%1 × %2")
+                    .arg(m_videoRecorder->captureRect().width())
+                    .arg(m_videoRecorder->captureRect().height()),
+                QStringLiteral("%1 FPS").arg(settings.value("videoRecordingFps", 30).toInt()),
+                audio
+            });
             connect(m_recordingIndicator, &RecordingIndicator::stopRequested, this, [this]() {
                 if (m_videoRecorder && m_videoRecorder->isRecording())
                     m_videoRecorder->stop();
@@ -529,6 +593,7 @@ public slots:
                     m_videoRecorder->cancel();
                 if (m_recordingIndicator) { m_recordingIndicator->stop(); m_recordingIndicator = nullptr; }
             });
+            m_recordingIndicator->startCaptureSafePresentation();
         }
         rebuildTrayMenu();
     }
@@ -689,6 +754,14 @@ private:
         m_trayIcon->setContextMenu(m_trayMenu);
         connect(m_trayIcon, &QSystemTrayIcon::activated, this, &EShotApp::onTrayActivated);
         connect(m_trayIcon, &QSystemTrayIcon::messageClicked, this, &EShotApp::onNotificationClicked);
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+        m_linuxNotification = new LinuxDesktopNotification(this);
+        connect(m_linuxNotification, &LinuxDesktopNotification::pathActivated,
+                this, [this](const QString &path) {
+            m_lastNotificationPath = path;
+            onNotificationClicked();
+        });
+#endif
         m_trayIcon->show();
     }
 
@@ -724,6 +797,9 @@ private:
             if (m_videoRecorder && m_videoRecorder->isRecording()) {
                 if (m_videoRecorder->isPaused()) m_videoRecorder->resume();
                 else m_videoRecorder->pause();
+            } else if (m_screenRecorder && m_screenRecorder->isRecording()) {
+                if (m_screenRecorder->isPaused()) m_screenRecorder->resume();
+                else m_screenRecorder->pause();
             }
         });
         connect(&HotkeyManager::instance(), &HotkeyManager::recordingStopRequested, this, [this]() {
@@ -822,6 +898,9 @@ private:
     QString m_latestVersion;
     QString m_latestReleaseUrl;
     QString m_lastNotificationPath;
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    LinuxDesktopNotification *m_linuxNotification = nullptr;
+#endif
     bool m_skipNextCaptureNotification = false;
     QList<QPointer<PinnedWindow>> m_pinnedWindows;
     ScreenRecorder *m_screenRecorder = nullptr;

@@ -87,6 +87,7 @@ void ScreenRecorder::start(const QRect &captureRect, int fps, int maxSeconds, in
     m_loopCount = loopCount;
     m_portalVideoPath.clear();
     closePortalSession();
+    m_paused = false;
     m_hasPendingFrame = false;
     m_pendingFrame = QImage();
     m_pendingDelayCs = 0;
@@ -118,9 +119,10 @@ void ScreenRecorder::start(const QRect &captureRect, int fps, int maxSeconds, in
     }
 
     m_recording = true;
-    m_recordingStartedAt = QDateTime::currentDateTime();
+    m_timeline.start(nowMs());
     emit recordingStarted();
     emit remainingTimeChanged(m_maxSeconds);
+    emit elapsedTimeChanged(0);
 
     m_frameTimer = new QTimer(this);
     m_frameTimer->setTimerType(Qt::PreciseTimer);
@@ -131,10 +133,10 @@ void ScreenRecorder::start(const QRect &captureRect, int fps, int maxSeconds, in
     m_countdownTimer = new QTimer(this);
     m_countdownTimer->setInterval(1000);
     connect(m_countdownTimer, &QTimer::timeout, this, [this]() {
+        const int elapsedSeconds = static_cast<int>(m_timeline.activeElapsedMs(nowMs()) / 1000);
+        emit elapsedTimeChanged(elapsedSeconds);
         if (m_maxSeconds <= 0) return;
-        QDateTime start = m_recordingStartedAt;
-        qint64 elapsed = start.msecsTo(QDateTime::currentDateTime());
-        int remaining = qMax(0, m_maxSeconds - static_cast<int>(elapsed / 1000));
+        int remaining = qMax(0, m_maxSeconds - elapsedSeconds);
         emit remainingTimeChanged(remaining);
         if (remaining == 0) {
             emit timeLimitReached();
@@ -194,6 +196,8 @@ QString ScreenRecorder::makeDefaultOutputPath() const
 void ScreenRecorder::stop()
 {
     if (!m_recording) return;
+    if (m_paused)
+        resume();
     if (m_portalRecording && m_process) {
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
         QProcess::execute(QStringLiteral("kill"),
@@ -219,6 +223,7 @@ void ScreenRecorder::cancel()
     if (!m_recording) return;
     m_recording = false;
     m_portalRecording = false;
+    m_paused = false;
     if (m_process) { m_process->kill(); m_process->deleteLater(); m_process = nullptr; }
     if (m_frameTimer)     { m_frameTimer->stop();     m_frameTimer->deleteLater();     m_frameTimer = nullptr; }
     if (m_countdownTimer) { m_countdownTimer->stop(); m_countdownTimer->deleteLater(); m_countdownTimer = nullptr; }
@@ -234,10 +239,43 @@ void ScreenRecorder::cancel()
     closePortalSession();
 }
 
+void ScreenRecorder::pause()
+{
+    if (!m_recording || m_paused)
+        return;
+    if (m_portalRecording && !setPortalProcessSuspended(true))
+        return;
+    if (!m_timeline.pause(nowMs()))
+        return;
+    m_paused = true;
+    if (!m_portalRecording && m_frameTimer)
+        m_frameTimer->stop();
+    if (m_countdownTimer)
+        m_countdownTimer->stop();
+    emit pausedChanged(true);
+}
+
+void ScreenRecorder::resume()
+{
+    if (!m_recording || !m_paused)
+        return;
+    if (m_portalRecording && !setPortalProcessSuspended(false))
+        return;
+    if (!m_timeline.resume(nowMs()))
+        return;
+    m_paused = false;
+    if (!m_portalRecording && m_frameTimer)
+        m_frameTimer->start();
+    if (m_countdownTimer)
+        m_countdownTimer->start();
+    emit pausedChanged(false);
+}
+
 void ScreenRecorder::finishRecording()
 {
     if (!m_recording) return;
     m_recording = false;
+    m_paused = false;
     if (m_frameTimer)     { m_frameTimer->stop();     m_frameTimer->deleteLater();     m_frameTimer = nullptr; }
     if (m_countdownTimer) { m_countdownTimer->stop(); m_countdownTimer->deleteLater(); m_countdownTimer = nullptr; }
     if (!m_hasPendingFrame) {
@@ -278,6 +316,7 @@ void ScreenRecorder::onPortalProcessFinished(int exitCode, QProcess::ExitStatus 
 
     m_recording = false;
     m_portalRecording = false;
+    m_paused = false;
     closePortalSession();
     if (m_countdownTimer) { m_countdownTimer->stop(); m_countdownTimer->deleteLater(); m_countdownTimer = nullptr; }
     if (m_process) { m_process->deleteLater(); m_process = nullptr; }
@@ -298,7 +337,7 @@ void ScreenRecorder::onPortalProcessFinished(int exitCode, QProcess::ExitStatus 
 
 void ScreenRecorder::captureFrame()
 {
-    if (!m_recording || !m_encoder) return;
+    if (!m_recording || m_paused || !m_encoder) return;
 
     QImage frame = grabScreenRegion(m_captureRect);
     if (frame.isNull()) {
@@ -327,8 +366,8 @@ void ScreenRecorder::captureFrame()
     emit frameCaptured(m_frameCount);
 
     if (m_maxSeconds > 0) {
-        qint64 elapsed = m_recordingStartedAt.msecsTo(QDateTime::currentDateTime());
-        int remaining = qMax(0, m_maxSeconds - static_cast<int>(elapsed / 1000));
+        const int elapsedSeconds = static_cast<int>(m_timeline.activeElapsedMs(nowMs()) / 1000);
+        int remaining = qMax(0, m_maxSeconds - elapsedSeconds);
         emit remainingTimeChanged(remaining);
     }
 }
@@ -460,6 +499,7 @@ bool ScreenRecorder::startWaylandPortalRecording(const QRect &captureRect)
         const QString reason = m_process ? m_process->errorString() : QStringLiteral("gstreamer process error");
         m_recording = false;
         m_portalRecording = false;
+        m_paused = false;
         if (m_process) { m_process->deleteLater(); m_process = nullptr; }
         QFile::remove(m_portalVideoPath);
         closePortalSession();
@@ -468,17 +508,19 @@ bool ScreenRecorder::startWaylandPortalRecording(const QRect &captureRect)
 
     m_recording = true;
     m_portalRecording = true;
-    m_recordingStartedAt = QDateTime::currentDateTime();
+    m_timeline.start(nowMs());
     emit recordingStarted();
     emit remainingTimeChanged(m_maxSeconds);
+    emit elapsedTimeChanged(0);
 
     m_countdownTimer = new QTimer(this);
     m_countdownTimer->setInterval(1000);
     connect(m_countdownTimer, &QTimer::timeout, this, [this]() {
+        const int elapsedSeconds = static_cast<int>(m_timeline.activeElapsedMs(nowMs()) / 1000);
+        emit elapsedTimeChanged(elapsedSeconds);
         if (m_maxSeconds <= 0)
             return;
-        const qint64 elapsed = m_recordingStartedAt.msecsTo(QDateTime::currentDateTime());
-        const int remaining = qMax(0, m_maxSeconds - static_cast<int>(elapsed / 1000));
+        const int remaining = qMax(0, m_maxSeconds - elapsedSeconds);
         emit remainingTimeChanged(remaining);
         if (remaining == 0)
             stop();
@@ -489,6 +531,25 @@ bool ScreenRecorder::startWaylandPortalRecording(const QRect &captureRect)
     Q_UNUSED(captureRect);
     return false;
 #endif
+}
+
+bool ScreenRecorder::setPortalProcessSuspended(bool suspended)
+{
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    if (!m_process)
+        return false;
+    return QProcess::execute(QStringLiteral("kill"),
+                             {suspended ? QStringLiteral("-STOP") : QStringLiteral("-CONT"),
+                              QString::number(m_process->processId())}) == 0;
+#else
+    Q_UNUSED(suspended)
+    return false;
+#endif
+}
+
+qint64 ScreenRecorder::nowMs() const
+{
+    return QDateTime::currentMSecsSinceEpoch();
 }
 
 QString ScreenRecorder::gstLaunchPath() const

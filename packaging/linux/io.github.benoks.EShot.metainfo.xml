@@ -29,6 +29,11 @@
   <url type="homepage">https://github.com/Benoks/EShot</url>
   <url type="bugtracker">https://github.com/Benoks/EShot/issues</url>
   <releases>
+    <release version="4.0.5" date="2026-07-14">
+      <description>
+        <p>Redesigns the GIF and video recording controls, adds GIF pause and resume, fixes clickable KDE Plasma notifications, and prevents translation tests from changing the saved application language.</p>
+      </description>
+    </release>
     <release version="4.0.4" date="2026-07-13">
       <description>
         <p>Adds DNF dependency setup for Fedora and Nobara, localizes setup errors, makes the tray respond to a normal click, and falls back to the desktop shortcut portal when KDE cannot claim PrintScreen.</p>

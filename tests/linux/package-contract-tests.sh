@@ -31,7 +31,7 @@ grep -F 'release-assets/EShot-Setup-x64/*.exe' "${workflow}" >/dev/null
 grep -F 'release-assets/EShot-Setup-arm64/*.exe' "${workflow}" >/dev/null
 grep -F '      - linux-build' "${workflow}" >/dev/null
 grep -F 'release-assets/EShot-linux-packages/EShot-v${{ env.APP_VERSION }}-x86_64.AppImage' "${workflow}" >/dev/null
-grep -F 'body_path: packaging/release-notes/v4.0.4.md' "${workflow}" >/dev/null
+grep -F 'body_path: packaging/release-notes/v4.0.5.md' "${workflow}" >/dev/null
 grep -F 'if: startsWith(github.ref, '"'"'refs/tags/v'"'"')' "${workflow}" >/dev/null
 grep -F 'scripts/linux/apply-release-version.sh' "${workflow}" >/dev/null
 grep -F 'libqt6svg6' "${workflow}" >/dev/null
@@ -74,6 +74,11 @@ grep -F 'connect(m_textCancelButton' "${repo_root}/src/capture/CaptureOverlay.cp
 grep -F 'QSystemTrayIcon::Trigger' "${repo_root}/src/main.cpp" >/dev/null
 grep -F 'm_trayMenu->popup(QCursor::pos())' "${repo_root}/src/main.cpp" >/dev/null
 grep -F 'environment.insert(QStringLiteral("ESHOT_LANGUAGE"), TranslationManager::langCode())' "${repo_root}/src/ui/FirstRunWizard.cpp" >/dev/null
+grep -F 'RecordingIndicatorMode::Video' "${repo_root}/src/main.cpp" >/dev/null
+grep -F '&ScreenRecorder::pausedChanged' "${repo_root}/src/main.cpp" >/dev/null
+grep -F '&RecordingIndicator::pauseRequested' "${repo_root}/src/main.cpp" >/dev/null
+grep -F '&RecordingIndicator::resumeRequested' "${repo_root}/src/main.cpp" >/dev/null
+grep -F 'm_recordingIndicator->startCaptureSafePresentation()' "${repo_root}/src/main.cpp" >/dev/null
 grep -F 'X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2' "${repo_root}/packaging/linux/io.github.benoks.EShot.desktop" >/dev/null
 grep -F '"${pixmap_dir}/io.github.benoks.EShot.svg"' "${repo_root}/scripts/linux/install-user.sh" >/dev/null
 grep -F '"${pixmap_dir}/io.github.benoks.EShot-v4.svg"' "${repo_root}/scripts/linux/install-user.sh" >/dev/null

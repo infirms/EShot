@@ -1,4 +1,5 @@
 #include <QtTest>
+#include <QSettings>
 #include "capture/CaptureInteractionPolicy.h"
 #include "core/TranslationManager.h"
 
@@ -21,13 +22,13 @@ private slots:
     void annotationPersistenceLabelsExistInEveryLanguage()
     {
         for (int language = 0; language < TranslationManager::LangCount; ++language) {
-            TranslationManager::setLanguage(static_cast<TranslationManager::Language>(language));
+            TranslationManager::setLanguage(static_cast<TranslationManager::Language>(language), false);
             QVERIFY(!TranslationManager::rememberLastAnnotationTool().isEmpty());
             QVERIFY(!TranslationManager::rememberLastAnnotationToolHint().isEmpty());
             QVERIFY(!TranslationManager::drawingTools().isEmpty());
             QVERIFY(!TranslationManager::bottomToolbarControls().isEmpty());
         }
-        TranslationManager::setLanguage(TranslationManager::Turkish);
+        TranslationManager::setLanguage(TranslationManager::Turkish, false);
         QVERIFY(TranslationManager::rememberLastAnnotationTool().contains(QStringLiteral("ı")));
     }
 
@@ -37,13 +38,14 @@ private slots:
             "ocrLanguagePackMissing", "uploadAuthHelpYandex",
             "uploadAuthHelpGoogleDrive", "uploadAuthHelpApiKey",
             "uploadErrorYandexScopeMissing", "uploadErrorGoogleAuthFailed",
-            "uploadErrorApiKeyMissing", "toolFontSize"
+            "uploadErrorApiKeyMissing", "toolFontSize", "openFolder",
+            "recordingStopShort", "recordingDetails"
         };
-        TranslationManager::setLanguage(TranslationManager::English);
+        TranslationManager::setLanguage(TranslationManager::English, false);
         QHash<QByteArray, QString> english;
         for (const QByteArray &key : keys) english.insert(key, TranslationManager::tr(key.constData()));
         for (int language = TranslationManager::German; language < TranslationManager::LangCount; ++language) {
-            TranslationManager::setLanguage(static_cast<TranslationManager::Language>(language));
+            TranslationManager::setLanguage(static_cast<TranslationManager::Language>(language), false);
             for (const QByteArray &key : keys)
                 QVERIFY2(TranslationManager::tr(key.constData()) != english.value(key), key.constData());
         }

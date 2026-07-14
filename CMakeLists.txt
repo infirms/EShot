@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(EShot VERSION 4.0.4 LANGUAGES CXX)
+project(EShot VERSION 4.0.5 LANGUAGES CXX)
 
 include(CTest)
 
@@ -42,6 +42,7 @@ set(SOURCES
     src/core/CatboxUploader.cpp
     src/core/UguuUploader.cpp
     src/core/UpdateManager.cpp
+    src/core/NotificationFolderOpener.cpp
     src/capture/CaptureGeometry.cpp
     src/capture/CaptureInteractionPolicy.cpp
     src/capture/CaptureOverlay.cpp
@@ -56,6 +57,8 @@ set(SOURCES
     src/ui/UploadDialog.cpp
     src/recording/GifEncoder.cpp
     src/recording/LinuxRecordingSupport.cpp
+    src/recording/RecordingControlLayout.cpp
+    src/recording/RecordingTimeline.cpp
     src/recording/ScreenRecorder.cpp
     src/recording/VideoRecorder.cpp
     src/recording/RecordingIndicator.cpp
@@ -78,6 +81,7 @@ set(HEADERS
     src/core/CatboxUploader.h
     src/core/UguuUploader.h
     src/core/UpdateManager.h
+    src/core/NotificationFolderOpener.h
     src/capture/CaptureGeometry.h
     src/capture/CaptureInteractionPolicy.h
     src/capture/CaptureOverlay.h
@@ -92,6 +96,8 @@ set(HEADERS
     src/ui/UploadDialog.h
     src/recording/GifEncoder.h
     src/recording/LinuxRecordingSupport.h
+    src/recording/RecordingControlLayout.h
+    src/recording/RecordingTimeline.h
     src/recording/ScreenRecorder.h
     src/recording/VideoRecorder.h
     src/recording/RecordingIndicator.h
@@ -104,6 +110,8 @@ set(RESOURCES
 if(UNIX AND NOT APPLE)
     list(APPEND SOURCES src/core/LinuxKGlobalAccelShortcuts.cpp)
     list(APPEND HEADERS src/core/LinuxKGlobalAccelShortcuts.h)
+    list(APPEND SOURCES src/core/LinuxDesktopNotification.cpp)
+    list(APPEND HEADERS src/core/LinuxDesktopNotification.h)
 endif()
 
 # Embed admin manifest into the executable (MSVC auto-embeds .manifest files
@@ -302,6 +310,67 @@ if(BUILD_TESTING)
     target_include_directories(eshot_linux_recording_support_tests PRIVATE src)
     target_link_libraries(eshot_linux_recording_support_tests PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME linux_recording_support COMMAND eshot_linux_recording_support_tests)
+
+    qt_add_executable(eshot_recording_control_layout_tests
+        tests/RecordingControlLayoutTests.cpp
+        src/recording/RecordingControlLayout.cpp
+        src/recording/RecordingControlLayout.h
+    )
+    target_include_directories(eshot_recording_control_layout_tests PRIVATE src)
+    target_link_libraries(eshot_recording_control_layout_tests PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME recording_control_layout COMMAND eshot_recording_control_layout_tests)
+
+    qt_add_executable(eshot_recording_indicator_tests
+        tests/RecordingIndicatorTests.cpp
+        src/recording/RecordingIndicator.cpp
+        src/recording/RecordingIndicator.h
+        src/recording/RecordingControlLayout.cpp
+        src/recording/RecordingControlLayout.h
+        resources/icons.qrc
+    )
+    target_include_directories(eshot_recording_indicator_tests PRIVATE src)
+    target_link_libraries(eshot_recording_indicator_tests PRIVATE
+        Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Test)
+    add_test(NAME recording_indicator COMMAND eshot_recording_indicator_tests)
+    set_tests_properties(recording_indicator PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    qt_add_executable(eshot_recording_timeline_tests
+        tests/RecordingTimelineTests.cpp
+        src/recording/RecordingTimeline.cpp
+        src/recording/RecordingTimeline.h
+    )
+    target_include_directories(eshot_recording_timeline_tests PRIVATE src)
+    target_link_libraries(eshot_recording_timeline_tests PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME recording_timeline COMMAND eshot_recording_timeline_tests)
+
+    qt_add_executable(eshot_screen_recorder_pause_api_tests
+        tests/ScreenRecorderPauseApiTests.cpp
+    )
+    target_include_directories(eshot_screen_recorder_pause_api_tests PRIVATE src)
+    target_link_libraries(eshot_screen_recorder_pause_api_tests PRIVATE
+        Qt6::Core Qt6::Gui Qt6::Test)
+    add_test(NAME screen_recorder_pause_api COMMAND eshot_screen_recorder_pause_api_tests)
+
+    qt_add_executable(eshot_notification_folder_opener_tests
+        tests/NotificationFolderOpenerTests.cpp
+        src/core/NotificationFolderOpener.cpp
+        src/core/NotificationFolderOpener.h
+    )
+    target_include_directories(eshot_notification_folder_opener_tests PRIVATE src)
+    target_link_libraries(eshot_notification_folder_opener_tests PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME notification_folder_opener COMMAND eshot_notification_folder_opener_tests)
+
+    if(UNIX AND NOT APPLE)
+        qt_add_executable(eshot_linux_desktop_notification_tests
+            tests/LinuxDesktopNotificationTests.cpp
+            src/core/LinuxDesktopNotification.cpp
+            src/core/LinuxDesktopNotification.h
+        )
+        target_include_directories(eshot_linux_desktop_notification_tests PRIVATE src)
+        target_link_libraries(eshot_linux_desktop_notification_tests PRIVATE
+            Qt6::Core Qt6::DBus Qt6::Test)
+        add_test(NAME linux_desktop_notification COMMAND eshot_linux_desktop_notification_tests)
+    endif()
 endif()
 
 if(UNIX AND NOT APPLE)

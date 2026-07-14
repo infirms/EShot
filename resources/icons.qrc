@@ -40,5 +40,9 @@
         <file alias="icons/chevron_down.svg">../icons/chevron_down.svg</file>
         <file alias="icons/chevron_up.svg">../icons/chevron_up.svg</file>
         <file alias="icons/check.svg">../icons/check.svg</file>
+        <file alias="icons/pause.svg">../icons/pause.svg</file>
+        <file alias="icons/resume.svg">../icons/resume.svg</file>
+        <file alias="icons/stop.svg">../icons/stop.svg</file>
+        <file alias="icons/more.svg">../icons/more.svg</file>
     </qresource>
 </RCC>

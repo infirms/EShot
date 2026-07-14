@@ -10,6 +10,8 @@
 #include <QString>
 #include <QDateTime>
 
+#include "RecordingTimeline.h"
+
 #ifdef Q_OS_WIN
 #include <windows.h>
 #endif
@@ -24,6 +26,7 @@ public:
     ~ScreenRecorder();
 
     bool isRecording() const { return m_recording; }
+    bool isPaused() const { return m_paused; }
     QRect captureRect() const { return m_displayRect.isValid() ? m_displayRect : m_captureRect; }
     int frameCount() const { return m_frameCount; }
     int maxSeconds() const { return m_maxSeconds; }
@@ -32,6 +35,8 @@ public:
                const QString &outputPath, const QRect &displayRect = QRect());
     void stop();
     void cancel();
+    void pause();
+    void resume();
 
 signals:
     void recordingStarted();
@@ -39,6 +44,8 @@ signals:
     void recordingFailed(const QString &reason);
     void frameCaptured(int frameNumber);
     void remainingTimeChanged(int seconds);
+    void elapsedTimeChanged(int seconds);
+    void pausedChanged(bool paused);
     void timeLimitReached();
 
 private slots:
@@ -59,6 +66,8 @@ private:
     QString ffmpegPath() const;
     bool convertPortalVideoToGif();
     void closePortalSession();
+    bool setPortalProcessSuspended(bool suspended);
+    qint64 nowMs() const;
 
     GifEncoder *m_encoder = nullptr;
     QProcess *m_process = nullptr;
@@ -73,6 +82,7 @@ private:
     int m_delayCs = 10;
     bool m_recording = false;
     bool m_portalRecording = false;
+    bool m_paused = false;
     bool m_hasPendingFrame = false;
     QImage m_pendingFrame;
     int m_pendingDelayCs = 0;
@@ -80,7 +90,7 @@ private:
     QString m_portalVideoPath;
     int m_loopCount = 0;
     QString m_portalSessionHandle;
-    QDateTime m_recordingStartedAt;
+    RecordingTimeline m_timeline;
 
 #ifdef Q_OS_WIN
     HDC m_screenDC = nullptr;
