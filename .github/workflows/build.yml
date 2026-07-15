@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 env:
-  APP_VERSION: '4.0.7'
+  APP_VERSION: '4.0.8'
   QT_VERSION: '6.8.2'
 
 jobs:
@@ -382,7 +382,7 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          body_path: packaging/release-notes/v4.0.7.md
+          body_path: packaging/release-notes/v4.0.8.md
           files: |
             release-assets/EShot-Setup-x64/*.exe
             release-assets/EShot-Setup-arm64/*.exe

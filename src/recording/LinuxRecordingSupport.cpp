@@ -70,7 +70,6 @@ QString preferredGstAacEncoder(const QStringList &availableElements)
 
 QString discoverGstAacEncoder()
 {
-    QStringList available;
     for (const QString &encoder : {QStringLiteral("fdkaacenc"), QStringLiteral("avenc_aac"),
                                    QStringLiteral("faac"), QStringLiteral("voaacenc")}) {
         QProcess inspect;
@@ -79,10 +78,19 @@ QString discoverGstAacEncoder()
         inspect.setStandardOutputFile(QProcess::nullDevice());
         inspect.setStandardErrorFile(QProcess::nullDevice());
         inspect.start();
-        if (inspect.waitForFinished(2000) && inspect.exitCode() == 0)
-            available.append(encoder);
+        if (!inspect.waitForStarted(2000))
+            continue;
+        if (inspect.waitForFinished(15000)
+            && inspect.exitStatus() == QProcess::NormalExit
+            && inspect.exitCode() == 0) {
+            return encoder;
+        }
+        if (inspect.state() != QProcess::NotRunning) {
+            inspect.kill();
+            inspect.waitForFinished(1000);
+        }
     }
-    return preferredGstAacEncoder(available);
+    return {};
 }
 
 QList<QPair<QString, QString>> linuxMicrophoneDevices(const QString &pactlSources)

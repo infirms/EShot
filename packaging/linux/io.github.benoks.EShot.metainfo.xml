@@ -34,6 +34,11 @@
   <url type="homepage">https://github.com/Benoks/EShot</url>
   <url type="bugtracker">https://github.com/Benoks/EShot/issues</url>
   <releases>
+    <release version="4.0.8" date="2026-07-16">
+      <description>
+        <p>Fixes false missing AAC encoder errors on Linux when GStreamer plugin discovery takes longer during its first run.</p>
+      </description>
+    </release>
     <release version="4.0.7" date="2026-07-16">
       <description>
         <p>Improves draggable capture-safe recording controls on Windows and Linux, fixes KDE Plasma full-screen recording geometry, adds experimental GNOME Wayland integration, and expands Linux portal and package-manager compatibility.</p>
