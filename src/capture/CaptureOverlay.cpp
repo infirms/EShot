@@ -6,6 +6,8 @@
 #include "ui/OcrDialog.h"
 #include "ui/UploadDialog.h"
 #include "core/ImageUploader.h"
+#include "core/HotkeyManager.h"
+#include "core/LinuxDesktopIntegration.h"
 #include "core/LinuxPortalScreenshot.h"
 #include "core/LinuxScreenshotPolicy.h"
 #include "core/VisualSearch.h"
@@ -114,11 +116,17 @@ void drawCaptureHints(QPainter &painter, const QRect &monitorRect, bool recordin
     const QString quickSettingsText = recordingMode
         ? QString()
         : TranslationManager::captureHintQuickSettings();
+    const QString stopShortcut = HotkeyManager::instance().recordingStopShortcutText();
+    const QString stopLabel = TranslationManager::recordingStop();
     const int secondaryWidth = quickSettingsText.isEmpty()
         ? 0 : QFontMetrics(secondaryFont).horizontalAdvance(quickSettingsText) + 36;
-    const int preferredWidth = qBound(440, qMax(primaryWidth, secondaryWidth), 840);
+    const int stopHintWidth = recordingMode ? 0
+        : QFontMetrics(secondaryFont).horizontalAdvance(stopShortcut + stopLabel) + 64;
+    const int preferredWidth = recordingMode
+        ? qBound(620, qMax(primaryWidth, secondaryWidth), 840)
+        : qBound(440, qMax(qMax(primaryWidth, secondaryWidth), stopHintWidth), 840);
     const QRect hintRect = captureHintRect(
-        monitorRect, QSize(preferredWidth, recordingMode ? 76 : 104));
+        monitorRect, QSize(preferredWidth, recordingMode ? 76 : 132));
     if (!hintRect.isValid())
         return;
 
@@ -130,8 +138,8 @@ void drawCaptureHints(QPainter &painter, const QRect &monitorRect, bool recordin
 
     painter.setFont(primaryFont);
     painter.setPen(QColor(246, 248, 251, 238));
-    const QRect primaryRect = hintRect.adjusted(16, 9, -16,
-                                                recordingMode ? -42 : -78);
+    const QRect primaryRect(hintRect.left() + 16, hintRect.top() + 8,
+                            hintRect.width() - 32, 22);
     const QString visiblePrimary = QFontMetrics(primaryFont).elidedText(
         primaryText, Qt::ElideRight, primaryRect.width());
     painter.drawText(primaryRect, Qt::AlignCenter, visiblePrimary);
@@ -139,7 +147,13 @@ void drawCaptureHints(QPainter &painter, const QRect &monitorRect, bool recordin
     const bool compact = hintRect.width() < 390;
     struct HintShortcut { QString key; QString label; };
     const QList<HintShortcut> shortcuts = recordingMode
-        ? QList<HintShortcut>{{QStringLiteral("Esc"), TranslationManager::captureHintCancel()}}
+        ? QList<HintShortcut>{
+              {HotkeyManager::instance().recordingPauseShortcutText(),
+               TranslationManager::recordingPauseResume()},
+              {HotkeyManager::instance().recordingStopShortcutText(),
+               TranslationManager::recordingStopShort()},
+              {HotkeyManager::instance().recordingCancelShortcutText(),
+               TranslationManager::recordingCancel()}}
         : QList<HintShortcut>{
               {QStringLiteral("Ctrl+C"), TranslationManager::captureHintCopy()},
               {QStringLiteral("Ctrl+S"), TranslationManager::captureHintSave()},
@@ -169,10 +183,20 @@ void drawCaptureHints(QPainter &painter, const QRect &monitorRect, bool recordin
     if (!quickSettingsText.isEmpty()) {
         painter.setFont(secondaryFont);
         painter.setPen(QColor(190, 196, 205, 205));
-        const QRect secondaryRect = hintRect.adjusted(16, 60, -16, -14);
+        const QRect secondaryRect(hintRect.left() + 16, hintRect.top() + 64,
+                                  hintRect.width() - 32, 20);
         const QString visibleSecondary = QFontMetrics(secondaryFont).elidedText(
             quickSettingsText, Qt::ElideRight, secondaryRect.width());
         painter.drawText(secondaryRect, Qt::AlignCenter, visibleSecondary);
+
+        QFont stopKeyFont = secondaryFont;
+        stopKeyFont.setWeight(QFont::DemiBold);
+        QFont stopLabelFont = secondaryFont;
+        const int stopRowWidth = QFontMetrics(stopKeyFont).horizontalAdvance(stopShortcut) + 14
+            + 7 + QFontMetrics(stopLabelFont).horizontalAdvance(stopLabel);
+        int stopX = hintRect.left() + qMax(10, (hintRect.width() - stopRowWidth) / 2);
+        drawCaptureHintShortcut(painter, stopX, hintRect.top() + 94,
+                                stopShortcut, stopLabel, compact);
     }
     painter.restore();
 }
@@ -1654,10 +1678,13 @@ void CaptureOverlay::captureAllScreens()
     DeleteDC(hMem);
     ReleaseDC(nullptr, hScreen);
 #else
+    const QString currentDesktop = qEnvironmentVariable("XDG_CURRENT_DESKTOP");
+    const QString sessionDesktop = qEnvironmentVariable("XDG_SESSION_DESKTOP");
+    const QString sessionType = qEnvironmentVariable("XDG_SESSION_TYPE");
+    const LinuxDesktopEnvironment desktop = LinuxDesktopIntegration::detect(
+        currentDesktop, sessionDesktop);
     const bool kdeWaylandSession = LinuxScreenshotPolicy::isKdeWaylandSession(
-        qEnvironmentVariable("XDG_CURRENT_DESKTOP"),
-        qEnvironmentVariable("XDG_SESSION_DESKTOP"),
-        qEnvironmentVariable("XDG_SESSION_TYPE"));
+        currentDesktop, sessionDesktop, sessionType);
     const bool useXwaylandVirtualOverlay =
         qEnvironmentVariableIntValue("ESHOT_WAYLAND_XWAYLAND_OVERLAY") == 1
         && QGuiApplication::platformName().contains(QStringLiteral("xcb"), Qt::CaseInsensitive);
@@ -1672,6 +1699,25 @@ void CaptureOverlay::captureAllScreens()
             logicalRect = logicalRect.united(logical);
             physicalRect = physicalRect.united(physical);
             m_captureMonitors.append({logical, physical, scale});
+        }
+
+        if (desktop != LinuxDesktopEnvironment::Kde) {
+            QPixmap portalSnapshot = LinuxPortalScreenshot::grab(this);
+            if (!portalSnapshot.isNull()) {
+                portalSnapshot.setDevicePixelRatio(1.0);
+                m_screenSnapshot = portalSnapshot;
+                m_virtualDesktopRect = logicalRect;
+                m_physicalVirtualDesktopTopLeft = physicalRect.topLeft();
+                m_dpr = logicalRect.width() > 0
+                    ? portalSnapshot.width() / static_cast<qreal>(logicalRect.width())
+                    : 1.0;
+                qInfo() << "[CaptureOverlay] selected capture backend=portal-workspace desktop="
+                        << LinuxDesktopIntegration::displayName(desktop);
+            } else {
+                qCritical() << "[CaptureOverlay] portal workspace capture failed for"
+                            << LinuxDesktopIntegration::displayName(desktop);
+            }
+            return;
         }
 
         QPixmap workspaceSnapshot = LinuxPortalScreenshot::grabWorkspace(this);
@@ -1759,6 +1805,26 @@ void CaptureOverlay::captureAllScreens()
         m_virtualDesktopRect = logical;
         m_physicalVirtualDesktopTopLeft = physical.topLeft();
         m_captureMonitors = {{logical, physical, scale}};
+
+        if (desktop != LinuxDesktopEnvironment::Kde) {
+            QPixmap portalSnapshot = LinuxPortalScreenshot::grab(this);
+            if (!portalSnapshot.isNull()) {
+                QRect virtualPhysical;
+                for (QScreen *candidate : QGuiApplication::screens()) {
+                    virtualPhysical = virtualPhysical.united(
+                        physicalRectFromLogical(candidate->geometry(),
+                                                candidate->devicePixelRatio()));
+                }
+                const QRect crop = portalCropRect(physical, virtualPhysical);
+                if (portalSnapshot.rect().contains(crop))
+                    portalSnapshot = portalSnapshot.copy(crop);
+                portalSnapshot.setDevicePixelRatio(1.0);
+                m_screenSnapshot = portalSnapshot;
+                qInfo() << "[CaptureOverlay] selected capture backend=portal-screen desktop="
+                        << LinuxDesktopIntegration::displayName(desktop);
+            }
+            return;
+        }
 
         m_screenSnapshot = LinuxPortalScreenshot::grabScreen(screen, this);
         m_screenSnapshot.setDevicePixelRatio(1.0);

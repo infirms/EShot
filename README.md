@@ -9,7 +9,7 @@ Native screenshot, annotation, OCR, visual-search, upload, GIF, and video captur
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 > [!IMPORTANT]
-> The Linux build has currently been developed and tested only on KDE Plasma 6 with Wayland, primarily on CachyOS. Other desktop environments and compositors are not supported yet and are unlikely to work correctly. GNOME support is planned for a future release.
+> The Linux build is tested on KDE Plasma 6 with Wayland, primarily on CachyOS. GNOME Wayland support is experimental, still needs broader testing, and may be unstable or incomplete. Other desktop environments and compositors remain unsupported and are unlikely to work correctly.
 
 EShot keeps the complete screenshot workflow in one compact tray application: select a region, annotate it, copy or save it, extract text, search the image, upload it, pin it above other windows, or record it as GIF/MP4.
 
@@ -25,7 +25,8 @@ EShot keeps the complete screenshot workflow in one compact tray application: se
 | --- | --- | --- |
 | Windows 10/11 x64 | Stable | Installer and portable ZIP |
 | Windows 11 ARM64 | Stable | Native ARM64 installer and portable ZIP |
-| Linux x86_64 (KDE Plasma 6) | **Experimental** | AppImage, `.deb`, and portable archive |
+| Linux x86_64 (KDE Plasma 6 Wayland) | **Experimental, tested** | AppImage, `.deb`, AUR, and portable archive |
+| Linux x86_64 (GNOME Wayland) | **Experimental, limited testing** | May be unstable; AppImage, `.deb`, AUR, and portable archive |
 | Other Linux desktops | Unsupported | Unlikely to work correctly |
 
 ## Features
@@ -64,7 +65,9 @@ Download the latest build from [GitHub Releases](https://github.com/Benoks/EShot
 
 Portable x64 and ARM64 ZIP archives are also attached to each release.
 
-### Linux: experimental KDE Plasma 6 build
+### Linux: KDE Plasma 6 and GNOME Wayland
+
+KDE Plasma 6 Wayland is the primary tested Linux target. GNOME Wayland support is under active development and currently requires more real-world testing; capture, shortcuts, tray integration, or recording may behave differently between GNOME and portal versions.
 
 1. Download `EShot-v<version>-x86_64.AppImage`.
 2. Mark it executable if required:
@@ -75,19 +78,33 @@ Portable x64 and ARM64 ZIP archives are also attached to each release.
 
 3. Open the AppImage.
 4. Complete the graphical first-run wizard. It can install FFmpeg/GStreamer, PipeWire portal components, Tesseract, selected OCR languages, and application-menu integration through the system package manager.
-5. Use **Activate Print Screen for EShot** if KDE currently assigns `Print Screen` to Spectacle.
+5. Use **Use Print Screen for EShot** to assign `Print Screen`. KDE keeps Spectacle's other shortcuts. GNOME uses the Global Shortcuts portal when available and an EShot-only custom shortcut on older GNOME releases.
 
 The AppImage bundles EShot and Qt. Optional media, OCR, and desktop-integration packages remain system packages. Skipped dependencies can be installed later from **Settings → Open Linux dependency setup**.
 
 Integrated AppImages are stored for the current user under `~/.local/opt/EShot`. When an update is available, EShot downloads the matching AppImage release asset, verifies its GitHub SHA-256 digest, replaces the installed AppImage, and restarts it. Native package builds should be updated through their package manager.
 
+### Arch Linux and CachyOS
+
+Install the EShot-maintained AUR binary package with an AUR helper:
+
+```bash
+yay -S eshot-bin
+```
+
+The package installs the release AppImage and its desktop entry through pacman. Update it with your normal AUR helper rather than EShot's AppImage updater.
+
 ### Linux runtime notes
 
 - Wayland screenshots and recordings use XDG Desktop Portal and PipeWire.
-- KDE global shortcuts use KGlobalAccel; non-KDE desktops may fall back to the Global Shortcuts portal or X11 grabs.
+- KDE global shortcuts use KGlobalAccel. GNOME uses the Global Shortcuts portal where available and can install an EShot-only GNOME custom shortcut as a compatibility fallback.
+- Stock GNOME does not expose legacy tray icons. EShot remains available through `Print Screen`, the application-menu Capture and Settings actions, and by launching EShot again to open Settings.
+- GNOME and KDE Wayland use an XWayland selection overlay so text entry, focus, and one-canvas multi-monitor selection behave consistently.
 - GIF recording uses GStreamer for portal capture and FFmpeg for final GIF encoding.
 - MP4 recording requires a GStreamer AAC encoder when audio is enabled.
-- Screen-sharing permission is requested by the desktop for each new portal recording session.
+- Screen recording permission is handled by the desktop portal. EShot stores a separate restore token per monitor when the portal supports persistent sessions.
+- A recorded region must fit inside one monitor. If the portal opens a monitor chooser, select the monitor containing the region.
+- The optional dependency setup uses the PackageKit session installer when the desktop provides it, then falls back to the native pacman, apt or dnf workflow.
 
 ## Visual search
 
@@ -157,6 +174,7 @@ EShot.exe --silent
 EShot --capture
 EShot --save "$HOME/Pictures/capture.png"
 EShot --silent
+EShot --quit
 
 # Native packages also install the lowercase launcher:
 eshot --capture

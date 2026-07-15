@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QHash>
 #include <QString>
+#include <QStringList>
 #include <QVariantMap>
 
 #include "PlatformHotkey.h"
@@ -28,15 +29,19 @@ class LinuxPortalGlobalShortcuts : public QObject {
 
 public:
     explicit LinuxPortalGlobalShortcuts(QObject *parent = nullptr);
+    ~LinuxPortalGlobalShortcuts() override;
 
     bool isAvailable() const;
+    static bool desktopPortalAvailable();
     void setShortcuts(const QHash<int, QPair<UINT, UINT>> &shortcuts);
     bool requestRebind();
     static QString preferredTrigger(UINT modifiers, UINT virtualKey);
     static LinuxHotkeyBackend preferredBackend(bool portalAvailable, bool x11Available);
+    static bool supportsConfiguration(uint portalVersion);
 
 signals:
     void shortcutActivated(int id);
+    void portalFailed(const QString &errorName, const QString &errorMessage);
 
 private slots:
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
@@ -47,6 +52,8 @@ private slots:
 #endif
 
 private:
+    void disconnectCreateRequests();
+    void disconnectBindRequests();
     void createSession();
     void bindShortcuts();
     void closeSession();
@@ -59,6 +66,9 @@ private:
     bool m_createPending = false;
     bool m_bindPending = false;
     bool m_bindCompleted = false;
+    uint m_version = 0;
+    QStringList m_createRequestPaths;
+    QStringList m_bindRequestPaths;
 };
 
 #endif

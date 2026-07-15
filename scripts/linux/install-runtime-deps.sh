@@ -27,23 +27,52 @@ if (( ffmpeg || ocr || desktop )); then
 fi
 
 printf '[EShot setup] attempted packages: %s\n' "${packages[*]:-(none)}" >&2
-if (( ${#packages[@]} > 0 )) && ! command -v pkexec >/dev/null 2>&1; then
-  eshot_show_error "$(eshot_setup_text missing_pkexec)"
-  exit 1
+if (( ${#packages[@]} > 0 )); then
+  packagekit_installer="${script_dir}/packagekit-install.sh"
+  if [[ -x "${packagekit_installer}" ]]; then
+    if "${packagekit_installer}" "${packages[@]}"; then
+      printf '[EShot setup] PackageKit session installer completed.\n' >&2
+    else
+      packagekit_status=$?
+      if [[ "${packagekit_status}" -ne 2 ]]; then
+        printf '[EShot setup] PackageKit session installer failed.\n' >&2
+        exit "${packagekit_status}"
+      fi
+      if ! command -v pkexec >/dev/null 2>&1; then
+        eshot_show_error "$(eshot_setup_text missing_pkexec)"
+        exit 1
+      fi
+      case "${manager}" in
+        pacman)
+          pkexec pacman -S --needed --noconfirm "${packages[@]}"
+          ;;
+        apt)
+          pkexec apt-get update
+          pkexec apt-get install -y "${packages[@]}"
+          ;;
+        dnf)
+          pkexec dnf install -y "${packages[@]}"
+          ;;
+      esac
+    fi
+  elif ! command -v pkexec >/dev/null 2>&1; then
+    eshot_show_error "$(eshot_setup_text missing_pkexec)"
+    exit 1
+  else
+    case "${manager}" in
+      pacman)
+        pkexec pacman -S --needed --noconfirm "${packages[@]}"
+        ;;
+      apt)
+        pkexec apt-get update
+        pkexec apt-get install -y "${packages[@]}"
+        ;;
+      dnf)
+        pkexec dnf install -y "${packages[@]}"
+        ;;
+    esac
+  fi
 fi
-
-if (( ${#packages[@]} > 0 )); then case "${manager}" in
-  pacman)
-    pkexec pacman -S --needed --noconfirm "${packages[@]}"
-    ;;
-  apt)
-    pkexec apt-get update
-    pkexec apt-get install -y "${packages[@]}"
-    ;;
-  dnf)
-    pkexec dnf install -y "${packages[@]}"
-    ;;
-esac; fi
 
 if (( integrate_appimage )); then
   if [[ -z "${APPIMAGE:-}" || ! -x "${APPIMAGE}" ]]; then

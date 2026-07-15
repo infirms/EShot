@@ -69,6 +69,9 @@ grep -F "Exec=/usr/bin/env ESHOT_DESKTOP_LAUNCH=1 \"${installed}\"" "${desktop}"
   echo "desktop Exec does not point to installed AppImage" >&2
   exit 1
 }
+grep -F "Exec=/usr/bin/env ESHOT_DESKTOP_LAUNCH=1 \"${installed}\" --capture" "${desktop}" >/dev/null
+grep -F "Exec=/usr/bin/env ESHOT_DESKTOP_LAUNCH=1 \"${installed}\" --settings" "${desktop}" >/dev/null
+grep -F "Exec=/usr/bin/env ESHOT_DESKTOP_LAUNCH=1 \"${installed}\" --quit" "${desktop}" >/dev/null
 
 # Manually launching a newly downloaded AppImage must execute that current
 # image, even when an older integrated copy already exists.

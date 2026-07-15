@@ -1,6 +1,7 @@
 #include <QtTest>
 
 #include "core/LinuxPortalGlobalShortcuts.h"
+#include "core/LinuxPortalHostRegistry.h"
 #include "core/LinuxKGlobalAccelShortcuts.h"
 #include "core/LinuxPortalScreenCast.h"
 
@@ -8,9 +9,33 @@ class LinuxPortalShortcutTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void classifiesHostPortalRegistration()
+    {
+        QCOMPARE(LinuxPortalHostRegistry::classifyReply(true, QString()),
+                 LinuxPortalHostRegistrationState::Registered);
+        QCOMPARE(LinuxPortalHostRegistry::classifyReply(
+                     false, QStringLiteral("org.freedesktop.DBus.Error.UnknownInterface")),
+                 LinuxPortalHostRegistrationState::Unsupported);
+        QCOMPARE(LinuxPortalHostRegistry::classifyReply(
+                     false, QStringLiteral("org.freedesktop.DBus.Error.UnknownMethod")),
+                 LinuxPortalHostRegistrationState::Unsupported);
+        QCOMPARE(LinuxPortalHostRegistry::classifyReply(
+                     false, QStringLiteral("org.freedesktop.portal.Error.NotAllowed")),
+                 LinuxPortalHostRegistrationState::Failed);
+        QVERIFY(LinuxPortalHostRegistry::portalMayIdentifyApp(
+            LinuxPortalHostRegistrationState::Registered));
+        QVERIFY(LinuxPortalHostRegistry::portalMayIdentifyApp(
+            LinuxPortalHostRegistrationState::Unsupported));
+        QVERIFY(!LinuxPortalHostRegistry::portalMayIdentifyApp(
+            LinuxPortalHostRegistrationState::Failed));
+        QCOMPARE(LinuxPortalHostRegistry::applicationId(),
+                 QStringLiteral("io.github.benoks.EShot"));
+    }
+
     void formatsPreferredTriggers()
     {
         QCOMPARE(LinuxPortalGlobalShortcuts::preferredTrigger(0, VK_SNAPSHOT), QStringLiteral("Print"));
+        QCOMPARE(LinuxPortalGlobalShortcuts::preferredTrigger(0, VK_SCROLL), QStringLiteral("Scroll_Lock"));
         QCOMPARE(LinuxPortalGlobalShortcuts::preferredTrigger(
                      MOD_CONTROL | MOD_ALT, 'P'),
                  QStringLiteral("CTRL+ALT+p"));
@@ -33,6 +58,13 @@ private slots:
                  LinuxHotkeyBackend::Unavailable);
     }
 
+    void usesPortalConfigurationUiWhenSupported()
+    {
+        QVERIFY(!LinuxPortalGlobalShortcuts::supportsConfiguration(1u));
+        QVERIFY(LinuxPortalGlobalShortcuts::supportsConfiguration(2u));
+        QVERIFY(LinuxPortalGlobalShortcuts::supportsConfiguration(3u));
+    }
+
     void detectsWaylandBehindXwayland()
     {
         QVERIFY(LinuxPortalScreenCast::isWaylandSessionType(QStringLiteral("wayland"),
@@ -41,6 +73,23 @@ private slots:
                                                              QStringLiteral("wayland")));
         QVERIFY(!LinuxPortalScreenCast::isWaylandSessionType(QStringLiteral("x11"),
                                                               QStringLiteral("xcb")));
+    }
+
+    void buildsCompatibleGnomeScreenCastOptions()
+    {
+        const QVariantMap modern = LinuxPortalScreenCast::sourceOptions(
+            6u, 1u | 2u | 4u, QStringLiteral("restore-me"));
+        QCOMPARE(modern.value(QStringLiteral("types")).toUInt(), 1u);
+        QCOMPARE(modern.value(QStringLiteral("multiple")).toBool(), false);
+        QCOMPARE(modern.value(QStringLiteral("cursor_mode")).toUInt(), 2u);
+        QCOMPARE(modern.value(QStringLiteral("persist_mode")).toUInt(), 2u);
+        QCOMPARE(modern.value(QStringLiteral("restore_token")).toString(),
+                 QStringLiteral("restore-me"));
+
+        const QVariantMap legacy = LinuxPortalScreenCast::sourceOptions(3u, 1u, {});
+        QCOMPARE(legacy.value(QStringLiteral("cursor_mode")).toUInt(), 1u);
+        QVERIFY(!legacy.contains(QStringLiteral("persist_mode")));
+        QVERIFY(!legacy.contains(QStringLiteral("restore_token")));
     }
 
     void detectsKdeDesktop()

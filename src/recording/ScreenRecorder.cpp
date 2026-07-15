@@ -406,24 +406,37 @@ bool ScreenRecorder::startWaylandPortalRecording(const QRect &captureRect)
         return false;
     }
 
-    LinuxPortalScreenCast::Stream stream = LinuxPortalScreenCast::selectStream();
+    QString persistenceId;
+    if (m_displayRect.isValid()) {
+        if (QScreen *screen = QGuiApplication::screenAt(m_displayRect.center()))
+            persistenceId = screen->name();
+    }
+    LinuxPortalScreenCast::Stream stream = LinuxPortalScreenCast::selectStream(
+        nullptr, 120000, persistenceId);
     if (!stream.isValid()) {
         emit recordingFailed(QStringLiteral("Wayland screen recording permission was not granted"));
         return false;
     }
+
+    PortalCropGeometry crop = portalCropGeometry(
+        captureRect, m_displayRect, stream.position, stream.size, m_outputSize);
+    if (!crop.valid && stream.usedRestoreToken) {
+        LinuxPortalScreenCast::closeSession(stream.sessionHandle);
+        LinuxPortalScreenCast::clearRestoreToken(persistenceId);
+        stream = LinuxPortalScreenCast::selectStream(nullptr, 120000, persistenceId);
+        if (stream.isValid()) {
+            crop = portalCropGeometry(
+                captureRect, m_displayRect, stream.position, stream.size, m_outputSize);
+        }
+    }
+    if (!stream.isValid() || !crop.valid) {
+        LinuxPortalScreenCast::closeSession(stream.sessionHandle);
+        emit recordingFailed(QStringLiteral("Wayland recording source does not contain the selected region"));
+        return false;
+    }
     m_portalSessionHandle = stream.sessionHandle;
 
-    const QSize streamSize = stream.size.isValid() ? stream.size : captureRect.size();
-    const QRect relativeRect = captureRect.translated(-stream.position);
-    const int left = qBound(0, relativeRect.x(), qMax(0, streamSize.width() - 1));
-    const int top = qBound(0, relativeRect.y(), qMax(0, streamSize.height() - 1));
-    const int right = qMax(0, streamSize.width() - left - captureRect.width());
-    const int bottom = qMax(0, streamSize.height() - top - captureRect.height());
-    const QSize outputSize = evenRecordingSize(QSize(
-        qMax(8, qMin(m_outputSize.width(), streamSize.width() - left)),
-        qMax(8, qMin(m_outputSize.height(), streamSize.height() - top))));
-
-    const QString sourcePath = pipeWireSourcePath(stream.nodeId);
+    const QString sourcePath = pipeWireSourcePath(stream.nodeId, stream.pipewireSerial);
     const int pipewireFd = stream.remoteFd();
     m_portalVideoPath = m_outputPath + QStringLiteral(".portal.mp4");
     QFile::remove(m_portalVideoPath);
@@ -440,18 +453,18 @@ bool ScreenRecorder::startWaylandPortalRecording(const QRect &captureRect)
          << QStringLiteral("videoconvert")
          << QStringLiteral("!")
          << QStringLiteral("videocrop")
-         << QStringLiteral("left=%1").arg(left)
-         << QStringLiteral("right=%1").arg(right)
-         << QStringLiteral("top=%1").arg(top)
-         << QStringLiteral("bottom=%1").arg(bottom)
+         << QStringLiteral("left=%1").arg(crop.left)
+         << QStringLiteral("right=%1").arg(crop.right)
+         << QStringLiteral("top=%1").arg(crop.top)
+         << QStringLiteral("bottom=%1").arg(crop.bottom)
          << QStringLiteral("!")
          << QStringLiteral("videoscale")
          << QStringLiteral("!")
          << QStringLiteral("videorate")
          << QStringLiteral("!")
          << QStringLiteral("video/x-raw,width=%1,height=%2,framerate=%3/1")
-                .arg(outputSize.width())
-                .arg(outputSize.height())
+                .arg(crop.outputSize.width())
+                .arg(crop.outputSize.height())
                 .arg(m_fps)
          << QStringLiteral("!")
          << QStringLiteral("x264enc")

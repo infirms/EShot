@@ -3,6 +3,8 @@
 #include "SettingsLayoutPolicy.h"
 #include "../core/HotkeyManager.h"
 #include "../core/LinuxAutoStartPolicy.h"
+#include "../core/LinuxDesktopIntegration.h"
+#include "../core/LinuxGnomeShortcutInstaller.h"
 #include "../core/OcrEngine.h"
 #include "../core/TranslationManager.h"
 #include "../recording/LinuxRecordingSupport.h"
@@ -20,6 +22,7 @@
 #include <QMessageBox>
 #include <QApplication>
 #include <QDir>
+#include <QFileInfo>
 #include <QDateTime>
 #include <QListWidgetItem>
 #include <QKeySequenceEdit>
@@ -546,24 +549,18 @@ static bool setAutoStartTask(bool enabled)
     if (!dir.exists() && !dir.mkpath(QStringLiteral(".")))
         return false;
 
-    QString appPath = LinuxAutoStartPolicy::executablePath(
+    const QString appPath = LinuxAutoStartPolicy::executablePath(
         qEnvironmentVariable("APPIMAGE"), QCoreApplication::applicationFilePath());
-    appPath.replace(QStringLiteral("\\"), QStringLiteral("\\\\"));
-    appPath.replace(QStringLiteral("\""), QStringLiteral("\\\""));
-    QString execLine = QStringLiteral("\"") + appPath + QStringLiteral("\" --silent");
     const QString sessionType = qEnvironmentVariable("XDG_SESSION_TYPE");
     const QString desktopName = qEnvironmentVariable("XDG_CURRENT_DESKTOP",
                                                        qEnvironmentVariable("XDG_SESSION_DESKTOP"));
-    if (sessionType.compare(QStringLiteral("wayland"), Qt::CaseInsensitive) == 0
-        && desktopName.contains(QStringLiteral("KDE"), Qt::CaseInsensitive)) {
-        execLine.prepend(QStringLiteral(
-            "/usr/bin/env QT_QPA_PLATFORM=xcb ESHOT_WAYLAND_XWAYLAND_OVERLAY=1 "));
-    }
+    const QString execLine = LinuxAutoStartPolicy::commandLine(
+        appPath, desktopName, QString(), sessionType);
     const QString desktop = QStringLiteral(
         "[Desktop Entry]\n"
         "Type=Application\n"
         "Name=EShot\n"
-        "Comment=Start EShot in the system tray\n"
+        "Comment=Start EShot in the background\n"
         "Exec=%1\n"
         "Icon=io.github.benoks.EShot-v4\n"
         "Terminal=false\n"
@@ -1391,8 +1388,15 @@ QWidget* SettingsDialog::createHotkeyTab()
     gl->addWidget(m_printScreenFixButton);
 
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
-    m_linuxPrintScreenBindingButton = new QPushButton(
-        uiLabel("PrintScreen kisayolunu KDE ile yeniden ayarla", "Reconfigure PrintScreen shortcut in KDE"));
+    const LinuxDesktopEnvironment desktop = LinuxDesktopIntegration::detect(
+        qEnvironmentVariable("XDG_CURRENT_DESKTOP"),
+        qEnvironmentVariable("XDG_SESSION_DESKTOP"));
+    const QString bindingText = desktop == LinuxDesktopEnvironment::Gnome
+        ? uiLabel("PrintScreen kisayolunu GNOME ile ayarla", "Configure PrintScreen shortcut in GNOME")
+        : desktop == LinuxDesktopEnvironment::Kde
+            ? uiLabel("PrintScreen kisayolunu KDE ile yeniden ayarla", "Reconfigure PrintScreen shortcut in KDE")
+            : uiLabel("PrintScreen kisayolunu masaustuyle ayarla", "Configure PrintScreen with the desktop");
+    m_linuxPrintScreenBindingButton = new QPushButton(bindingText);
     connect(m_linuxPrintScreenBindingButton, &QPushButton::clicked,
             this, &SettingsDialog::onRequestLinuxPrintScreenBinding);
     gl->addWidget(m_linuxPrintScreenBindingButton);
@@ -2198,8 +2202,36 @@ void SettingsDialog::onDisableWindowsPrintScreenSnipping()
 void SettingsDialog::onRequestLinuxPrintScreenBinding()
 {
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    const LinuxDesktopEnvironment desktop = LinuxDesktopIntegration::detect(
+        qEnvironmentVariable("XDG_CURRENT_DESKTOP"),
+        qEnvironmentVariable("XDG_SESSION_DESKTOP"));
+    if (desktop == LinuxDesktopEnvironment::Gnome) {
+        if (HotkeyManager::instance().requestLinuxPortalShortcutRebind())
+            return;
+
+        const QString integrated = QDir::home().filePath(
+            QStringLiteral(".local/opt/EShot/EShot.AppImage"));
+        const QString executable = LinuxGnomeShortcutInstaller::preferredExecutable(
+            qEnvironmentVariable("APPIMAGE"), QCoreApplication::applicationFilePath(),
+            QFileInfo::exists(integrated) ? integrated : QString());
+        const auto installed = LinuxGnomeShortcutInstaller::installPrintScreen(
+            LinuxGnomeShortcutInstaller::captureCommand(executable));
+        if (installed.success) {
+            QMessageBox::information(this, QStringLiteral("EShot"),
+                                     uiLabel("PrintScreen GNOME'da EShot'a atandi.",
+                                             "PrintScreen was assigned to EShot in GNOME."));
+        } else {
+            QMessageBox::warning(this, QStringLiteral("EShot"),
+                                 uiLabel("GNOME kisayolu ayarlanamadi: ",
+                                         "Could not configure the GNOME shortcut: ")
+                                     + installed.error);
+        }
+        return;
+    }
+
     HotkeyManager::instance().requestLinuxPortalShortcutRebind();
-    if (!QProcess::startDetached(QStringLiteral("kcmshell6"), {QStringLiteral("kcm_keys")})) {
+    if (desktop == LinuxDesktopEnvironment::Kde
+        && !QProcess::startDetached(QStringLiteral("kcmshell6"), {QStringLiteral("kcm_keys")})) {
         QMessageBox::warning(this, QStringLiteral("EShot"),
                              uiLabel("KDE kisayol ayarlari acilamadi.",
                                      "KDE shortcut settings could not be opened."));
@@ -2299,6 +2331,33 @@ void SettingsDialog::onSave()
         {newMod, newVKey},
         {static_cast<quint32>(m_settings->value("hotkeyModifiers", 0).toUInt()),
          static_cast<quint32>(m_settings->value("hotkeyVKey", VK_SNAPSHOT).toUInt())});
+    if (captureHotkeyChanged) {
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+        const LinuxDesktopEnvironment desktop = LinuxDesktopIntegration::detect(
+            qEnvironmentVariable("XDG_CURRENT_DESKTOP"),
+            qEnvironmentVariable("XDG_SESSION_DESKTOP"));
+        if (desktop == LinuxDesktopEnvironment::Gnome
+            && !HotkeyManager::instance().linuxPortalShortcutsAvailable()) {
+            const QString integrated = QDir::home().filePath(
+                QStringLiteral(".local/opt/EShot/EShot.AppImage"));
+            const QString executable = LinuxGnomeShortcutInstaller::preferredExecutable(
+                qEnvironmentVariable("APPIMAGE"), QCoreApplication::applicationFilePath(),
+                QFileInfo::exists(integrated) ? integrated : QString());
+            const QString binding = LinuxGnomeShortcutInstaller::acceleratorFromPortableSequence(
+                seq.toString(QKeySequence::PortableText));
+            const auto installed = LinuxGnomeShortcutInstaller::installCaptureShortcut(
+                LinuxGnomeShortcutInstaller::captureCommand(executable), binding);
+            if (!installed.success) {
+                QMessageBox::warning(
+                    this, TranslationManager::errInvalidHotkeyTitle(),
+                    uiLabel("GNOME yakalama kisayolu ayarlanamadi: ",
+                            "Could not configure the GNOME capture shortcut: ")
+                        + installed.error);
+                return;
+            }
+        }
+#endif
+    }
     if (captureHotkeyChanged && !HotkeyManager::instance().reRegisterCaptureHotkey(newMod, newVKey)) {
         QMessageBox::warning(
             this,

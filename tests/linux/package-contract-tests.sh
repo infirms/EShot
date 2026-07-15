@@ -31,7 +31,7 @@ grep -F 'release-assets/EShot-Setup-x64/*.exe' "${workflow}" >/dev/null
 grep -F 'release-assets/EShot-Setup-arm64/*.exe' "${workflow}" >/dev/null
 grep -F '      - linux-build' "${workflow}" >/dev/null
 grep -F 'release-assets/EShot-linux-packages/EShot-${{ github.ref_name }}-x86_64.AppImage' "${workflow}" >/dev/null
-grep -F 'body_path: packaging/release-notes/v4.0.6.md' "${workflow}" >/dev/null
+grep -F 'body_path: packaging/release-notes/v4.0.7.md' "${workflow}" >/dev/null
 grep -F 'if: startsWith(github.ref, '"'"'refs/tags/v'"'"')' "${workflow}" >/dev/null
 grep -F 'scripts/linux/apply-release-version.sh' "${workflow}" >/dev/null
 grep -F 'libqt6svg6' "${workflow}" >/dev/null
@@ -85,9 +85,32 @@ grep -F '"${pixmap_dir}/io.github.benoks.EShot-v4.svg"' "${repo_root}/scripts/li
 grep -F '"${icon_dir}/io.github.benoks.EShot-v4.svg"' "${repo_root}/scripts/linux/install-user.sh" >/dev/null
 grep -F 'kbuildsycoca6 --noincremental' "${repo_root}/scripts/linux/install-user.sh" >/dev/null
 grep -F 'X-KDE-StartupNotify=false' "${source_desktop_entry}" >/dev/null
+grep -F 'X-GNOME-UsesNotifications=true' "${source_desktop_entry}" >/dev/null
+grep -Fx 'Categories=Graphics;Photography;' "${source_desktop_entry}" >/dev/null || {
+  echo 'desktop entry must use one main category so GNOME does not list EShot twice' >&2
+  exit 1
+}
+grep -F 'Actions=Capture;Settings;Quit;' "${repo_root}/packaging/linux/io.github.benoks.EShot.desktop" >/dev/null
+grep -F 'Exec=eshot-launcher --quit' "${repo_root}/packaging/linux/io.github.benoks.EShot.desktop" >/dev/null
 grep -F 'export NO_STRIP=1' "${build_script}" >/dev/null
 grep -F 'qmake-appimage-wrapper.sh' "${build_script}" >/dev/null
 grep -F 'qt-plugin-dir.sh' "${build_script}" >/dev/null
+grep -F 'libqwayland*.so' "${build_script}" >/dev/null || {
+  echo 'AppImage must bundle a native Qt Wayland platform plugin for the XWayland fallback' >&2
+  exit 1
+}
+grep -F 'wayland-shell-integration' "${build_script}" >/dev/null || {
+  echo 'AppImage must bundle Qt Wayland client integration plugins' >&2
+  exit 1
+}
+grep -F 'wayland_dependency_args+=(--deploy-deps-only "${destination}")' "${build_script}" >/dev/null || {
+  echo 'AppImage must deploy each Qt Wayland plugin dependency explicitly' >&2
+  exit 1
+}
+grep -F -- '--runtime-file "${runtime_file}"' "${build_script}" >/dev/null || {
+  echo 'AppImage build must use a pre-verified runtime instead of downloading one inside appimagetool' >&2
+  exit 1
+}
 grep -F 'install -Dm755 "${repo_root}/scripts/linux/qmake-appimage-wrapper.sh" "${qmake_wrapper}"' "${build_script}" >/dev/null
 if grep -F 'systemd-run --user --unit=eshot' "${repo_root}/packaging/linux/AppRun" >/dev/null; then
   echo 'AppRun must preserve the desktop-launch application identity for portals' >&2

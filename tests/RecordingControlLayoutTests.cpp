@@ -45,6 +45,20 @@ private slots:
         QCOMPARE(layout.controlRect.center().x(), screen.center().x());
     }
 
+    void movesFullscreenControlsToAnUncapturedMonitor()
+    {
+        const QRect capturedScreen(0, 0, 1920, 1080);
+        const QRect otherScreen(1920, 0, 1920, 1080);
+
+        const RecordingControlLayout layout = recordingControlLayout(
+            capturedScreen, capturedScreen, QSize(310, 42), QSize(214, 42),
+            {otherScreen});
+
+        QCOMPARE(layout.controlScreenRect, otherScreen);
+        QVERIFY(otherScreen.contains(layout.controlRect));
+        QVERIFY(!capturedScreen.intersects(layout.controlRect));
+    }
+
     void usesCompactControlsOnNarrowScreens()
     {
         const QRect screen(0, 0, 250, 600);
@@ -81,6 +95,38 @@ private slots:
                  RecordingOverlayVisibility::AlwaysVisible);
         QCOMPARE(recordingOverlayVisibilityPolicy(RecordingControlPlacement::Above, false),
                  RecordingOverlayVisibility::AlwaysVisible);
+    }
+
+    void doesNotTrustDisplayAffinityWithTheGdiRecorder()
+    {
+        QVERIFY(!recordingCaptureBackendCanExcludeOverlay(
+            RecordingCaptureBackend::WindowsGdiGrab));
+        QVERIFY(!recordingCaptureBackendCanExcludeOverlay(
+            RecordingCaptureBackend::LinuxPortal));
+        QVERIFY(recordingCaptureBackendCanExcludeOverlay(
+            RecordingCaptureBackend::WindowsGraphicsCapture));
+    }
+
+    void detectsCaptureOverlapAfterTheControlsAreDragged()
+    {
+        const QRect capture(100, 100, 800, 450);
+        QCOMPARE(recordingOverlayVisibilityPolicy(
+                     QRect(300, 500, 310, 42), capture, false),
+                 RecordingOverlayVisibility::RevealWhilePaused);
+        QCOMPARE(recordingOverlayVisibilityPolicy(
+                     QRect(300, 560, 310, 42), capture, false),
+                 RecordingOverlayVisibility::AlwaysVisible);
+        QCOMPARE(recordingOverlayVisibilityPolicy(
+                     QRect(300, 500, 310, 42), capture, true),
+                 RecordingOverlayVisibility::AlwaysVisible);
+    }
+
+    void clampsDraggedControlsToTheCurrentScreen()
+    {
+        const QRect screen(-1920, 0, 1920, 1080);
+        const QRect current(-1500, 900, 310, 42);
+        QCOMPARE(movedRecordingControlRect(current, QPoint(-2500, 1200), screen),
+                 QRect(-1912, 1030, 310, 42));
     }
 };
 

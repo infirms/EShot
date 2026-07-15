@@ -3,6 +3,9 @@
 #include "../core/TranslationManager.h"
 #ifdef Q_OS_LINUX
 #include "../core/LinuxDependencySelection.h"
+#include "../core/LinuxDesktopIntegration.h"
+#include "../core/LinuxGnomeShortcutInstaller.h"
+#include "../core/LinuxPortalGlobalShortcuts.h"
 #endif
 
 #include <QVBoxLayout>
@@ -20,6 +23,7 @@
 #include <QFont>
 #include <QIcon>
 #include <QDir>
+#include <QFileInfo>
 #include <QMessageBox>
 #include <QTimer>
 #include <QGuiApplication>
@@ -261,8 +265,13 @@ void FirstRunWizard::setupUi()
             this, &FirstRunWizard::onDisableWindowsPrintScreenSnipping);
     hkLayout->addWidget(m_printScreenFixButton);
 #ifdef Q_OS_LINUX
+    const LinuxDesktopEnvironment desktop = LinuxDesktopIntegration::detect(
+        qEnvironmentVariable("XDG_CURRENT_DESKTOP"),
+        qEnvironmentVariable("XDG_SESSION_DESKTOP"));
     auto *activatePrintButton = new QPushButton(tr("Use Print Screen for EShot"));
-    activatePrintButton->setToolTip(tr("Removes only the plain Print Screen shortcut from Spectacle and assigns it to EShot. Spectacle keeps its other shortcuts."));
+    activatePrintButton->setToolTip(desktop == LinuxDesktopEnvironment::Kde
+        ? tr("Removes only the plain Print Screen shortcut from Spectacle and assigns it to EShot. Spectacle keeps its other shortcuts.")
+        : tr("Asks the desktop to assign Print Screen to EShot. Other shortcuts are left unchanged."));
     connect(activatePrintButton, &QPushButton::clicked,
             this, &FirstRunWizard::onActivateLinuxPrintScreen);
     hkLayout->addWidget(activatePrintButton);
@@ -289,7 +298,7 @@ void FirstRunWizard::setupUi()
     m_linuxAppImageIntegrationCheck = new QCheckBox(tr("Add EShot to the application menu and install shortcuts"));
     m_linuxFfmpegCheck->setToolTip(tr("Installs the media encoder used to save MP4 videos and GIF recordings. Screenshots work without it."));
     m_linuxOcrCheck->setToolTip(tr("Installs text recognition so EShot can read and copy text from screenshots. Select OCR languages below."));
-    m_linuxDesktopCheck->setToolTip(tr("Installs PipeWire and desktop portal components used for secure screen sharing and recording on Wayland desktops such as KDE Plasma 6."));
+    m_linuxDesktopCheck->setToolTip(tr("Installs PipeWire and desktop portal components used for secure screen sharing and recording on Wayland desktops such as KDE Plasma and GNOME."));
     m_linuxAppImageIntegrationCheck->setToolTip(tr("Copies this AppImage to your user applications folder and adds EShot to the application menu. No system-wide installation is performed."));
     m_linuxFfmpegCheck->setChecked(true); m_linuxOcrCheck->setChecked(true);
     m_linuxDesktopCheck->setChecked(defaultLinuxPortalSelection(qEnvironmentVariable("XDG_SESSION_TYPE")));
@@ -414,16 +423,47 @@ void FirstRunWizard::onDisableWindowsPrintScreenSnipping()
 #ifdef Q_OS_LINUX
 void FirstRunWizard::onActivateLinuxPrintScreen()
 {
-    const QString desktop = qEnvironmentVariable("XDG_CURRENT_DESKTOP",
-                                                  qEnvironmentVariable("XDG_SESSION_DESKTOP"));
-    if (!desktop.contains(QStringLiteral("KDE"), Qt::CaseInsensitive)
-        && !desktop.contains(QStringLiteral("Plasma"), Qt::CaseInsensitive)) {
-        m_hotkeyStatusLabel->setText(tr("Automatic Print Screen activation is currently available on KDE Plasma."));
+    const LinuxDesktopEnvironment desktop = LinuxDesktopIntegration::detect(
+        qEnvironmentVariable("XDG_CURRENT_DESKTOP"),
+        qEnvironmentVariable("XDG_SESSION_DESKTOP"));
+    if (desktop == LinuxDesktopEnvironment::Other) {
+        m_hotkeyStatusLabel->setText(tr("Automatic Print Screen activation is currently available on KDE Plasma and GNOME."));
         m_hotkeyStatusLabel->setStyleSheet("color: #ff9800; font-size: 12px;");
         return;
     }
 
     m_hotkeyEdit->setKeySequence(QKeySequence(Qt::Key_Print));
+    if (desktop == LinuxDesktopEnvironment::Gnome) {
+        if (HotkeyManager::instance().linuxPortalShortcutsAvailable()) {
+            if (!HotkeyManager::instance().reRegisterCaptureHotkey(0, VK_SNAPSHOT)) {
+                m_hotkeyStatusLabel->setText(tr("GNOME did not allow the Print Screen shortcut. Try again from Settings."));
+                m_hotkeyStatusLabel->setStyleSheet("color: #ff9800; font-size: 12px;");
+                return;
+            }
+            m_linuxAppImageIntegrationCheck->setChecked(true);
+            m_hotkeyStatusLabel->setText(tr("Choose Print Screen in the GNOME shortcut permission window."));
+            m_hotkeyStatusLabel->setStyleSheet("color: #4caf50; font-size: 12px;");
+            return;
+        }
+
+        m_linuxAppImageIntegrationCheck->setChecked(true);
+        const QString integrated = QDir::home().filePath(
+            QStringLiteral(".local/opt/EShot/EShot.AppImage"));
+        const QString executable = LinuxGnomeShortcutInstaller::preferredExecutable(
+            qEnvironmentVariable("APPIMAGE"), QCoreApplication::applicationFilePath(),
+            qEnvironmentVariable("APPIMAGE").isEmpty() ? QString() : integrated);
+        const auto installed = LinuxGnomeShortcutInstaller::installPrintScreen(
+            LinuxGnomeShortcutInstaller::captureCommand(executable));
+        if (!installed.success) {
+            m_hotkeyStatusLabel->setText(tr("Could not configure GNOME Print Screen: %1").arg(installed.error));
+            m_hotkeyStatusLabel->setStyleSheet("color: #ff9800; font-size: 12px;");
+            return;
+        }
+        m_hotkeyStatusLabel->setText(tr("Print Screen activated for EShot in GNOME."));
+        m_hotkeyStatusLabel->setStyleSheet("color: #4caf50; font-size: 12px;");
+        return;
+    }
+
     if (!HotkeyManager::instance().reRegisterCaptureHotkey(0, VK_SNAPSHOT)) {
         m_hotkeyStatusLabel->setText(tr("EShot could not register Print Screen with KDE. Spectacle was not changed."));
         m_hotkeyStatusLabel->setStyleSheet("color: #ff9800; font-size: 12px;");
@@ -489,7 +529,39 @@ void FirstRunWizard::onFinish()
         return;
     }
 
-    if (!HotkeyManager::instance().reRegisterCaptureHotkey(modifiers, vkey)) {
+    bool deferHotkeyRegistration = false;
+#ifdef Q_OS_LINUX
+    const LinuxDesktopEnvironment desktop = LinuxDesktopIntegration::detect(
+        qEnvironmentVariable("XDG_CURRENT_DESKTOP"),
+        qEnvironmentVariable("XDG_SESSION_DESKTOP"));
+    deferHotkeyRegistration = LinuxDesktopIntegration::deferFirstRunHotkeyRegistration(
+        desktop);
+    const bool willIntegrate = m_linuxAppImageIntegrationCheck->isChecked()
+        && !qEnvironmentVariable("APPIMAGE").isEmpty();
+    if (desktop == LinuxDesktopEnvironment::Gnome
+        && !LinuxPortalGlobalShortcuts::desktopPortalAvailable()
+        && !willIntegrate) {
+        const QString integrated = QDir::home().filePath(
+            QStringLiteral(".local/opt/EShot/EShot.AppImage"));
+        const QString executable = LinuxGnomeShortcutInstaller::preferredExecutable(
+            qEnvironmentVariable("APPIMAGE"), QCoreApplication::applicationFilePath(),
+            willIntegrate ? integrated : QString());
+        const QString binding = LinuxGnomeShortcutInstaller::acceleratorFromPortableSequence(
+            m_hotkeyEdit->keySequence().toString(QKeySequence::PortableText));
+        const auto installed = LinuxGnomeShortcutInstaller::installCaptureShortcut(
+            LinuxGnomeShortcutInstaller::captureCommand(executable), binding);
+        if (!installed.success) {
+            QMessageBox::warning(
+                this, TranslationManager::errInvalidHotkeyTitle(),
+                tr("Could not configure the GNOME capture shortcut: %1")
+                    .arg(installed.error));
+            return;
+        }
+    }
+#endif
+
+    if (!deferHotkeyRegistration
+        && !HotkeyManager::instance().reRegisterCaptureHotkey(modifiers, vkey)) {
         QMessageBox::warning(
             this,
             TranslationManager::errInvalidHotkeyTitle(),

@@ -42,8 +42,10 @@
 #include "core/UpdateManager.h"
 #include "core/LinuxScreenshotPolicy.h"
 #include "core/NotificationFolderOpener.h"
+#include "core/ApplicationInstanceCommand.h"
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
 #include "core/LinuxDesktopNotification.h"
+#include "core/LinuxPortalHostRegistry.h"
 #endif
 #include "capture/CaptureOverlay.h"
 #include "capture/PinnedWindow.h"
@@ -121,6 +123,8 @@ QString localizedRecordingFailureReason(const QString &reason)
         return TranslationManager::videoWaylandPortalMissing();
     if (reason == QStringLiteral("Wayland screen recording permission was not granted"))
         return TranslationManager::videoWaylandPermissionDenied();
+    if (reason == QStringLiteral("Wayland recording source does not contain the selected region"))
+        return TranslationManager::videoWaylandWrongSource();
     if (reason == QStringLiteral("cannot start gstreamer"))
         return TranslationManager::videoGstreamerStartFailed();
     if (reason == QStringLiteral("Wayland PipeWire remote could not be opened"))
@@ -132,14 +136,16 @@ class EShotApp : public QObject {
     Q_OBJECT
 
 public:
-    EShotApp(QObject *parent = nullptr) : QObject(parent)
+    explicit EShotApp(bool initializeHotkeys = true, QObject *parent = nullptr)
+        : QObject(parent)
     {
         TranslationManager::init();
         loadSettings();
         prepareKWinScreenshotPermission();
         setupUpdater();
         setupTrayIcon();
-        setupHotkey();
+        if (initializeHotkeys)
+            initializeHotkeyConnections();
         checkForUpdates();
         QTimer::singleShot(700, this, [this]() { ensureOverlay(); });
     }
@@ -154,6 +160,14 @@ public:
     }
 
 public slots:
+    void initializeHotkeyConnections()
+    {
+        if (m_hotkeysInitialized)
+            return;
+        m_hotkeysInitialized = true;
+        setupHotkey();
+    }
+
     void onCaptureRequested()
     {
         if (closeBlockingDialogs()) {
@@ -926,6 +940,7 @@ private:
     LinuxDesktopNotification *m_linuxNotification = nullptr;
 #endif
     bool m_skipNextCaptureNotification = false;
+    bool m_hotkeysInitialized = false;
     QList<QPointer<PinnedWindow>> m_pinnedWindows;
     ScreenRecorder *m_screenRecorder = nullptr;
     VideoRecorder *m_videoRecorder = nullptr;
@@ -1141,6 +1156,9 @@ int main(int argc, char *argv[])
     app.setOrganizationName("EShot");
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
     app.setDesktopFileName(QStringLiteral("io.github.benoks.EShot"));
+    // AppImages are unsandboxed host applications. Register this D-Bus peer
+    // before any portal method call so GlobalShortcuts receives a stable app id.
+    LinuxPortalHostRegistry::registerApplication();
 #endif
     app.setQuitOnLastWindowClosed(false);
     app.setStyle("Fusion");
@@ -1155,9 +1173,13 @@ int main(int argc, char *argv[])
     parser.addVersionOption();
     QCommandLineOption captureOption("capture", "Capture screenshot immediately.");
     parser.addOption(captureOption);
+    QCommandLineOption settingsOption("settings", "Open EShot settings.");
+    parser.addOption(settingsOption);
+    QCommandLineOption quitOption("quit", "Quit the running EShot instance.");
+    parser.addOption(quitOption);
     QCommandLineOption saveOption("save", "Save screenshot to specified path.", "path");
     parser.addOption(saveOption);
-    QCommandLineOption silentOption("silent", "Start silently in system tray (used by Windows autostart).");
+    QCommandLineOption silentOption("silent", "Start silently in the background (used by autostart).");
     parser.addOption(silentOption);
     QCommandLineOption testGifOption("test-gif", "Run internal GIF encoder test and exit.");
     parser.addOption(testGifOption);
@@ -1226,30 +1248,61 @@ int main(int argc, char *argv[])
     QLocalSocket instanceSocket;
     instanceSocket.connectToServer(instanceName);
     if (instanceSocket.waitForConnected(150)) {
-        qDebug() << "[EShot] Another instance is already running.";
+        const auto command = ApplicationInstanceCommand::fromInvocation(
+            parser.isSet(captureOption), parser.isSet(settingsOption),
+            parser.isSet(saveOption), parser.isSet(quitOption), true);
+        const QByteArray wireCommand = ApplicationInstanceCommand::toWire(command);
+        if (!wireCommand.isEmpty()) {
+            instanceSocket.write(wireCommand);
+            instanceSocket.waitForBytesWritten(500);
+        }
+        instanceSocket.disconnectFromServer();
+        qDebug() << "[EShot] Forwarded command to the running instance:"
+                 << wireCommand.trimmed();
         return 0;
     }
+
+    if (parser.isSet(quitOption))
+        return 0;
 
     QLocalServer::removeServer(instanceName);
     QLocalServer instanceServer;
     if (!instanceServer.listen(instanceName)) {
         qWarning() << "[EShot] Could not create single-instance lock:" << instanceServer.errorString();
     }
-    QObject::connect(&instanceServer, &QLocalServer::newConnection, [&instanceServer]() {
+    const bool silent = parser.isSet(silentOption);
+    const bool firstRunRequired = !silent && FirstRunWizard::shouldShow();
+    EShotApp eshotApp(!firstRunRequired);
+
+    QObject::connect(&instanceServer, &QLocalServer::newConnection,
+                     [&instanceServer, &eshotApp]() {
         while (QLocalSocket *socket = instanceServer.nextPendingConnection()) {
-            socket->disconnectFromServer();
-            socket->deleteLater();
+            const auto dispatch = [socket, &eshotApp]() {
+                const auto command = ApplicationInstanceCommand::fromWire(socket->readAll());
+                if (command == ApplicationInstanceCommand::Capture) {
+                    QMetaObject::invokeMethod(&eshotApp, "onCaptureRequested",
+                                              Qt::QueuedConnection);
+                } else if (command == ApplicationInstanceCommand::Settings) {
+                    QMetaObject::invokeMethod(&eshotApp, "onSettingsRequested",
+                                              Qt::QueuedConnection);
+                } else if (command == ApplicationInstanceCommand::Quit) {
+                    QMetaObject::invokeMethod(&eshotApp, "onQuitAction",
+                                              Qt::QueuedConnection);
+                }
+            };
+            QObject::connect(socket, &QLocalSocket::readyRead, socket, dispatch);
+            QObject::connect(socket, &QLocalSocket::disconnected,
+                             socket, &QObject::deleteLater);
+            if (socket->bytesAvailable() > 0)
+                dispatch();
         }
     });
 
-    EShotApp eshotApp;
-
-    // --silent (used by Windows autostart): skip the first-run wizard so the
-    // app starts cleanly in the tray without any UI prompting.
-    const bool silent = parser.isSet(silentOption);
-    // First-run wizard
-    if (!silent && FirstRunWizard::shouldShow()) {
-        QTimer::singleShot(100, &app, []() {
+    // --silent (used by autostart): skip the first-run wizard so the app starts
+    // without prompting. On first run, delay global shortcut registration
+    // until the wizard closes so GNOME's permission dialog cannot race it.
+    if (firstRunRequired) {
+        QTimer::singleShot(100, &app, [&eshotApp]() {
 #ifdef Q_OS_LINUX
             // The Linux setup is a fresh onboarding flow even when an older
             // Windows configuration was carried over. Start it in English;
@@ -1275,6 +1328,7 @@ int main(int argc, char *argv[])
                 wizard->move(nx, ny);
             }
             wizard->exec();
+            eshotApp.initializeHotkeyConnections();
         });
     }
 
@@ -1294,6 +1348,9 @@ int main(int argc, char *argv[])
     }
     if (parser.isSet(captureOption) || !cliSavePath.isEmpty()) {
         QMetaObject::invokeMethod(&eshotApp, "onCaptureRequested", Qt::QueuedConnection);
+    } else if (parser.isSet(settingsOption)
+               || (!silent && !firstRunRequired && !QSystemTrayIcon::isSystemTrayAvailable())) {
+        QMetaObject::invokeMethod(&eshotApp, "onSettingsRequested", Qt::QueuedConnection);
     }
 
     return app.exec();

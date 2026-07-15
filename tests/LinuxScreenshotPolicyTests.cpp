@@ -5,6 +5,8 @@
 #include <QTemporaryDir>
 
 #include "core/LinuxPortalScreenshot.h"
+#include "core/LinuxDesktopIntegration.h"
+#include "core/LinuxPortalRequest.h"
 #include "core/LinuxScreenshotPolicy.h"
 
 class LinuxScreenshotPolicyTests : public QObject
@@ -12,6 +14,59 @@ class LinuxScreenshotPolicyTests : public QObject
     Q_OBJECT
 
 private slots:
+    void detectsDesktopEnvironment()
+    {
+        QCOMPARE(LinuxDesktopIntegration::detect(QStringLiteral("KDE"), QString()),
+                 LinuxDesktopEnvironment::Kde);
+        QCOMPARE(LinuxDesktopIntegration::detect(QStringLiteral("GNOME:GNOME-Classic"), QString()),
+                 LinuxDesktopEnvironment::Gnome);
+        QCOMPARE(LinuxDesktopIntegration::detect(QString(), QStringLiteral("ubuntu:GNOME")),
+                 LinuxDesktopEnvironment::Gnome);
+        QCOMPARE(LinuxDesktopIntegration::detect(QStringLiteral("Hyprland"), QString()),
+                 LinuxDesktopEnvironment::Other);
+    }
+
+    void selectsXWaylandCompatibilityOverlayForSupportedWaylandDesktops()
+    {
+        QVERIFY(LinuxDesktopIntegration::useXWaylandOverlay(
+            LinuxDesktopEnvironment::Kde, QStringLiteral("wayland")));
+        QVERIFY(LinuxDesktopIntegration::useXWaylandOverlay(
+            LinuxDesktopEnvironment::Gnome, QStringLiteral("Wayland")));
+        QVERIFY(!LinuxDesktopIntegration::useXWaylandOverlay(
+            LinuxDesktopEnvironment::Other, QStringLiteral("wayland")));
+        QVERIFY(!LinuxDesktopIntegration::useXWaylandOverlay(
+            LinuxDesktopEnvironment::Gnome, QStringLiteral("x11")));
+    }
+
+    void defersGnomeFirstRunHotkeysUntilTheWizardCloses()
+    {
+        QVERIFY(LinuxDesktopIntegration::deferFirstRunHotkeyRegistration(
+            LinuxDesktopEnvironment::Gnome));
+        QVERIFY(!LinuxDesktopIntegration::deferFirstRunHotkeyRegistration(
+            LinuxDesktopEnvironment::Kde));
+        QVERIFY(!LinuxDesktopIntegration::deferFirstRunHotkeyRegistration(
+            LinuxDesktopEnvironment::Other));
+    }
+
+    void usesGnomeSettingsWhenTheShortcutPortalCannotBeUsed()
+    {
+        QVERIFY(LinuxDesktopIntegration::useGnomeShortcutFallback(
+            LinuxDesktopEnvironment::Gnome, false));
+        QVERIFY(!LinuxDesktopIntegration::useGnomeShortcutFallback(
+            LinuxDesktopEnvironment::Gnome, true));
+        QVERIFY(!LinuxDesktopIntegration::useGnomeShortcutFallback(
+            LinuxDesktopEnvironment::Kde, false));
+    }
+
+    void predictsPortalRequestPathBeforeCallingPortal()
+    {
+        QCOMPARE(LinuxPortalRequest::requestPath(
+                     QStringLiteral(":1.245"), QStringLiteral("eshot_capture_1")),
+                 QStringLiteral("/org/freedesktop/portal/desktop/request/1_245/eshot_capture_1"));
+        QVERIFY(LinuxPortalRequest::requestPath(QString(), QStringLiteral("token")).isEmpty());
+        QVERIFY(LinuxPortalRequest::requestPath(QStringLiteral(":1.2"), QString()).isEmpty());
+    }
+
     void detectsKdeWaylandSession()
     {
         QVERIFY(LinuxScreenshotPolicy::isKdeWaylandSession(
@@ -24,6 +79,18 @@ private slots:
             QStringLiteral("GNOME"), QStringLiteral("KDE"), QStringLiteral("wayland")));
         QVERIFY(!LinuxScreenshotPolicy::isKdeWaylandSession(
             QStringLiteral("KDE"), QString(), QStringLiteral("x11")));
+    }
+
+    void detectsGnomeWaylandSessionWithoutTreatingItAsKde()
+    {
+        QVERIFY(LinuxScreenshotPolicy::isGnomeWaylandSession(
+            QStringLiteral("GNOME"), QString(), QStringLiteral("wayland")));
+        QVERIFY(LinuxScreenshotPolicy::isGnomeWaylandSession(
+            QString(), QStringLiteral("ubuntu:GNOME"), QStringLiteral("Wayland")));
+        QVERIFY(!LinuxScreenshotPolicy::isGnomeWaylandSession(
+            QStringLiteral("KDE"), QStringLiteral("GNOME"), QStringLiteral("wayland")));
+        QVERIFY(!LinuxScreenshotPolicy::isGnomeWaylandSession(
+            QStringLiteral("GNOME"), QString(), QStringLiteral("x11")));
     }
 
     void preparesKWinPermissionForAnyKdeWaylandExecutable()
@@ -89,6 +156,23 @@ private slots:
                               QStringLiteral("--output"),
                               QStringLiteral("/tmp/EShot capture.png")}));
         QVERIFY(!arguments.contains(QStringLiteral("--pointer")));
+    }
+
+    void buildsStandardsCompliantPortalScreenshotOptions()
+    {
+        const QVariantMap modern = LinuxScreenshotPolicy::portalScreenshotOptions(
+            QStringLiteral("eshot_token"), 3u, 1u | 2u | 4u);
+        QCOMPARE(modern.value(QStringLiteral("handle_token")).toString(),
+                 QStringLiteral("eshot_token"));
+        QCOMPARE(modern.value(QStringLiteral("interactive")).toBool(), false);
+        QCOMPARE(modern.value(QStringLiteral("modal")).toBool(), false);
+        QCOMPARE(modern.value(QStringLiteral("target")).toUInt(), 1u);
+        QVERIFY(!modern.contains(QStringLiteral("include-cursor")));
+        QVERIFY(!modern.contains(QStringLiteral("include_cursor")));
+
+        const QVariantMap legacy = LinuxScreenshotPolicy::portalScreenshotOptions(
+            QStringLiteral("eshot_token"), 2u, 0u);
+        QVERIFY(!legacy.contains(QStringLiteral("target")));
     }
 
     void rejectsCursorBearingFallbackOnKdeWayland()

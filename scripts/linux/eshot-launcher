@@ -2,18 +2,19 @@
 set -euo pipefail
 
 bindir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${bindir}/../lib/eshot/runtime-common.sh"
 
-# KDE/Wayland exposes the complete multi-monitor XWayland desktop as one
-# coordinate space. EShot's compatibility overlay relies on that behaviour.
-if [[ "${XDG_SESSION_TYPE:-}" == "wayland" ]] \
-   && [[ "${XDG_CURRENT_DESKTOP:-${XDG_SESSION_DESKTOP:-}}" == *KDE* ]]; then
-  export QT_QPA_PLATFORM=xcb
+# KDE and GNOME expose a complete multi-monitor XWayland coordinate space.
+# Prefer it for one responsive selection canvas, but keep native Wayland as a
+# fallback on sessions where XWayland is intentionally disabled.
+if [[ "$(eshot_xwayland_overlay_enabled)" == "1" ]]; then
+  export QT_QPA_PLATFORM='xcb;wayland'
   export ESHOT_WAYLAND_XWAYLAND_OVERLAY=1
 fi
 
 if [[ "${ESHOT_SYSTEMD_CHILD:-0}" != "1" ]] && command -v systemd-run >/dev/null 2>&1; then
   if systemctl --user is-active --quiet eshot.service 2>/dev/null; then
-    exit 0
+    exec "${bindir}/EShot" "$@"
   fi
   exec systemd-run --user --unit=eshot --collect --property=Type=exec \
     --setenv=ESHOT_SYSTEMD_CHILD=1 \

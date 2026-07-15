@@ -1,4 +1,5 @@
 #include "LinuxScreenshotPolicy.h"
+#include "LinuxDesktopIntegration.h"
 
 #include <QDir>
 #include <QFile>
@@ -10,12 +11,18 @@ bool isKdeWaylandSession(const QString &currentDesktop,
                          const QString &sessionDesktop,
                          const QString &sessionType)
 {
-    const QString desktop = currentDesktop.trimmed().isEmpty()
-        ? sessionDesktop : currentDesktop;
-    const bool isKde = desktop.contains(QStringLiteral("KDE"), Qt::CaseInsensitive)
-        || desktop.contains(QStringLiteral("Plasma"), Qt::CaseInsensitive);
-    return isKde
-        && sessionType.compare(QStringLiteral("wayland"), Qt::CaseInsensitive) == 0;
+    return LinuxDesktopIntegration::detect(currentDesktop, sessionDesktop)
+            == LinuxDesktopEnvironment::Kde
+        && LinuxDesktopIntegration::isWayland(sessionType);
+}
+
+bool isGnomeWaylandSession(const QString &currentDesktop,
+                           const QString &sessionDesktop,
+                           const QString &sessionType)
+{
+    return LinuxDesktopIntegration::detect(currentDesktop, sessionDesktop)
+            == LinuxDesktopEnvironment::Gnome
+        && LinuxDesktopIntegration::isWayland(sessionType);
 }
 
 bool shouldPrepareKWinPermission(const QString &currentDesktop,
@@ -97,6 +104,20 @@ QStringList spectacleWorkspaceArguments(const QString &outputPath)
             QStringLiteral("--nonotify"),
             QStringLiteral("--output"),
             outputPath};
+}
+
+QVariantMap portalScreenshotOptions(const QString &handleToken,
+                                    uint portalVersion,
+                                    uint availableTargets)
+{
+    QVariantMap options;
+    options.insert(QStringLiteral("handle_token"), handleToken);
+    options.insert(QStringLiteral("interactive"), false);
+    options.insert(QStringLiteral("modal"), false);
+    constexpr uint ScreenTarget = 1u;
+    if (portalVersion >= 3u && (availableTargets & ScreenTarget) != 0u)
+        options.insert(QStringLiteral("target"), ScreenTarget);
+    return options;
 }
 
 bool allowCursorBearingFallback(bool kdeWaylandSession)

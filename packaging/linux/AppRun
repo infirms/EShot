@@ -21,7 +21,11 @@ install_desktop_entry() {
     "$(dirname "${installed_icon}")" \
     "$(dirname "${installed_pixmap}")"
   awk -v executable="${escaped_path}" '
-    /^Exec=/ { print "Exec=/usr/bin/env ESHOT_DESKTOP_LAUNCH=1 \"" executable "\""; next }
+    /^Exec=eshot-launcher/ {
+      args = substr($0, length("Exec=eshot-launcher") + 1)
+      print "Exec=/usr/bin/env ESHOT_DESKTOP_LAUNCH=1 \"" executable "\"" args
+      next
+    }
     { print }
   ' "${source_desktop}" >"${desktop_file}.new"
   mv -f -- "${desktop_file}.new" "${desktop_file}"
@@ -65,9 +69,8 @@ if [[ "${1:-}" == "--integrate-only" ]]; then
   exit 0
 fi
 
-if [[ "${XDG_SESSION_TYPE:-}" == "wayland" ]] \
-   && [[ "${XDG_CURRENT_DESKTOP:-${XDG_SESSION_DESKTOP:-}}" == *KDE* ]]; then
-  export QT_QPA_PLATFORM=xcb
+if [[ "$(eshot_xwayland_overlay_enabled)" == "1" ]]; then
+  export QT_QPA_PLATFORM='xcb;wayland'
   export ESHOT_WAYLAND_XWAYLAND_OVERLAY=1
 fi
 

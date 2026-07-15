@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(EShot VERSION 4.0.6 LANGUAGES CXX)
+project(EShot VERSION 4.0.7 LANGUAGES CXX)
 
 include(CTest)
 
@@ -28,11 +28,16 @@ endif()
 set(SOURCES
     src/main.cpp
     src/core/HotkeyManager.cpp
+    src/core/ApplicationInstanceCommand.cpp
     src/core/OcrEngine.cpp
     src/core/OcrLanguageSelector.cpp
     src/core/LinuxPortalGlobalShortcuts.cpp
     src/core/LinuxPortalScreenCast.cpp
     src/core/LinuxPortalScreenshot.cpp
+    src/core/LinuxDesktopIntegration.cpp
+    src/core/LinuxGnomeShortcutInstaller.cpp
+    src/core/LinuxPortalRequest.cpp
+    src/core/LinuxPortalHostRegistry.cpp
     src/core/LinuxAutoStartPolicy.cpp
     src/core/LinuxScreenshotPolicy.cpp
     src/core/ImageUploader.cpp
@@ -69,12 +74,17 @@ set(SOURCES
 
 set(HEADERS
     src/core/HotkeyManager.h
+    src/core/ApplicationInstanceCommand.h
     src/core/PlatformHotkey.h
     src/core/OcrEngine.h
     src/core/OcrLanguageSelector.h
     src/core/LinuxPortalGlobalShortcuts.h
     src/core/LinuxPortalScreenCast.h
     src/core/LinuxPortalScreenshot.h
+    src/core/LinuxDesktopIntegration.h
+    src/core/LinuxGnomeShortcutInstaller.h
+    src/core/LinuxPortalRequest.h
+    src/core/LinuxPortalHostRegistry.h
     src/core/LinuxAutoStartPolicy.h
     src/core/LinuxScreenshotPolicy.h
     src/core/ImageUploader.h
@@ -215,6 +225,16 @@ install(TARGETS ${PROJECT_NAME}
 
 if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS Test)
+
+    qt_add_executable(eshot_application_instance_command_tests
+        tests/ApplicationInstanceCommandTests.cpp
+        src/core/ApplicationInstanceCommand.cpp
+        src/core/ApplicationInstanceCommand.h
+    )
+    target_include_directories(eshot_application_instance_command_tests PRIVATE src)
+    target_link_libraries(eshot_application_instance_command_tests PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME application_instance_command COMMAND eshot_application_instance_command_tests)
+
     qt_add_executable(eshot_visual_search_tests
         tests/VisualSearchTests.cpp
         src/core/VisualSearch.cpp
@@ -307,10 +327,21 @@ if(BUILD_TESTING)
     add_test(NAME ocr_language_selector COMMAND eshot_ocr_language_selector_tests)
 
     if(UNIX AND NOT APPLE)
+        qt_add_executable(eshot_linux_gnome_shortcut_installer_tests
+            tests/LinuxGnomeShortcutInstallerTests.cpp
+            src/core/LinuxGnomeShortcutInstaller.cpp
+            src/core/LinuxGnomeShortcutInstaller.h
+        )
+        target_include_directories(eshot_linux_gnome_shortcut_installer_tests PRIVATE src)
+        target_link_libraries(eshot_linux_gnome_shortcut_installer_tests PRIVATE Qt6::Core Qt6::Test)
+        add_test(NAME linux_gnome_shortcut_installer COMMAND eshot_linux_gnome_shortcut_installer_tests)
+
         qt_add_executable(eshot_linux_autostart_policy_tests
             tests/LinuxAutoStartPolicyTests.cpp
             src/core/LinuxAutoStartPolicy.cpp
             src/core/LinuxAutoStartPolicy.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/core/LinuxDesktopIntegration.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/core/LinuxDesktopIntegration.h
         )
         target_include_directories(eshot_linux_autostart_policy_tests PRIVATE src)
         target_link_libraries(eshot_linux_autostart_policy_tests PRIVATE Qt6::Core Qt6::Test)
@@ -320,6 +351,10 @@ if(BUILD_TESTING)
             tests/LinuxScreenshotPolicyTests.cpp
             src/core/LinuxPortalScreenshot.cpp
             src/core/LinuxPortalScreenshot.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/core/LinuxDesktopIntegration.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/core/LinuxDesktopIntegration.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/core/LinuxPortalRequest.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/core/LinuxPortalRequest.h
             src/core/LinuxScreenshotPolicy.cpp
             src/core/LinuxScreenshotPolicy.h
         )
@@ -333,16 +368,29 @@ if(BUILD_TESTING)
             tests/LinuxPortalShortcutTests.cpp
             src/core/LinuxPortalGlobalShortcuts.cpp
             src/core/LinuxPortalGlobalShortcuts.h
+            src/core/LinuxGnomeShortcutInstaller.cpp
+            src/core/LinuxGnomeShortcutInstaller.h
             src/core/LinuxKGlobalAccelShortcuts.cpp
             src/core/LinuxKGlobalAccelShortcuts.h
             src/core/LinuxPortalScreenCast.cpp
             src/core/LinuxPortalScreenCast.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/core/LinuxDesktopIntegration.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/core/LinuxDesktopIntegration.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/core/LinuxPortalRequest.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/core/LinuxPortalRequest.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/core/LinuxPortalHostRegistry.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/core/LinuxPortalHostRegistry.h
             src/core/PlatformHotkey.h
         )
         target_include_directories(eshot_linux_portal_shortcut_tests PRIVATE src)
         target_link_libraries(eshot_linux_portal_shortcut_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Test)
         target_link_libraries(eshot_linux_portal_shortcut_tests PRIVATE Qt6::DBus)
         add_test(NAME linux_portal_shortcut COMMAND eshot_linux_portal_shortcut_tests)
+
+        add_test(
+            NAME linux_packagekit_installer
+            COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/linux/packagekit-installer-tests.sh
+        )
     endif()
 
     qt_add_executable(eshot_linux_recording_support_tests
@@ -444,6 +492,7 @@ if(UNIX AND NOT APPLE)
     install(PROGRAMS
         scripts/linux/runtime-common.sh
         scripts/linux/install-runtime-deps.sh
+        scripts/linux/packagekit-install.sh
         DESTINATION lib/eshot
     )
 endif()

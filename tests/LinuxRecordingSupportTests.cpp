@@ -5,10 +5,33 @@
 class LinuxRecordingSupportTests : public QObject {
     Q_OBJECT
 private slots:
-    void usesPortalNodeIdAsPipeWirePath()
+    void usesStablePipeWireSerialWhenAvailable()
     {
-        QCOMPARE(pipeWireSourcePath(77), QStringLiteral("path=77"));
-        QVERIFY(pipeWireSourcePath(0).isEmpty());
+        QCOMPARE(pipeWireSourcePath(77, 0), QStringLiteral("path=77"));
+        QCOMPARE(pipeWireSourcePath(77, 9001), QStringLiteral("target-object=9001"));
+        QCOMPARE(pipeWireSourcePath(0, 9001), QStringLiteral("target-object=9001"));
+        QVERIFY(pipeWireSourcePath(0, 0).isEmpty());
+    }
+
+    void mapsLogicalPortalGeometryToPhysicalPixels()
+    {
+        const PortalCropGeometry crop = portalCropGeometry(
+            QRect(200, 100, 800, 400), QRect(100, 50, 400, 200),
+            QPoint(0, 0), QSize(1920, 1080), QSize(800, 400));
+        QVERIFY(crop.valid);
+        QCOMPARE(crop.left, 200);
+        QCOMPARE(crop.top, 100);
+        QCOMPARE(crop.right, 3840 - 200 - 800);
+        QCOMPARE(crop.bottom, 2160 - 100 - 400);
+        QCOMPARE(crop.outputSize, QSize(800, 400));
+    }
+
+    void rejectsAStreamFromTheWrongMonitor()
+    {
+        const PortalCropGeometry crop = portalCropGeometry(
+            QRect(2000, 100, 500, 300), QRect(2000, 100, 500, 300),
+            QPoint(0, 0), QSize(1920, 1080), QSize(500, 300));
+        QVERIFY(!crop.valid);
     }
 
     void forcesEncoderFriendlyEvenDimensions()

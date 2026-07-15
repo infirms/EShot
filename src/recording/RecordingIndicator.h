@@ -8,7 +8,6 @@
 #include <QWidget>
 
 class QFrame;
-class QEnterEvent;
 class QLabel;
 class QMenu;
 class QPushButton;
@@ -50,8 +49,7 @@ signals:
 
 protected:
     void paintEvent(QPaintEvent *event) override;
-    void enterEvent(QEnterEvent *event) override;
-    void leaveEvent(QEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
     void createControlBar();
@@ -59,10 +57,11 @@ private:
     void updateStatusLabel();
     void updatePauseButton();
     void setOverlayVisible(bool visible);
-    void beginTemporaryReveal();
-    void hideAndResumeTemporaryReveal();
+    void moveControlBar(const QPoint &requestedTopLeft);
+    void updateCaptureSafetyPolicy();
 
     QRect m_captureRect;
+    QRect m_screenRect;
     QRect m_borderRect;
     QRect m_controlRect;
     RecordingControlLayout m_layout;
@@ -82,8 +81,10 @@ private:
     bool m_supportsPause = true;
     bool m_paused = false;
     bool m_overlayVisible = true;
-    bool m_temporaryPause = false;
     bool m_captureSafePresentationStarted = false;
+    bool m_platformCanExcludeOverlay = false;
+    bool m_dragging = false;
+    QPoint m_dragOffset;
     bool m_compact = false;
     int m_borderWidth = 2;
 };

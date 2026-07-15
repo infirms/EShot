@@ -1,9 +1,14 @@
 #include "HotkeyManager.h"
+#include "LinuxDesktopIntegration.h"
+#include "LinuxGnomeShortcutInstaller.h"
 #include "LinuxPortalGlobalShortcuts.h"
 #include "LinuxKGlobalAccelShortcuts.h"
 #include <QApplication>
+#include <QCoreApplication>
+#include <QDir>
 #include <QSettings>
 #include <QDebug>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QKeySequence>
 #include <QTimer>
@@ -121,6 +126,9 @@ HotkeyManager::HotkeyManager(QObject *parent) : QObject(parent)
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
     const QString desktop = qEnvironmentVariable("XDG_CURRENT_DESKTOP",
                                                   qEnvironmentVariable("XDG_SESSION_DESKTOP"));
+    const LinuxDesktopEnvironment desktopEnvironment = LinuxDesktopIntegration::detect(
+        qEnvironmentVariable("XDG_CURRENT_DESKTOP"),
+        qEnvironmentVariable("XDG_SESSION_DESKTOP"));
     if (LinuxKGlobalAccelShortcuts::isKdeDesktop(desktop)) {
         m_kdeShortcuts = new LinuxKGlobalAccelShortcuts(this);
         if (m_kdeShortcuts->isAvailable()) {
@@ -133,12 +141,19 @@ HotkeyManager::HotkeyManager(QObject *parent) : QObject(parent)
     const bool portalAvailable = m_portalShortcuts->isAvailable();
     connect(m_portalShortcuts, &LinuxPortalGlobalShortcuts::shortcutActivated,
             this, &HotkeyManager::emitHotkey, Qt::UniqueConnection);
+    connect(m_portalShortcuts, &LinuxPortalGlobalShortcuts::portalFailed,
+            this, [this](const QString &, const QString &) {
+                activateGnomeShortcutFallback();
+            });
     m_usePortalShortcuts = !kdeAvailable && portalAvailable;
+    m_useGnomeShortcutFallback = LinuxDesktopIntegration::useGnomeShortcutFallback(
+        desktopEnvironment, portalAvailable);
     bool x11Available = false;
 #if defined(ESHOT_HAVE_X11)
     const bool useX11Hotkeys = QGuiApplication::platformName().contains(
         QStringLiteral("xcb"), Qt::CaseInsensitive);
-    if (!kdeAvailable && !portalAvailable && useX11Hotkeys)
+    if (!kdeAvailable && !portalAvailable && useX11Hotkeys
+        && !m_useGnomeShortcutFallback)
         m_x11Display = XOpenDisplay(nullptr);
     x11Available = m_x11Display != nullptr;
 #endif
@@ -181,7 +196,8 @@ HotkeyManager::HotkeyManager(QObject *parent) : QObject(parent)
         pollTimer->start();
     }
 #endif
-    if (!kdeAvailable && backend == LinuxHotkeyBackend::Unavailable)
+    if (!kdeAvailable && backend == LinuxHotkeyBackend::Unavailable
+        && !m_useGnomeShortcutFallback)
         qWarning() << "[HotkeyManager] GlobalShortcuts portal and X11 fallback are unavailable; global hotkeys are disabled.";
 #endif
 
@@ -234,6 +250,15 @@ bool HotkeyManager::requestLinuxPortalShortcutRebind()
 #endif
 }
 
+bool HotkeyManager::linuxPortalShortcutsAvailable() const
+{
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    return m_portalShortcuts && m_portalShortcuts->isAvailable();
+#else
+    return false;
+#endif
+}
+
 HotkeyManager::~HotkeyManager()
 {
     unregisterAllHotkeys();
@@ -260,6 +285,19 @@ bool HotkeyManager::registerHotkey(int id, UINT modifiers, UINT virtualKey)
     }
     return false;
 #elif defined(ESHOT_HAVE_X11)
+    if (m_useGnomeShortcutFallback) {
+        if (id != HOTKEY_CAPTURE)
+            return false;
+        const auto previous = m_registeredHotkeyDefs;
+        if (!m_registeredHotkeys.contains(id))
+            m_registeredHotkeys.append(id);
+        m_registeredHotkeyDefs.insert(id, qMakePair(modifiers, virtualKey));
+        if (activateGnomeShortcutFallback())
+            return true;
+        m_registeredHotkeyDefs = previous;
+        m_registeredHotkeys.removeAll(id);
+        return false;
+    }
     if (m_kdeShortcuts && m_kdeShortcuts->isAvailable() && !m_usePortalShortcuts) {
         const auto previous = m_registeredHotkeyDefs;
         if (!m_registeredHotkeys.contains(id)) m_registeredHotkeys.append(id);
@@ -309,6 +347,19 @@ bool HotkeyManager::registerHotkey(int id, UINT modifiers, UINT virtualKey)
     m_registeredHotkeyDefs.insert(id, qMakePair(modifiers, virtualKey));
     return true;
 #elif defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    if (m_useGnomeShortcutFallback) {
+        if (id != HOTKEY_CAPTURE)
+            return false;
+        const auto previous = m_registeredHotkeyDefs;
+        if (!m_registeredHotkeys.contains(id))
+            m_registeredHotkeys.append(id);
+        m_registeredHotkeyDefs.insert(id, qMakePair(modifiers, virtualKey));
+        if (activateGnomeShortcutFallback())
+            return true;
+        m_registeredHotkeyDefs = previous;
+        m_registeredHotkeys.removeAll(id);
+        return false;
+    }
     if (m_kdeShortcuts && m_kdeShortcuts->isAvailable() && !m_usePortalShortcuts) {
         const auto previous = m_registeredHotkeyDefs;
         if (!m_registeredHotkeys.contains(id)) m_registeredHotkeys.append(id);
@@ -564,5 +615,42 @@ void HotkeyManager::refreshPortalShortcuts()
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
     if (m_usePortalShortcuts && m_portalShortcuts && m_portalShortcuts->isAvailable())
         m_portalShortcuts->setShortcuts(m_registeredHotkeyDefs);
+#endif
+}
+
+bool HotkeyManager::activateGnomeShortcutFallback()
+{
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    const LinuxDesktopEnvironment desktop = LinuxDesktopIntegration::detect(
+        qEnvironmentVariable("XDG_CURRENT_DESKTOP"),
+        qEnvironmentVariable("XDG_SESSION_DESKTOP"));
+    if (desktop != LinuxDesktopEnvironment::Gnome
+        || !m_registeredHotkeyDefs.contains(HOTKEY_CAPTURE)) {
+        return false;
+    }
+
+    m_usePortalShortcuts = false;
+    m_useGnomeShortcutFallback = true;
+    const auto capture = m_registeredHotkeyDefs.value(HOTKEY_CAPTURE);
+    const QString binding = LinuxPortalGlobalShortcuts::preferredTrigger(
+        capture.first, capture.second);
+    const QString integratedAppImage = QDir::home().filePath(
+        QStringLiteral(".local/opt/EShot/EShot.AppImage"));
+    const QString executable = LinuxGnomeShortcutInstaller::preferredExecutable(
+        qEnvironmentVariable("APPIMAGE"),
+        QCoreApplication::applicationFilePath(),
+        QFileInfo::exists(integratedAppImage) ? integratedAppImage : QString());
+    const auto installed = LinuxGnomeShortcutInstaller::installCaptureShortcut(
+        LinuxGnomeShortcutInstaller::captureCommand(executable), binding);
+    if (installed.success) {
+        qInfo() << "[HotkeyManager] GNOME shortcut fallback installed:" << binding;
+        return true;
+    } else {
+        qWarning() << "[HotkeyManager] GNOME shortcut fallback failed:"
+                   << installed.error;
+        return false;
+    }
+#else
+    return false;
 #endif
 }

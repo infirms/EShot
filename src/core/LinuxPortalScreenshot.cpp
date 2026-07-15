@@ -1,4 +1,5 @@
 #include "LinuxPortalScreenshot.h"
+#include "LinuxPortalRequest.h"
 #include "LinuxScreenshotPolicy.h"
 
 #include <QCoreApplication>
@@ -275,12 +276,10 @@ QPixmap LinuxPortalScreenshot::waitForScreenshot(QWidget *parent, int timeoutMs)
 
     const QString token = QStringLiteral("eshot_%1")
         .arg(QUuid::createUuid().toString(QUuid::Id128));
-    QVariantMap options;
-    options.insert(QStringLiteral("handle_token"), token);
-    options.insert(QStringLiteral("interactive"), false);
-    options.insert(QStringLiteral("modal"), false);
-    options.insert(QStringLiteral("include-cursor"), false);
-    options.insert(QStringLiteral("include_cursor"), false);
+    const uint portalVersion = screenshot.property("version").toUInt();
+    const uint availableTargets = screenshot.property("AvailableTargets").toUInt();
+    const QVariantMap options = LinuxScreenshotPolicy::portalScreenshotOptions(
+        token, portalVersion, availableTargets);
 
     const bool isX11 = QGuiApplication::platformName().contains(
         QStringLiteral("xcb"), Qt::CaseInsensitive);
@@ -288,12 +287,38 @@ QPixmap LinuxPortalScreenshot::waitForScreenshot(QWidget *parent, int timeoutMs)
         ? QStringLiteral("x11:%1").arg(QString::number(parent->windowHandle()->winId(), 16))
         : QString();
     qInfo() << "[LinuxScreenshot] portal request parent=" << parentWindow
+            << "version=" << portalVersion
+            << "availableTargets=" << availableTargets
             << "options=" << options;
+
+    m_finished = false;
+    m_pixmap = QPixmap();
+    const QString predictedPath = LinuxPortalRequest::requestPath(bus.baseService(), token);
+    QStringList connectedPaths;
+    auto connectResponse = [&](const QString &path) {
+        if (path.isEmpty() || connectedPaths.contains(path))
+            return false;
+        const bool connected = bus.connect(
+            QStringLiteral("org.freedesktop.portal.Desktop"), path,
+            QStringLiteral("org.freedesktop.portal.Request"), QStringLiteral("Response"),
+            this, SLOT(onPortalResponse(uint,QVariantMap)));
+        if (connected)
+            connectedPaths.append(path);
+        return connected;
+    };
+    connectResponse(predictedPath);
+
     QDBusReply<QDBusObjectPath> reply = screenshot.call(
         QStringLiteral("Screenshot"), parentWindow, options);
     if (!reply.isValid()) {
         qWarning() << "[LinuxScreenshot] portal request failed:"
                    << reply.error().name() << reply.error().message();
+        for (const QString &path : std::as_const(connectedPaths)) {
+            bus.disconnect(QStringLiteral("org.freedesktop.portal.Desktop"), path,
+                           QStringLiteral("org.freedesktop.portal.Request"),
+                           QStringLiteral("Response"),
+                           this, SLOT(onPortalResponse(uint,QVariantMap)));
+        }
         return {};
     }
 
@@ -305,11 +330,8 @@ QPixmap LinuxPortalScreenshot::waitForScreenshot(QWidget *parent, int timeoutMs)
     connect(this, &LinuxPortalScreenshot::destroyed, &loop, &QEventLoop::quit);
 
     const QString requestPath = reply.value().path();
-    const bool connected = bus.connect(
-        QStringLiteral("org.freedesktop.portal.Desktop"), requestPath,
-        QStringLiteral("org.freedesktop.portal.Request"), QStringLiteral("Response"),
-        this, SLOT(onPortalResponse(uint,QVariantMap)));
-    if (!connected) {
+    connectResponse(requestPath);
+    if (connectedPaths.isEmpty()) {
         qWarning() << "[LinuxScreenshot] portal response signal connection failed for"
                    << requestPath;
         m_loop = nullptr;
@@ -317,12 +339,15 @@ QPixmap LinuxPortalScreenshot::waitForScreenshot(QWidget *parent, int timeoutMs)
     }
 
     timeout.start(timeoutMs);
-    loop.exec();
+    if (!m_finished)
+        loop.exec();
     m_loop = nullptr;
-    bus.disconnect(
-        QStringLiteral("org.freedesktop.portal.Desktop"), requestPath,
-        QStringLiteral("org.freedesktop.portal.Request"), QStringLiteral("Response"),
-        this, SLOT(onPortalResponse(uint,QVariantMap)));
+    for (const QString &path : std::as_const(connectedPaths)) {
+        bus.disconnect(QStringLiteral("org.freedesktop.portal.Desktop"), path,
+                       QStringLiteral("org.freedesktop.portal.Request"),
+                       QStringLiteral("Response"),
+                       this, SLOT(onPortalResponse(uint,QVariantMap)));
+    }
     if (!m_finished)
         qWarning() << "[LinuxScreenshot] portal response timed out after" << timeoutMs << "ms";
     return m_pixmap;

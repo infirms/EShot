@@ -2,9 +2,54 @@
 
 #include <QProcess>
 
-QString pipeWireSourcePath(uint nodeId)
+QString pipeWireSourcePath(uint nodeId, quint64 pipewireSerial)
 {
+    if (pipewireSerial > 0)
+        return QStringLiteral("target-object=%1").arg(pipewireSerial);
     return nodeId > 0 ? QStringLiteral("path=%1").arg(nodeId) : QString();
+}
+
+PortalCropGeometry portalCropGeometry(const QRect &captureRect,
+                                      const QRect &displayRect,
+                                      const QPoint &streamPosition,
+                                      const QSize &streamDisplaySize,
+                                      const QSize &requestedOutputSize)
+{
+    PortalCropGeometry geometry;
+    if (!captureRect.isValid() || !requestedOutputSize.isValid())
+        return geometry;
+
+    QSize sourcePixelSize;
+    if (displayRect.isValid() && streamDisplaySize.isValid()) {
+        const QRect streamDisplayRect(streamPosition, streamDisplaySize);
+        if (!streamDisplayRect.contains(displayRect))
+            return geometry;
+
+        const qreal scaleX = captureRect.width() / static_cast<qreal>(displayRect.width());
+        const qreal scaleY = captureRect.height() / static_cast<qreal>(displayRect.height());
+        sourcePixelSize = QSize(qRound(streamDisplaySize.width() * scaleX),
+                                qRound(streamDisplaySize.height() * scaleY));
+        geometry.left = qRound((displayRect.x() - streamPosition.x()) * scaleX);
+        geometry.top = qRound((displayRect.y() - streamPosition.y()) * scaleY);
+    } else {
+        sourcePixelSize = streamDisplaySize.isValid() ? streamDisplaySize : captureRect.size();
+        geometry.left = captureRect.x() - streamPosition.x();
+        geometry.top = captureRect.y() - streamPosition.y();
+    }
+
+    if (geometry.left < 0 || geometry.top < 0
+        || geometry.left + captureRect.width() > sourcePixelSize.width()
+        || geometry.top + captureRect.height() > sourcePixelSize.height()) {
+        return {};
+    }
+
+    geometry.right = sourcePixelSize.width() - geometry.left - captureRect.width();
+    geometry.bottom = sourcePixelSize.height() - geometry.top - captureRect.height();
+    geometry.outputSize = evenRecordingSize(QSize(
+        qMin(requestedOutputSize.width(), captureRect.width()),
+        qMin(requestedOutputSize.height(), captureRect.height())));
+    geometry.valid = geometry.outputSize.isValid();
+    return geometry;
 }
 
 QSize evenRecordingSize(const QSize &size)

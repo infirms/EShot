@@ -27,6 +27,7 @@ public:
                                  UINT gifModifiers, UINT gifVirtualKey,
                                  UINT videoModifiers, UINT videoVirtualKey);
     bool requestLinuxPortalShortcutRebind();
+    bool linuxPortalShortcutsAvailable() const;
     UINT captureModifiers() const { return m_captureModifiers; }
     UINT captureVirtualKey() const { return m_captureVirtualKey; }
     QString recordingPauseShortcutText() const;
@@ -74,9 +75,11 @@ private:
     LinuxPortalGlobalShortcuts *m_portalShortcuts = nullptr;
     LinuxKGlobalAccelShortcuts *m_kdeShortcuts = nullptr;
     bool m_usePortalShortcuts = false;
+    bool m_useGnomeShortcutFallback = false;
 
     void emitHotkey(int id);
     void refreshPortalShortcuts();
+    bool activateGnomeShortcutFallback();
 
 public:
     static constexpr int HOTKEY_CAPTURE = 1;

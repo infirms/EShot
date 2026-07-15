@@ -1,4 +1,8 @@
 #include "LinuxPortalGlobalShortcuts.h"
+#include "LinuxDesktopIntegration.h"
+#include "LinuxGnomeShortcutInstaller.h"
+#include "LinuxPortalHostRegistry.h"
+#include "LinuxPortalRequest.h"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -54,14 +58,22 @@ LinuxPortalGlobalShortcuts::LinuxPortalGlobalShortcuts(QObject *parent)
     if (!bus.isConnected())
         return;
 
+    if (!LinuxPortalHostRegistry::portalMayIdentifyApp(
+            LinuxPortalHostRegistry::state())) {
+        qWarning() << "[HotkeyManager] GlobalShortcuts disabled because the portal could not identify EShot";
+        return;
+    }
+
     QDBusInterface portal(
         QStringLiteral("org.freedesktop.portal.Desktop"),
         QStringLiteral("/org/freedesktop/portal/desktop"),
         QStringLiteral("org.freedesktop.portal.GlobalShortcuts"),
         bus);
     m_available = portal.isValid();
+    m_version = portal.property("version").toUInt();
 
     if (m_available) {
+        qInfo() << "[HotkeyManager] GlobalShortcuts portal available, version=" << m_version;
         bus.connect(QStringLiteral("org.freedesktop.portal.Desktop"),
                     QStringLiteral("/org/freedesktop/portal/desktop"),
                     QStringLiteral("org.freedesktop.portal.GlobalShortcuts"),
@@ -72,9 +84,32 @@ LinuxPortalGlobalShortcuts::LinuxPortalGlobalShortcuts(QObject *parent)
 #endif
 }
 
+LinuxPortalGlobalShortcuts::~LinuxPortalGlobalShortcuts()
+{
+    closeSession();
+}
+
 bool LinuxPortalGlobalShortcuts::isAvailable() const
 {
     return m_available;
+}
+
+bool LinuxPortalGlobalShortcuts::desktopPortalAvailable()
+{
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    if (!LinuxPortalHostRegistry::portalMayIdentifyApp(
+            LinuxPortalHostRegistry::state())) {
+        return false;
+    }
+    QDBusInterface portal(
+        QStringLiteral("org.freedesktop.portal.Desktop"),
+        QStringLiteral("/org/freedesktop/portal/desktop"),
+        QStringLiteral("org.freedesktop.portal.GlobalShortcuts"),
+        QDBusConnection::sessionBus());
+    return portal.isValid();
+#else
+    return false;
+#endif
 }
 
 void LinuxPortalGlobalShortcuts::setShortcuts(const QHash<int, QPair<UINT, UINT>> &shortcuts)
@@ -86,6 +121,11 @@ void LinuxPortalGlobalShortcuts::setShortcuts(const QHash<int, QPair<UINT, UINT>
 
     if (!m_available)
         return;
+
+    if (m_shortcuts.isEmpty()) {
+        closeSession();
+        return;
+    }
 
     if (m_bindCompleted)
         closeSession();
@@ -101,6 +141,21 @@ bool LinuxPortalGlobalShortcuts::requestRebind()
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
     if (!m_available || m_shortcuts.isEmpty())
         return false;
+
+    if (m_bindCompleted && !m_sessionHandle.isEmpty() && supportsConfiguration(m_version)) {
+        QDBusInterface portal(
+            QStringLiteral("org.freedesktop.portal.Desktop"),
+            QStringLiteral("/org/freedesktop/portal/desktop"),
+            QStringLiteral("org.freedesktop.portal.GlobalShortcuts"),
+            QDBusConnection::sessionBus());
+        const QDBusReply<void> reply = portal.call(
+            QStringLiteral("ConfigureShortcuts"),
+            QDBusObjectPath(m_sessionHandle), QString(), QVariantMap());
+        if (reply.isValid())
+            return true;
+        qWarning() << "[HotkeyManager] Global shortcuts configuration failed:"
+                   << reply.error().name() << reply.error().message();
+    }
 
     closeSession();
     createSession();
@@ -132,21 +187,33 @@ void LinuxPortalGlobalShortcuts::createSession()
     options.insert(QStringLiteral("handle_token"), token);
     options.insert(QStringLiteral("session_handle_token"), token + QStringLiteral("_session"));
 
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    const QString predictedPath = LinuxPortalRequest::requestPath(bus.baseService(), token);
+    m_createRequestPaths.clear();
+    auto connectResponse = [&](const QString &path) {
+        if (path.isEmpty() || m_createRequestPaths.contains(path))
+            return;
+        if (bus.connect(QStringLiteral("org.freedesktop.portal.Desktop"), path,
+                        QStringLiteral("org.freedesktop.portal.Request"),
+                        QStringLiteral("Response"), this,
+                        SLOT(onCreateSessionResponse(uint,QVariantMap)))) {
+            m_createRequestPaths.append(path);
+        }
+    };
+    connectResponse(predictedPath);
+    m_createPending = true;
+
     QDBusReply<QDBusObjectPath> reply = portal.call(QStringLiteral("CreateSession"), options);
     if (!reply.isValid()) {
-        qWarning() << "[HotkeyManager] Global shortcuts portal session failed:" << reply.error().message();
+        qWarning() << "[HotkeyManager] Global shortcuts portal session failed:"
+                   << reply.error().name() << reply.error().message();
+        m_createPending = false;
         m_available = false;
+        disconnectCreateRequests();
+        emit portalFailed(reply.error().name(), reply.error().message());
         return;
     }
-
-    m_createPending = true;
-    QDBusConnection::sessionBus().connect(
-        QStringLiteral("org.freedesktop.portal.Desktop"),
-        reply.value().path(),
-        QStringLiteral("org.freedesktop.portal.Request"),
-        QStringLiteral("Response"),
-        this,
-        SLOT(onCreateSessionResponse(uint,QVariantMap)));
+    connectResponse(reply.value().path());
 #endif
 }
 
@@ -188,6 +255,22 @@ void LinuxPortalGlobalShortcuts::bindShortcuts()
     QVariantMap options;
     options.insert(QStringLiteral("handle_token"), token);
 
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    const QString predictedPath = LinuxPortalRequest::requestPath(bus.baseService(), token);
+    m_bindRequestPaths.clear();
+    auto connectResponse = [&](const QString &path) {
+        if (path.isEmpty() || m_bindRequestPaths.contains(path))
+            return;
+        if (bus.connect(QStringLiteral("org.freedesktop.portal.Desktop"), path,
+                        QStringLiteral("org.freedesktop.portal.Request"),
+                        QStringLiteral("Response"), this,
+                        SLOT(onBindShortcutsResponse(uint,QVariantMap)))) {
+            m_bindRequestPaths.append(path);
+        }
+    };
+    connectResponse(predictedPath);
+    m_bindPending = true;
+
     QDBusReply<QDBusObjectPath> reply = portal.call(
         QStringLiteral("BindShortcuts"),
         QDBusObjectPath(m_sessionHandle),
@@ -195,40 +278,66 @@ void LinuxPortalGlobalShortcuts::bindShortcuts()
         QString(),
         options);
     if (!reply.isValid()) {
-        qWarning() << "[HotkeyManager] Global shortcuts portal binding failed:" << reply.error().message();
+        qWarning() << "[HotkeyManager] Global shortcuts portal binding failed:"
+                   << reply.error().name() << reply.error().message();
+        m_bindPending = false;
+        m_available = false;
+        disconnectBindRequests();
+        emit portalFailed(reply.error().name(), reply.error().message());
         return;
     }
-
-    m_bindPending = true;
-    QDBusConnection::sessionBus().connect(
-        QStringLiteral("org.freedesktop.portal.Desktop"),
-        reply.value().path(),
-        QStringLiteral("org.freedesktop.portal.Request"),
-        QStringLiteral("Response"),
-        this,
-        SLOT(onBindShortcutsResponse(uint,QVariantMap)));
+    connectResponse(reply.value().path());
 #endif
 }
 
 void LinuxPortalGlobalShortcuts::closeSession()
 {
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
-    if (m_sessionHandle.isEmpty())
-        return;
-
-    QDBusInterface session(
-        QStringLiteral("org.freedesktop.portal.Desktop"),
-        m_sessionHandle,
-        QStringLiteral("org.freedesktop.portal.Session"),
-        QDBusConnection::sessionBus());
-    if (session.isValid())
-        session.call(QStringLiteral("Close"));
+    disconnectCreateRequests();
+    disconnectBindRequests();
+    if (!m_sessionHandle.isEmpty()) {
+        QDBusInterface session(
+            QStringLiteral("org.freedesktop.portal.Desktop"),
+            m_sessionHandle,
+            QStringLiteral("org.freedesktop.portal.Session"),
+            QDBusConnection::sessionBus());
+        if (session.isValid())
+            session.call(QStringLiteral("Close"));
+    }
 
     m_sessionHandle.clear();
     m_createPending = false;
     m_bindPending = false;
     m_bindCompleted = false;
 #endif
+}
+
+void LinuxPortalGlobalShortcuts::disconnectCreateRequests()
+{
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    for (const QString &path : std::as_const(m_createRequestPaths)) {
+        bus.disconnect(QStringLiteral("org.freedesktop.portal.Desktop"), path,
+                       QStringLiteral("org.freedesktop.portal.Request"),
+                       QStringLiteral("Response"), this,
+                       SLOT(onCreateSessionResponse(uint,QVariantMap)));
+    }
+#endif
+    m_createRequestPaths.clear();
+}
+
+void LinuxPortalGlobalShortcuts::disconnectBindRequests()
+{
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    for (const QString &path : std::as_const(m_bindRequestPaths)) {
+        bus.disconnect(QStringLiteral("org.freedesktop.portal.Desktop"), path,
+                       QStringLiteral("org.freedesktop.portal.Request"),
+                       QStringLiteral("Response"), this,
+                       SLOT(onBindShortcutsResponse(uint,QVariantMap)));
+    }
+#endif
+    m_bindRequestPaths.clear();
 }
 
 QString LinuxPortalGlobalShortcuts::shortcutIdForInt(int id) const
@@ -267,6 +376,7 @@ QString LinuxPortalGlobalShortcuts::preferredTrigger(UINT modifiers, UINT virtua
     } else {
         switch (virtualKey) {
         case VK_SNAPSHOT: parts << QStringLiteral("Print"); break;
+        case VK_SCROLL: parts << QStringLiteral("Scroll_Lock"); break;
         case VK_SPACE: parts << QStringLiteral("space"); break;
         case VK_RETURN: parts << QStringLiteral("Return"); break;
         case VK_ESCAPE: parts << QStringLiteral("Escape"); break;
@@ -299,18 +409,30 @@ LinuxHotkeyBackend LinuxPortalGlobalShortcuts::preferredBackend(bool portalAvail
     return LinuxHotkeyBackend::Unavailable;
 }
 
+bool LinuxPortalGlobalShortcuts::supportsConfiguration(uint portalVersion)
+{
+    return portalVersion >= 2u;
+}
+
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
 void LinuxPortalGlobalShortcuts::onCreateSessionResponse(uint response, const QVariantMap &results)
 {
+    disconnectCreateRequests();
     m_createPending = false;
     if (response != 0) {
         qWarning() << "[HotkeyManager] Global shortcuts portal session rejected:" << response;
+        m_available = false;
+        emit portalFailed(QStringLiteral("org.freedesktop.portal.Error.Failed"),
+                          QStringLiteral("CreateSession response %1").arg(response));
         return;
     }
 
     const QString session = objectPathString(results.value(QStringLiteral("session_handle")));
     if (session.isEmpty()) {
         qWarning() << "[HotkeyManager] Global shortcuts portal returned no session.";
+        m_available = false;
+        emit portalFailed(QStringLiteral("org.freedesktop.portal.Error.Failed"),
+                          QStringLiteral("CreateSession returned no session handle"));
         return;
     }
 
@@ -320,13 +442,30 @@ void LinuxPortalGlobalShortcuts::onCreateSessionResponse(uint response, const QV
 
 void LinuxPortalGlobalShortcuts::onBindShortcutsResponse(uint response, const QVariantMap &results)
 {
-    Q_UNUSED(results);
+    disconnectBindRequests();
     m_bindPending = false;
     if (response != 0) {
         qWarning() << "[HotkeyManager] Global shortcuts portal binding rejected:" << response;
+        m_available = false;
+        emit portalFailed(QStringLiteral("org.freedesktop.portal.Error.Failed"),
+                          QStringLiteral("BindShortcuts response %1").arg(response));
         return;
     }
+    qInfo() << "[HotkeyManager] Global shortcuts portal bound:" << results;
     m_bindCompleted = true;
+
+    const LinuxDesktopEnvironment desktop = LinuxDesktopIntegration::detect(
+        qEnvironmentVariable("XDG_CURRENT_DESKTOP"),
+        qEnvironmentVariable("XDG_SESSION_DESKTOP"));
+    if (desktop == LinuxDesktopEnvironment::Gnome) {
+        const auto cleanup = LinuxGnomeShortcutInstaller::uninstallCaptureShortcut(false);
+        if (!cleanup.success) {
+            qWarning() << "[HotkeyManager] Could not remove the legacy GNOME shortcut:"
+                       << cleanup.error;
+        } else {
+            qInfo() << "[HotkeyManager] Removed the legacy GNOME shortcut after portal binding";
+        }
+    }
 }
 
 void LinuxPortalGlobalShortcuts::onActivated(const QDBusObjectPath &sessionHandle, const QString &shortcutId,

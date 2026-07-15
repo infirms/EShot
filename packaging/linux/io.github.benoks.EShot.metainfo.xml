@@ -16,6 +16,11 @@
       screenshots, extracts text with OCR, pins references, and records GIF or
       MP4 captures.
     </p>
+    <p>
+      On Linux, EShot integrates with KDE Plasma 6 and GNOME Wayland through
+      desktop portals for screenshots, global shortcuts, notifications, and
+      PipeWire screen recording.
+    </p>
   </description>
   <launchable type="desktop-id">io.github.benoks.EShot.desktop</launchable>
   <provides>
@@ -29,6 +34,11 @@
   <url type="homepage">https://github.com/Benoks/EShot</url>
   <url type="bugtracker">https://github.com/Benoks/EShot/issues</url>
   <releases>
+    <release version="4.0.7" date="2026-07-16">
+      <description>
+        <p>Improves draggable capture-safe recording controls on Windows and Linux, fixes KDE Plasma full-screen recording geometry, adds experimental GNOME Wayland integration, and expands Linux portal and package-manager compatibility.</p>
+      </description>
+    </release>
     <release version="4.0.6" date="2026-07-14">
       <description>
         <p>Adds automatic OCR language selection, a configurable capture help panel, dynamic settings tab sizing, immediate update state sharing, safer KDE Wayland capture authorization, and allows unrelated settings to save when an unchanged hotkey is unavailable.</p>

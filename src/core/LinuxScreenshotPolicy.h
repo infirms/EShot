@@ -3,12 +3,16 @@
 
 #include <QString>
 #include <QStringList>
+#include <QVariantMap>
 
 namespace LinuxScreenshotPolicy {
 
 bool isKdeWaylandSession(const QString &currentDesktop,
                          const QString &sessionDesktop,
                          const QString &sessionType);
+bool isGnomeWaylandSession(const QString &currentDesktop,
+                           const QString &sessionDesktop,
+                           const QString &sessionType);
 bool shouldPrepareKWinPermission(const QString &currentDesktop,
                                  const QString &sessionDesktop,
                                  const QString &sessionType,
@@ -20,6 +24,9 @@ bool installKWinPermissionDesktopEntry(const QString &applicationsDirectory,
                                        QString *desktopPath = nullptr,
                                        QString *error = nullptr);
 QStringList spectacleWorkspaceArguments(const QString &outputPath);
+QVariantMap portalScreenshotOptions(const QString &handleToken,
+                                    uint portalVersion,
+                                    uint availableTargets);
 bool allowCursorBearingFallback(bool kdeWaylandSession);
 bool canPresentCapture(bool captureSucceeded);
 

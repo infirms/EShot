@@ -22,7 +22,11 @@ escaped_launcher="${prefix}/bin/eshot-launcher"
 escaped_launcher="${escaped_launcher//\\/\\\\}"
 escaped_launcher="${escaped_launcher//\"/\\\"}"
 awk -v executable="${escaped_launcher}" '
-  /^Exec=/ { print "Exec=\"" executable "\""; next }
+  /^Exec=eshot-launcher/ {
+    args = substr($0, length("Exec=eshot-launcher") + 1)
+    print "Exec=\"" executable "\"" args
+    next
+  }
   { print }
 ' "${repo_root}/packaging/linux/io.github.benoks.EShot.desktop" >"${desktop_file}.new"
 mv -f "${desktop_file}.new" "${desktop_file}"

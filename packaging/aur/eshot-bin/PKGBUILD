@@ -5,7 +5,12 @@ pkgdesc='Screenshot, annotation, OCR, GIF and video capture tool'
 arch=('x86_64')
 url='https://github.com/Benoks/EShot'
 license=('MIT')
-depends=('fuse2')
+depends=('fuse2' 'xdg-desktop-portal')
+optdepends=('xdg-desktop-portal-gnome: GNOME screenshot and recording integration'
+            'xdg-desktop-portal-kde: KDE Plasma screenshot and recording integration'
+            'ffmpeg: GIF encoding and media export'
+            'tesseract: OCR support'
+            'gst-plugin-pipewire: Wayland GIF and video recording')
 provides=('eshot')
 conflicts=('eshot')
 options=('!strip')
@@ -26,8 +31,12 @@ package() {
     install -Dm755 "${srcdir}/eshot" "${pkgdir}/usr/bin/eshot"
     install -Dm644 "${srcdir}/squashfs-root/usr/share/applications/io.github.benoks.EShot.desktop" \
         "${pkgdir}/usr/share/applications/io.github.benoks.EShot.desktop"
-    sed -i 's|^Exec=.*|Exec=eshot|' \
+    sed -i -E 's|^Exec=eshot-launcher(.*)$|Exec=eshot\1|' \
         "${pkgdir}/usr/share/applications/io.github.benoks.EShot.desktop"
     install -Dm644 "${srcdir}/squashfs-root/usr/share/icons/hicolor/scalable/apps/io.github.benoks.EShot.svg" \
         "${pkgdir}/usr/share/icons/hicolor/scalable/apps/io.github.benoks.EShot.svg"
+    install -Dm644 "${srcdir}/squashfs-root/usr/share/icons/hicolor/scalable/apps/io.github.benoks.EShot-v4.svg" \
+        "${pkgdir}/usr/share/icons/hicolor/scalable/apps/io.github.benoks.EShot-v4.svg"
+    install -Dm644 "${srcdir}/squashfs-root/usr/share/metainfo/io.github.benoks.EShot.metainfo.xml" \
+        "${pkgdir}/usr/share/metainfo/io.github.benoks.EShot.metainfo.xml"
 }

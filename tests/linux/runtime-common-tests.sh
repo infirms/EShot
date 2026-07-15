@@ -40,6 +40,10 @@ assert_eq "kde" "$(XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP= eshot_desktop_ba
 assert_eq "gnome" "$(XDG_CURRENT_DESKTOP=GNOME XDG_SESSION_DESKTOP= eshot_desktop_backend)" "GNOME backend"
 assert_eq "kde" "$(XDG_CURRENT_DESKTOP= XDG_SESSION_DESKTOP=plasma eshot_desktop_backend)" "Plasma session backend"
 assert_eq "gtk" "$(XDG_CURRENT_DESKTOP=sway XDG_SESSION_DESKTOP=sway eshot_desktop_backend)" "fallback backend"
+assert_eq "1" "$(XDG_CURRENT_DESKTOP=KDE XDG_SESSION_TYPE=wayland eshot_xwayland_overlay_enabled)" "KDE Wayland overlay"
+assert_eq "1" "$(XDG_CURRENT_DESKTOP=GNOME XDG_SESSION_TYPE=wayland eshot_xwayland_overlay_enabled)" "GNOME Wayland overlay"
+assert_eq "0" "$(XDG_CURRENT_DESKTOP=GNOME XDG_SESSION_TYPE=x11 eshot_xwayland_overlay_enabled)" "GNOME X11 native"
+assert_eq "0" "$(XDG_CURRENT_DESKTOP=Hyprland XDG_SESSION_TYPE=wayland eshot_xwayland_overlay_enabled)" "generic Wayland native"
 
 kde_pacman="$(XDG_CURRENT_DESKTOP=KDE eshot_runtime_packages pacman)"
 gnome_pacman="$(XDG_CURRENT_DESKTOP=GNOME eshot_runtime_packages pacman)"

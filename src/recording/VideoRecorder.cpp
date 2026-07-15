@@ -25,6 +25,8 @@
 
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
 #include <fcntl.h>
+#include <signal.h>
+#include <sys/prctl.h>
 #endif
 
 namespace {
@@ -108,6 +110,18 @@ bool configurePipeWireRemote(QProcess *process, int fd)
     // ponytail: leave the portal PipeWire fd inheritable; add fd allowlisting
     // only if a supported Qt floor gives us it on every Linux target.
     return true;
+}
+
+void stopRecorderWhenParentExits(QProcess *process)
+{
+    if (!process)
+        return;
+    process->setChildProcessModifier([]() {
+        // Avoid leaving a CPU-heavy GStreamer/FFmpeg encoder behind if EShot
+        // is killed or crashes. SIGINT also lets gst-launch send EOS and close
+        // the MP4 container when the parent disappears.
+        prctl(PR_SET_PDEATHSIG, SIGINT);
+    });
 }
 #endif
 
@@ -416,6 +430,9 @@ void VideoRecorder::start(const QRect &captureRect, int fps, int maxSeconds, int
     m_process->setProgram(m_ffmpegPath);
     m_process->setArguments(args);
     m_process->setProcessChannelMode(QProcess::MergedChannels);
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    stopRecorderWhenParentExits(m_process);
+#endif
     connect(m_process, &QProcess::finished, this, &VideoRecorder::onProcessFinished);
     connect(m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
         if (!m_recording)
@@ -655,24 +672,37 @@ bool VideoRecorder::startWaylandPortalRecording(const QRect &captureRect)
         return false;
     }
 
-    LinuxPortalScreenCast::Stream stream = LinuxPortalScreenCast::selectStream();
+    QString persistenceId;
+    if (m_displayRect.isValid()) {
+        if (QScreen *screen = QGuiApplication::screenAt(m_displayRect.center()))
+            persistenceId = screen->name();
+    }
+    LinuxPortalScreenCast::Stream stream = LinuxPortalScreenCast::selectStream(
+        nullptr, 120000, persistenceId);
     if (!stream.isValid()) {
         emit recordingFailed(QStringLiteral("Wayland screen recording permission was not granted"));
         return false;
     }
+
+    PortalCropGeometry crop = portalCropGeometry(
+        captureRect, m_displayRect, stream.position, stream.size, captureRect.size());
+    if (!crop.valid && stream.usedRestoreToken) {
+        LinuxPortalScreenCast::closeSession(stream.sessionHandle);
+        LinuxPortalScreenCast::clearRestoreToken(persistenceId);
+        stream = LinuxPortalScreenCast::selectStream(nullptr, 120000, persistenceId);
+        if (stream.isValid()) {
+            crop = portalCropGeometry(
+                captureRect, m_displayRect, stream.position, stream.size, captureRect.size());
+        }
+    }
+    if (!stream.isValid() || !crop.valid) {
+        LinuxPortalScreenCast::closeSession(stream.sessionHandle);
+        emit recordingFailed(QStringLiteral("Wayland recording source does not contain the selected region"));
+        return false;
+    }
     m_portalSessionHandle = stream.sessionHandle;
 
-    const QSize streamSize = stream.size.isValid() ? stream.size : captureRect.size();
-    const QRect relativeRect = captureRect.translated(-stream.position);
-    const int left = qBound(0, relativeRect.x(), qMax(0, streamSize.width() - 1));
-    const int top = qBound(0, relativeRect.y(), qMax(0, streamSize.height() - 1));
-    const int right = qMax(0, streamSize.width() - left - captureRect.width());
-    const int bottom = qMax(0, streamSize.height() - top - captureRect.height());
-    const QSize outputSize = evenRecordingSize(QSize(
-        qMax(8, qMin(captureRect.width(), streamSize.width() - left)),
-        qMax(8, qMin(captureRect.height(), streamSize.height() - top))));
-
-    const QString sourcePath = pipeWireSourcePath(stream.nodeId);
+    const QString sourcePath = pipeWireSourcePath(stream.nodeId, stream.pipewireSerial);
     const int pipewireFd = stream.remoteFd();
 
     QStringList args;
@@ -701,18 +731,18 @@ bool VideoRecorder::startWaylandPortalRecording(const QRect &captureRect)
          << QStringLiteral("videoconvert")
          << QStringLiteral("!")
          << QStringLiteral("videocrop")
-         << QStringLiteral("left=%1").arg(left)
-         << QStringLiteral("right=%1").arg(right)
-         << QStringLiteral("top=%1").arg(top)
-         << QStringLiteral("bottom=%1").arg(bottom)
+         << QStringLiteral("left=%1").arg(crop.left)
+         << QStringLiteral("right=%1").arg(crop.right)
+         << QStringLiteral("top=%1").arg(crop.top)
+         << QStringLiteral("bottom=%1").arg(crop.bottom)
          << QStringLiteral("!")
          << QStringLiteral("videoscale")
          << QStringLiteral("!")
          << QStringLiteral("videorate")
          << QStringLiteral("!")
          << QStringLiteral("video/x-raw,width=%1,height=%2,framerate=%3/1")
-                .arg(outputSize.width())
-                .arg(outputSize.height())
+                .arg(crop.outputSize.width())
+                .arg(crop.outputSize.height())
                 .arg(m_fps)
          << QStringLiteral("!")
          << QStringLiteral("x264enc")
@@ -790,6 +820,7 @@ bool VideoRecorder::startWaylandPortalRecording(const QRect &captureRect)
     m_process->setProgram(gst);
     m_process->setArguments(args);
     m_process->setProcessChannelMode(QProcess::MergedChannels);
+    stopRecorderWhenParentExits(m_process);
     if (!configurePipeWireRemote(m_process, pipewireFd)) {
         cleanupProcess();
         emit recordingFailed(QStringLiteral("Wayland PipeWire remote could not be opened"));

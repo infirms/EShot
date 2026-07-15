@@ -1,16 +1,22 @@
 #include "LinuxPortalScreenCast.h"
+#include "LinuxDesktopIntegration.h"
+#include "LinuxPortalRequest.h"
 
 #include <QCoreApplication>
+#include <QDebug>
 #include <QEventLoop>
 #include <QGuiApplication>
+#include <QSettings>
 #include <QTimer>
 #include <QWidget>
 #include <QWindow>
+#include <QUrl>
 
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
 #include <QDBusArgument>
 #include <QDBusConnection>
 #include <QDBusInterface>
+#include <QDBusMessage>
 #include <QDBusObjectPath>
 #include <QDBusReply>
 #include <QDBusUnixFileDescriptor>
@@ -19,6 +25,18 @@
 #include <fcntl.h>
 #include <unistd.h>
 #endif
+
+namespace {
+
+QString restoreTokenSettingsKey(const QString &persistenceId)
+{
+    const QString id = persistenceId.trimmed().isEmpty()
+        ? QStringLiteral("default") : persistenceId.trimmed();
+    return QStringLiteral("linux/screencastRestoreToken/%1")
+        .arg(QString::fromLatin1(QUrl::toPercentEncoding(id)));
+}
+
+}
 
 LinuxPortalScreenCast::LinuxPortalScreenCast(QObject *parent)
     : QObject(parent)
@@ -39,8 +57,7 @@ bool LinuxPortalScreenCast::isWaylandSessionType(const QString &sessionType,
                                                  const QString &platformName)
 {
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
-    return sessionType.compare(QStringLiteral("wayland"), Qt::CaseInsensitive) == 0
-        || platformName.contains(QStringLiteral("wayland"), Qt::CaseInsensitive);
+    return LinuxDesktopIntegration::isWayland(sessionType, platformName);
 #else
     Q_UNUSED(sessionType);
     Q_UNUSED(platformName);
@@ -66,19 +83,44 @@ bool LinuxPortalScreenCast::isAvailable()
 #endif
 }
 
-LinuxPortalScreenCast::Stream LinuxPortalScreenCast::selectStream(QWidget *parent, int timeoutMs)
+QVariantMap LinuxPortalScreenCast::sourceOptions(uint portalVersion,
+                                                 uint availableCursorModes,
+                                                 const QString &restoreToken)
+{
+    QVariantMap options;
+    options.insert(QStringLiteral("types"), 1u);
+    options.insert(QStringLiteral("multiple"), false);
+    constexpr uint HiddenCursor = 1u;
+    constexpr uint EmbeddedCursor = 2u;
+    if ((availableCursorModes & EmbeddedCursor) != 0u)
+        options.insert(QStringLiteral("cursor_mode"), EmbeddedCursor);
+    else if ((availableCursorModes & HiddenCursor) != 0u)
+        options.insert(QStringLiteral("cursor_mode"), HiddenCursor);
+
+    if (portalVersion >= 4u) {
+        options.insert(QStringLiteral("persist_mode"), 2u);
+        if (!restoreToken.trimmed().isEmpty())
+            options.insert(QStringLiteral("restore_token"), restoreToken.trimmed());
+    }
+    return options;
+}
+
+LinuxPortalScreenCast::Stream LinuxPortalScreenCast::selectStream(
+    QWidget *parent, int timeoutMs, const QString &persistenceId)
 {
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
     LinuxPortalScreenCast portal;
-    return portal.select(parent, timeoutMs);
+    return portal.select(parent, timeoutMs, persistenceId);
 #else
     Q_UNUSED(parent);
     Q_UNUSED(timeoutMs);
+    Q_UNUSED(persistenceId);
     return {};
 #endif
 }
 
-LinuxPortalScreenCast::Stream LinuxPortalScreenCast::select(QWidget *parent, int timeoutMs)
+LinuxPortalScreenCast::Stream LinuxPortalScreenCast::select(
+    QWidget *parent, int timeoutMs, const QString &persistenceId)
 {
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
     QDBusConnection bus = QDBusConnection::sessionBus();
@@ -93,14 +135,20 @@ LinuxPortalScreenCast::Stream LinuxPortalScreenCast::select(QWidget *parent, int
     if (!screencast.isValid())
         return {};
 
+    const uint portalVersion = screencast.property("version").toUInt();
+    const uint availableCursorModes = screencast.property("AvailableCursorModes").toUInt();
+    qInfo() << "[LinuxScreenCast] portal version=" << portalVersion
+            << "availableCursorModes=" << availableCursorModes;
+
     const QString token = QStringLiteral("eshot_screencast_%1")
         .arg(QUuid::createUuid().toString(QUuid::Id128));
+    const QString createToken = token + QStringLiteral("_create");
     QVariantMap sessionOptions;
-    sessionOptions.insert(QStringLiteral("handle_token"), token + QStringLiteral("_create"));
+    sessionOptions.insert(QStringLiteral("handle_token"), createToken);
     sessionOptions.insert(QStringLiteral("session_handle_token"), token + QStringLiteral("_session"));
 
-    QDBusReply<QDBusObjectPath> createReply = screencast.call(QStringLiteral("CreateSession"), sessionOptions);
-    if (!createReply.isValid() || !waitForRequest(createReply.value().path(), timeoutMs))
+    if (!callAndWait(screencast, QStringLiteral("CreateSession"),
+                     {sessionOptions}, createToken, timeoutMs))
         return {};
     if (m_response != 0)
         return {};
@@ -109,16 +157,16 @@ LinuxPortalScreenCast::Stream LinuxPortalScreenCast::select(QWidget *parent, int
     if (sessionHandle.isEmpty())
         return {};
 
-    QVariantMap sourceOptions;
-    sourceOptions.insert(QStringLiteral("handle_token"), token + QStringLiteral("_sources"));
-    sourceOptions.insert(QStringLiteral("types"), 1u);
-    sourceOptions.insert(QStringLiteral("multiple"), false);
-    sourceOptions.insert(QStringLiteral("cursor_mode"), 2u);
-    QDBusReply<QDBusObjectPath> sourcesReply = screencast.call(
-        QStringLiteral("SelectSources"),
-        QDBusObjectPath(sessionHandle),
-        sourceOptions);
-    if (!sourcesReply.isValid() || !waitForRequest(sourcesReply.value().path(), timeoutMs)) {
+    QSettings settings(QStringLiteral("EShot"), QStringLiteral("EShot"));
+    const QString restoreKey = restoreTokenSettingsKey(persistenceId);
+    const QString restoreToken = settings.value(restoreKey).toString();
+    const QString sourcesToken = token + QStringLiteral("_sources");
+    QVariantMap selectOptions = sourceOptions(
+        portalVersion, availableCursorModes, restoreToken);
+    selectOptions.insert(QStringLiteral("handle_token"), sourcesToken);
+    if (!callAndWait(screencast, QStringLiteral("SelectSources"),
+                     {QVariant::fromValue(QDBusObjectPath(sessionHandle)), selectOptions},
+                     sourcesToken, timeoutMs)) {
         closeSession(sessionHandle);
         return {};
     }
@@ -133,13 +181,11 @@ LinuxPortalScreenCast::Stream LinuxPortalScreenCast::select(QWidget *parent, int
         : QString();
 
     QVariantMap startOptions;
-    startOptions.insert(QStringLiteral("handle_token"), token + QStringLiteral("_start"));
-    QDBusReply<QDBusObjectPath> startReply = screencast.call(
-        QStringLiteral("Start"),
-        QDBusObjectPath(sessionHandle),
-        parentWindow,
-        startOptions);
-    if (!startReply.isValid() || !waitForRequest(startReply.value().path(), timeoutMs)) {
+    const QString startToken = token + QStringLiteral("_start");
+    startOptions.insert(QStringLiteral("handle_token"), startToken);
+    if (!callAndWait(screencast, QStringLiteral("Start"),
+                     {QVariant::fromValue(QDBusObjectPath(sessionHandle)),
+                      parentWindow, startOptions}, startToken, timeoutMs)) {
         closeSession(sessionHandle);
         return {};
     }
@@ -148,15 +194,29 @@ LinuxPortalScreenCast::Stream LinuxPortalScreenCast::select(QWidget *parent, int
         return {};
     }
 
+    const QString refreshedRestoreToken = m_results.value(
+        QStringLiteral("restore_token")).toString().trimmed();
+    if (!refreshedRestoreToken.isEmpty()) {
+        settings.setValue(restoreKey, refreshedRestoreToken);
+    }
+
     Stream stream = firstStreamFromResults(m_results);
     stream.sessionHandle = sessionHandle;
+    stream.usedRestoreToken = !restoreToken.isEmpty();
     stream.pipewireFd = openPipeWireRemote(sessionHandle);
     return stream;
 #else
     Q_UNUSED(parent);
     Q_UNUSED(timeoutMs);
+    Q_UNUSED(persistenceId);
     return {};
 #endif
+}
+
+void LinuxPortalScreenCast::clearRestoreToken(const QString &persistenceId)
+{
+    QSettings settings(QStringLiteral("EShot"), QStringLiteral("EShot"));
+    settings.remove(restoreTokenSettingsKey(persistenceId));
 }
 
 void LinuxPortalScreenCast::closeSession(const QString &sessionHandle)
@@ -172,25 +232,49 @@ void LinuxPortalScreenCast::closeSession(const QString &sessionHandle)
 #endif
 }
 
-bool LinuxPortalScreenCast::waitForRequest(const QString &requestPath, int timeoutMs)
+bool LinuxPortalScreenCast::callAndWait(QDBusInterface &portal,
+                                        const QString &method,
+                                        const QList<QVariant> &arguments,
+                                        const QString &handleToken,
+                                        int timeoutMs)
 {
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
-    if (requestPath.isEmpty())
-        return false;
-
     QDBusConnection bus = QDBusConnection::sessionBus();
     m_response = 2;
     m_results.clear();
     m_finished = false;
 
-    const bool connected = bus.connect(
-        QStringLiteral("org.freedesktop.portal.Desktop"),
-        requestPath,
-        QStringLiteral("org.freedesktop.portal.Request"),
-        QStringLiteral("Response"),
-        this,
-        SLOT(onPortalResponse(uint,QVariantMap)));
-    if (!connected)
+    QStringList connectedPaths;
+    auto connectResponse = [&](const QString &path) {
+        if (path.isEmpty() || connectedPaths.contains(path))
+            return;
+        if (bus.connect(QStringLiteral("org.freedesktop.portal.Desktop"), path,
+                        QStringLiteral("org.freedesktop.portal.Request"),
+                        QStringLiteral("Response"), this,
+                        SLOT(onPortalResponse(uint,QVariantMap)))) {
+            connectedPaths.append(path);
+        }
+    };
+    connectResponse(LinuxPortalRequest::requestPath(bus.baseService(), handleToken));
+
+    const QDBusMessage reply = portal.callWithArgumentList(QDBus::Block, method, arguments);
+    if (reply.type() == QDBusMessage::ErrorMessage) {
+        qWarning() << "[LinuxScreenCast]" << method << "failed:"
+                   << reply.errorName() << reply.errorMessage();
+        for (const QString &path : std::as_const(connectedPaths)) {
+            bus.disconnect(QStringLiteral("org.freedesktop.portal.Desktop"), path,
+                           QStringLiteral("org.freedesktop.portal.Request"),
+                           QStringLiteral("Response"), this,
+                           SLOT(onPortalResponse(uint,QVariantMap)));
+        }
+        return false;
+    }
+
+    if (!reply.arguments().isEmpty()) {
+        const QDBusObjectPath actualPath = qvariant_cast<QDBusObjectPath>(reply.arguments().first());
+        connectResponse(actualPath.path());
+    }
+    if (connectedPaths.isEmpty())
         return false;
 
     QEventLoop loop;
@@ -200,20 +284,26 @@ bool LinuxPortalScreenCast::waitForRequest(const QString &requestPath, int timeo
     connect(this, &LinuxPortalScreenCast::destroyed, &loop, &QEventLoop::quit);
     m_loop = &loop;
     timeout.start(timeoutMs);
-    loop.exec();
+    if (!m_finished)
+        loop.exec();
     m_loop = nullptr;
 
-    bus.disconnect(
-        QStringLiteral("org.freedesktop.portal.Desktop"),
-        requestPath,
-        QStringLiteral("org.freedesktop.portal.Request"),
-        QStringLiteral("Response"),
-        this,
-        SLOT(onPortalResponse(uint,QVariantMap)));
+    for (const QString &path : std::as_const(connectedPaths)) {
+        bus.disconnect(QStringLiteral("org.freedesktop.portal.Desktop"), path,
+                       QStringLiteral("org.freedesktop.portal.Request"),
+                       QStringLiteral("Response"), this,
+                       SLOT(onPortalResponse(uint,QVariantMap)));
+    }
+
+    if (!m_finished)
+        qWarning() << "[LinuxScreenCast]" << method << "timed out after" << timeoutMs << "ms";
 
     return m_finished;
 #else
-    Q_UNUSED(requestPath);
+    Q_UNUSED(portal);
+    Q_UNUSED(method);
+    Q_UNUSED(arguments);
+    Q_UNUSED(handleToken);
     Q_UNUSED(timeoutMs);
     return false;
 #endif

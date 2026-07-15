@@ -10,6 +10,17 @@ eshot_desktop_backend() {
   esac
 }
 
+eshot_xwayland_overlay_enabled() {
+  local backend
+  backend="$(eshot_desktop_backend)"
+  if [[ "${XDG_SESSION_TYPE:-}" == "wayland" ]] \
+     && [[ "${backend}" == "kde" || "${backend}" == "gnome" ]]; then
+    printf '1\n'
+  else
+    printf '0\n'
+  fi
+}
+
 eshot_package_manager() {
   if [[ -n "${ESHOT_PACKAGE_MANAGER:-}" ]]; then
     printf '%s\n' "${ESHOT_PACKAGE_MANAGER}"

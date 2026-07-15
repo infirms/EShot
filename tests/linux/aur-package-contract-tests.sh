@@ -13,6 +13,10 @@ grep -F "options=('!strip')" "${aur_dir}/PKGBUILD" >/dev/null
 grep -F "EShot-v\${pkgver}-x86_64.AppImage" "${aur_dir}/PKGBUILD" >/dev/null
 grep -F -- '--appimage-extract' "${aur_dir}/PKGBUILD" >/dev/null
 grep -F 'io.github.benoks.EShot.desktop' "${aur_dir}/PKGBUILD" >/dev/null
+grep -F "xdg-desktop-portal-gnome: GNOME screenshot and recording integration" "${aur_dir}/PKGBUILD" >/dev/null
+grep -F "Exec=eshot\\1" "${aur_dir}/PKGBUILD" >/dev/null
+grep -F 'io.github.benoks.EShot-v4.svg' "${aur_dir}/PKGBUILD" >/dev/null
+grep -F 'io.github.benoks.EShot.metainfo.xml' "${aur_dir}/PKGBUILD" >/dev/null
 grep -F 'AUR_SSH_PRIVATE_KEY' "${workflow}" >/dev/null
 grep -F 'aur.archlinux.org/eshot-bin.git' "${workflow}" >/dev/null
 grep -F 'runuser -u builder' "${workflow}" >/dev/null

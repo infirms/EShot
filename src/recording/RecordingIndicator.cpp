@@ -3,13 +3,13 @@
 #include "../core/TranslationManager.h"
 
 #include <QAction>
-#include <QEnterEvent>
 #include <QFrame>
 #include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QLabel>
 #include <QMenu>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPen>
 #include <QPushButton>
@@ -18,6 +18,11 @@
 #include <QStyle>
 #include <QToolButton>
 #include <QTimer>
+
+#if defined(Q_OS_LINUX) && defined(ESHOT_HAVE_X11)
+#include <X11/Xatom.h>
+#include <X11/Xlib.h>
+#endif
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -31,6 +36,61 @@ constexpr int ControlHeight = 42;
 constexpr int PreferredControlWidth = 324;
 constexpr int CompactControlWidth = 214;
 constexpr int WindowPadding = 6;
+
+QRect recordingScreenWorkArea(QScreen *screen)
+{
+    if (!screen)
+        return {};
+    QRect workArea = screen->availableGeometry();
+#if defined(Q_OS_LINUX) && defined(ESHOT_HAVE_X11)
+    if (QGuiApplication::platformName().contains(QStringLiteral("xcb"),
+                                                  Qt::CaseInsensitive)) {
+        if (Display *display = XOpenDisplay(nullptr)) {
+            const Atom property = XInternAtom(display, "_NET_WORKAREA", True);
+            if (property != None) {
+                Atom actualType = None;
+                int actualFormat = 0;
+                unsigned long itemCount = 0;
+                unsigned long bytesAfter = 0;
+                unsigned char *data = nullptr;
+                if (XGetWindowProperty(display, DefaultRootWindow(display), property,
+                                       0, 4, False, XA_CARDINAL, &actualType,
+                                       &actualFormat, &itemCount, &bytesAfter,
+                                       &data) == Success
+                    && actualType == XA_CARDINAL && actualFormat == 32
+                    && itemCount >= 4 && data) {
+                    const auto *values = reinterpret_cast<unsigned long *>(data);
+                    const QRect desktopWorkArea(static_cast<int>(values[0]),
+                                                static_cast<int>(values[1]),
+                                                static_cast<int>(values[2]),
+                                                static_cast<int>(values[3]));
+                    const QRect screenWorkArea = screen->geometry().intersected(desktopWorkArea);
+                    if (screenWorkArea.isValid())
+                        workArea = screenWorkArea;
+                }
+                if (data)
+                    XFree(data);
+            }
+            XCloseDisplay(display);
+        }
+    }
+#endif
+    return workArea;
+}
+
+bool isFullScreenRecordingRect(const QRect &captureRect)
+{
+    QRect virtualDesktop;
+    for (QScreen *screen : QGuiApplication::screens()) {
+        if (!screen)
+            continue;
+        const QRect screenRect = screen->geometry();
+        virtualDesktop = virtualDesktop.united(screenRect);
+        if (captureRect == screenRect)
+            return true;
+    }
+    return virtualDesktop.isValid() && captureRect == virtualDesktop;
+}
 
 QString controlBarStyle()
 {
@@ -109,48 +169,80 @@ RecordingIndicator::RecordingIndicator(const QRect &captureRect, QWidget *parent
       m_supportsPause(supportsPause),
       m_borderWidth(qMax(1, borderWidth))
 {
-    setWindowFlags(Qt::Tool | Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint
-                   | Qt::WindowDoesNotAcceptFocus);
+    Qt::WindowFlags windowFlags = Qt::Tool | Qt::FramelessWindowHint
+        | Qt::WindowDoesNotAcceptFocus;
+#if !defined(Q_OS_LINUX)
+    windowFlags |= Qt::WindowStaysOnTopHint;
+#endif
+    setWindowFlags(windowFlags);
     setAttribute(Qt::WA_TranslucentBackground);
     setAttribute(Qt::WA_NoSystemBackground);
     setAttribute(Qt::WA_DeleteOnClose);
     setProperty("recordingBorderWidth", m_borderWidth);
 
+    // Keep controls inside the desktop work area. Plasma panels are
+    // always-on-top surfaces on Wayland and can cover a Qt tool window placed
+    // at the physical bottom edge of the screen.
     QRect screenRect = QGuiApplication::primaryScreen()
-        ? QGuiApplication::primaryScreen()->geometry()
+        ? recordingScreenWorkArea(QGuiApplication::primaryScreen())
         : captureRect;
     if (QScreen *screen = QGuiApplication::screenAt(captureRect.center()))
-        screenRect = screen->geometry();
-
+        screenRect = recordingScreenWorkArea(screen);
     m_layout = recordingControlLayout(captureRect, screenRect,
                                       QSize(PreferredControlWidth, ControlHeight),
                                       QSize(CompactControlWidth, ControlHeight));
+    m_screenRect = m_layout.controlScreenRect;
     m_compact = m_layout.compact;
+    const RecordingCaptureBackend captureBackend =
 #ifdef Q_OS_WIN
-    constexpr bool platformCanExcludeOverlay = true;
+        RecordingCaptureBackend::WindowsGdiGrab;
 #else
-    constexpr bool platformCanExcludeOverlay = false;
+        RecordingCaptureBackend::LinuxPortal;
 #endif
+    m_platformCanExcludeOverlay = recordingCaptureBackendCanExcludeOverlay(captureBackend);
+#ifdef Q_OS_LINUX
+    // Linux portals cannot exclude an individual overlay window. Keep the
+    // controls as an ordinary, non-always-on-top tool window so other apps can
+    // cover them; the capture hint exposes the actual recording shortcuts.
+    m_visibilityPolicy = RecordingOverlayVisibility::AlwaysVisible;
+#else
     m_visibilityPolicy = recordingOverlayVisibilityPolicy(
-        m_layout.placement, platformCanExcludeOverlay);
+        m_layout.controlRect, m_captureRect, m_platformCanExcludeOverlay);
+#endif
     setProperty("captureSafeInside", requiresCaptureSafePresentation());
+    setProperty("recordingControlGlobalRect", m_layout.controlRect);
 
-    const QRect globalWindowRect = captureRect.adjusted(-WindowPadding, -WindowPadding,
-                                                        WindowPadding, WindowPadding)
-        .united(m_layout.controlRect.adjusted(-WindowPadding, -WindowPadding,
-                                              WindowPadding, WindowPadding));
+    const QRect paddedControlRect = m_layout.controlRect.adjusted(
+        -WindowPadding, -WindowPadding, WindowPadding, WindowPadding);
+    const QRect globalWindowRect = isFullScreenRecordingRect(captureRect)
+        ? paddedControlRect
+        : captureRect.adjusted(-WindowPadding, -WindowPadding,
+                               WindowPadding, WindowPadding).united(paddedControlRect);
     setGeometry(globalWindowRect);
     m_borderRect = captureRect.translated(-globalWindowRect.topLeft());
     m_controlRect = m_layout.controlRect.translated(-globalWindowRect.topLeft());
 
     createControlBar();
+    // Windows GDI capture cannot reliably exclude this window. Hide
+    // overlapping controls before the first mapped frame there.
+    if (requiresCaptureSafePresentation())
+        setOverlayVisible(false);
     updateControlMask();
     updateStatusLabel();
     updatePauseButton();
 
     show();
+#if !defined(Q_OS_LINUX)
     if (QGuiApplication::platformName() != QStringLiteral("offscreen"))
         raise();
+#endif
+    QTimer::singleShot(100, this, [this, globalWindowRect]() {
+        qInfo() << "[RecordingIndicator] capture=" << m_captureRect
+                << "control=" << m_layout.controlRect
+                << "window-requested=" << globalWindowRect
+                << "window-actual=" << geometry()
+                << "platform=" << QGuiApplication::platformName();
+    });
 #ifdef Q_OS_WIN
     SetWindowDisplayAffinity(reinterpret_cast<HWND>(winId()), WDA_EXCLUDEFROMCAPTURE);
 #endif
@@ -174,6 +266,10 @@ void RecordingIndicator::createControlBar()
     m_statusLabel->setObjectName(QStringLiteral("recordingStatusLabel"));
     m_statusLabel->setMinimumWidth(m_compact ? 58 : 92);
     m_statusLabel->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
+    m_statusLabel->setCursor(Qt::SizeAllCursor);
+    m_statusLabel->setToolTip(TranslationManager::recordingDrag());
+    m_statusLabel->installEventFilter(this);
+    m_controlBar->installEventFilter(this);
     layout->addWidget(m_statusLabel, 1);
 
     m_pauseButton = new QToolButton(m_controlBar);
@@ -184,11 +280,6 @@ void RecordingIndicator::createControlBar()
     m_pauseButton->setToolTip(TranslationManager::recordingPauseResume());
     m_pauseButton->setVisible(m_supportsPause);
     connect(m_pauseButton, &QToolButton::clicked, this, [this]() {
-        if (m_temporaryPause) {
-            m_temporaryPause = false;
-            updatePauseButton();
-            return;
-        }
         if (m_paused) {
             if (requiresCaptureSafePresentation()) {
                 setOverlayVisible(false);
@@ -263,7 +354,7 @@ void RecordingIndicator::setPaused(bool paused)
     if (m_paused == paused)
         return;
     m_paused = paused;
-    if (requiresCaptureSafePresentation() && !m_temporaryPause)
+    if (requiresCaptureSafePresentation())
         setOverlayVisible(paused);
     updateStatusLabel();
     updatePauseButton();
@@ -318,19 +409,10 @@ void RecordingIndicator::startCaptureSafePresentation()
     if (!requiresCaptureSafePresentation() || m_captureSafePresentationStarted)
         return;
     m_captureSafePresentationStarted = true;
-    m_temporaryPause = true;
+    // There is no reliable compositor API for excluding an overlay window
+    // from a full-screen portal recording. Keep inside controls hidden until
+    // the user deliberately pauses through the global shortcut or tray.
     setOverlayVisible(false);
-    emit pauseRequested();
-    QTimer::singleShot(80, this, [this]() {
-        if (!m_temporaryPause)
-            return;
-        if (!m_paused) {
-            m_temporaryPause = false;
-            return;
-        }
-        setOverlayVisible(true);
-        QTimer::singleShot(1100, this, &RecordingIndicator::hideAndResumeTemporaryReveal);
-    });
 }
 
 void RecordingIndicator::updateStatusLabel()
@@ -344,7 +426,7 @@ void RecordingIndicator::updateStatusLabel()
         .arg(seconds, 2, 10, QLatin1Char('0'));
     const QString mode = m_mode == RecordingIndicatorMode::Video
         ? QStringLiteral("VIDEO") : QStringLiteral("GIF");
-    const bool visiblyPaused = m_paused && !m_temporaryPause;
+    const bool visiblyPaused = m_paused;
     const QString dotColor = visiblyPaused ? QStringLiteral("#A3A9B3") : QStringLiteral("#FF525D");
     const QString text = m_compact
         ? QStringLiteral("<span style='color:%1'>●</span>&nbsp; %2").arg(dotColor, time)
@@ -357,7 +439,7 @@ void RecordingIndicator::updatePauseButton()
 {
     if (!m_pauseButton)
         return;
-    const bool visiblyPaused = m_paused && !m_temporaryPause;
+    const bool visiblyPaused = m_paused;
     m_pauseButton->setIcon(QIcon(visiblyPaused
         ? QStringLiteral(":/icons/resume.svg")
         : QStringLiteral(":/icons/pause.svg")));
@@ -377,15 +459,17 @@ void RecordingIndicator::updateControlMask()
         setMask(region);
         return;
     }
-    const int hitWidth = qMax(6, m_borderWidth + 4);
-    region += QRect(m_borderRect.left() - 2, m_borderRect.top() - 2,
-                    m_borderRect.width() + 4, hitWidth);
-    region += QRect(m_borderRect.left() - 2, m_borderRect.bottom() - hitWidth + 3,
-                    m_borderRect.width() + 4, hitWidth);
-    region += QRect(m_borderRect.left() - 2, m_borderRect.top() - 2,
-                    hitWidth, m_borderRect.height() + 4);
-    region += QRect(m_borderRect.right() - hitWidth + 3, m_borderRect.top() - 2,
-                    hitWidth, m_borderRect.height() + 4);
+    if (!isFullScreenRecordingRect(m_captureRect)) {
+        const int hitWidth = qMax(6, m_borderWidth + 4);
+        region += QRect(m_borderRect.left() - 2, m_borderRect.top() - 2,
+                        m_borderRect.width() + 4, hitWidth);
+        region += QRect(m_borderRect.left() - 2, m_borderRect.bottom() - hitWidth + 3,
+                        m_borderRect.width() + 4, hitWidth);
+        region += QRect(m_borderRect.left() - 2, m_borderRect.top() - 2,
+                        hitWidth, m_borderRect.height() + 4);
+        region += QRect(m_borderRect.right() - hitWidth + 3, m_borderRect.top() - 2,
+                        hitWidth, m_borderRect.height() + 4);
+    }
     region += m_controlRect.adjusted(-3, -3, 3, 3);
     setMask(region);
 }
@@ -395,61 +479,114 @@ void RecordingIndicator::setOverlayVisible(bool visible)
     if (m_overlayVisible == visible)
         return;
     m_overlayVisible = visible;
+    setAttribute(Qt::WA_TransparentForMouseEvents,
+                 !visible && requiresCaptureSafePresentation());
     if (m_controlBar)
         m_controlBar->setVisible(visible);
     updateControlMask();
     update();
 }
 
-void RecordingIndicator::beginTemporaryReveal()
+void RecordingIndicator::updateCaptureSafetyPolicy()
 {
-    if (!requiresCaptureSafePresentation() || m_overlayVisible || m_temporaryPause)
-        return;
-    m_temporaryPause = true;
-    emit pauseRequested();
-    QTimer::singleShot(80, this, [this]() {
-        if (m_temporaryPause)
-            setOverlayVisible(true);
-    });
+#ifdef Q_OS_LINUX
+    m_visibilityPolicy = RecordingOverlayVisibility::AlwaysVisible;
+#else
+    m_visibilityPolicy = recordingOverlayVisibilityPolicy(
+        m_layout.controlRect, m_captureRect, m_platformCanExcludeOverlay);
+#endif
+    setProperty("captureSafeInside", requiresCaptureSafePresentation());
 }
 
-void RecordingIndicator::hideAndResumeTemporaryReveal()
+void RecordingIndicator::moveControlBar(const QPoint &requestedTopLeft)
 {
-    if (!m_temporaryPause)
+    const QPoint requestedCenter = requestedTopLeft
+        + QPoint(m_layout.controlRect.width() / 2, m_layout.controlRect.height() / 2);
+    QRect requestedScreenRect = m_screenRect;
+    if (QScreen *screen = QGuiApplication::screenAt(requestedCenter))
+        requestedScreenRect = recordingScreenWorkArea(screen);
+    const QRect globalControl = movedRecordingControlRect(
+        m_layout.controlRect, requestedTopLeft, requestedScreenRect);
+    if (globalControl == m_layout.controlRect)
         return;
-    if ((m_controlBar && m_controlBar->underMouse())
-        || (m_detailsMenu && m_detailsMenu->isVisible())) {
-        QTimer::singleShot(300, this, &RecordingIndicator::hideAndResumeTemporaryReveal);
+
+    // When the current capture backend cannot exclude overlay windows, never
+    // let an already-safe control bar cross into the recorded region. Hiding
+    // it after the drag would strand the user without visible stop controls
+    // and hover-based reveals would introduce pauses into the recording.
+    const bool wouldLoseVisibleControls =
+#if defined(Q_OS_LINUX)
+        false;
+#else
+        !m_platformCanExcludeOverlay
+        && !m_layout.controlRect.intersects(m_captureRect)
+        && globalControl.intersects(m_captureRect);
+#endif
+    if (wouldLoseVisibleControls) {
         return;
     }
-    setOverlayVisible(false);
-    QTimer::singleShot(120, this, [this]() {
-        if (!m_temporaryPause)
-            return;
-        m_temporaryPause = false;
-        emit resumeRequested();
-        updatePauseButton();
-        updateStatusLabel();
-    });
+
+    m_screenRect = requestedScreenRect;
+    m_layout.controlRect = globalControl;
+    m_layout.controlScreenRect = m_screenRect;
+    const QRect paddedControlRect = globalControl.adjusted(
+        -WindowPadding, -WindowPadding, WindowPadding, WindowPadding);
+    const QRect globalWindowRect = isFullScreenRecordingRect(m_captureRect)
+        ? paddedControlRect
+        : m_captureRect.adjusted(-WindowPadding, -WindowPadding,
+                                 WindowPadding, WindowPadding).united(paddedControlRect);
+    setGeometry(globalWindowRect);
+    m_borderRect = m_captureRect.translated(-globalWindowRect.topLeft());
+    m_controlRect = globalControl.translated(-globalWindowRect.topLeft());
+    if (m_controlBar)
+        m_controlBar->setGeometry(m_controlRect);
+    setProperty("recordingControlGlobalRect", globalControl);
+    updateCaptureSafetyPolicy();
+    updateControlMask();
+    update();
 }
 
-void RecordingIndicator::enterEvent(QEnterEvent *event)
+bool RecordingIndicator::eventFilter(QObject *watched, QEvent *event)
 {
-    beginTemporaryReveal();
-    QWidget::enterEvent(event);
-}
+    const bool dragSurface = watched == m_controlBar || watched == m_statusLabel;
+    if (!dragSurface)
+        return QWidget::eventFilter(watched, event);
 
-void RecordingIndicator::leaveEvent(QEvent *event)
-{
-    if (requiresCaptureSafePresentation() && m_temporaryPause)
-        QTimer::singleShot(250, this, &RecordingIndicator::hideAndResumeTemporaryReveal);
-    QWidget::leaveEvent(event);
+    auto *mouse = dynamic_cast<QMouseEvent *>(event);
+    if (!mouse)
+        return QWidget::eventFilter(watched, event);
+
+    if (event->type() == QEvent::MouseButtonPress
+        && mouse->button() == Qt::LeftButton) {
+        m_dragging = true;
+        m_dragOffset = mouse->globalPosition().toPoint() - m_layout.controlRect.topLeft();
+        if (QGuiApplication::platformName() != QStringLiteral("offscreen")) {
+            if (auto *widget = qobject_cast<QWidget *>(watched))
+                widget->grabMouse();
+        }
+        return true;
+    }
+    if (event->type() == QEvent::MouseMove && m_dragging
+        && (mouse->buttons() & Qt::LeftButton)) {
+        moveControlBar(mouse->globalPosition().toPoint() - m_dragOffset);
+        return true;
+    }
+    if (event->type() == QEvent::MouseButtonRelease && m_dragging
+        && mouse->button() == Qt::LeftButton) {
+        m_dragging = false;
+        if (QGuiApplication::platformName() != QStringLiteral("offscreen")) {
+            if (auto *widget = qobject_cast<QWidget *>(watched))
+                widget->releaseMouse();
+        }
+        return true;
+    }
+    return QWidget::eventFilter(watched, event);
 }
 
 void RecordingIndicator::paintEvent(QPaintEvent *event)
 {
     Q_UNUSED(event)
-    if (!m_overlayVisible)
+    if (!m_overlayVisible || isFullScreenRecordingRect(m_captureRect))
         return;
     QPainter painter(this);
     const QColor accent = m_mode == RecordingIndicatorMode::Video
