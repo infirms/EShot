@@ -280,6 +280,15 @@ if(BUILD_TESTING)
     target_link_libraries(eshot_window_snap_policy_tests PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME window_snap_policy COMMAND eshot_window_snap_policy_tests)
 
+    qt_add_executable(eshot_recording_settings_policy_tests
+        tests/RecordingSettingsPolicyTests.cpp
+        src/recording/RecordingSettingsPolicy.cpp
+        src/recording/RecordingSettingsPolicy.h
+    )
+    target_include_directories(eshot_recording_settings_policy_tests PRIVATE src)
+    target_link_libraries(eshot_recording_settings_policy_tests PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME recording_settings_policy COMMAND eshot_recording_settings_policy_tests)
+
     qt_add_executable(eshot_settings_layout_policy_tests
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/SettingsLayoutPolicyTests.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/SettingsLayoutPolicy.cpp
