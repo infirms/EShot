@@ -2,6 +2,7 @@
 #include "GifEncoder.h"
 #include "core/LinuxPortalScreenCast.h"
 #include "LinuxRecordingSupport.h"
+#include "RecordingSettingsPolicy.h"
 
 #include <QGuiApplication>
 #include <QScreen>
@@ -73,7 +74,7 @@ void ScreenRecorder::start(const QRect &captureRect, int fps, int maxSeconds, in
         return;
     }
     if (fps < 1) fps = 1;
-    if (fps > 30) fps = 30;
+    if (fps > gifRecordingFpsLimit()) fps = gifRecordingFpsLimit();
     if (maxSeconds < 0) maxSeconds = 0;
 
     m_captureRect = captureRect;

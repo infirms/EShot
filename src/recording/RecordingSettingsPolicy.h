@@ -2,6 +2,8 @@
 
 #include <QString>
 
+class QSettings;
+
 enum class RecordingAudioSource
 {
     Desktop,
@@ -16,3 +18,5 @@ bool initialAudioEnabled(bool hasExplicitSetting,
                          bool hasLegacyMode,
                          const QString &legacyMode,
                          RecordingAudioSource source);
+
+bool loadRecordingAudioEnabled(QSettings &settings, RecordingAudioSource source);

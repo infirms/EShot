@@ -1,5 +1,7 @@
 #include "RecordingSettingsPolicy.h"
 
+#include <QSettings>
+
 int gifRecordingFpsLimit()
 {
     return 30;
@@ -27,4 +29,21 @@ bool initialAudioEnabled(bool hasExplicitSetting,
     if (source == RecordingAudioSource::Desktop)
         return normalizedMode == QStringLiteral("desktop");
     return normalizedMode == QStringLiteral("microphone");
+}
+
+bool loadRecordingAudioEnabled(QSettings &settings, RecordingAudioSource source)
+{
+    const QString key = source == RecordingAudioSource::Desktop
+        ? QStringLiteral("videoDesktopAudioEnabled")
+        : QStringLiteral("videoMicrophoneEnabled");
+    const bool hasExplicitSetting = settings.contains(key);
+    const bool enabled = initialAudioEnabled(
+        hasExplicitSetting,
+        settings.value(key, false).toBool(),
+        settings.contains(QStringLiteral("videoAudioMode")),
+        settings.value(QStringLiteral("videoAudioMode")).toString(),
+        source);
+    if (!hasExplicitSetting)
+        settings.setValue(key, enabled);
+    return enabled;
 }

@@ -14,6 +14,7 @@
 #include "core/LinuxScreenshotPolicy.h"
 #include "core/VisualSearch.h"
 #include "recording/LinuxRecordingSupport.h"
+#include "recording/RecordingSettingsPolicy.h"
 
 #include "../core/TranslationManager.h"
 
@@ -930,9 +931,9 @@ void CaptureOverlay::setupToolSettingsDrawer()
     drawerLayout->addWidget(gifTitle);
 
     auto *fpsRow = new QHBoxLayout();
-    fpsRow->addWidget(new QLabel(TranslationManager::recordingFpsLabel().remove(QChar(':')), m_toolSettingsDrawer));
+    fpsRow->addWidget(new QLabel(TranslationManager::gifFpsLabel().remove(QChar(':')), m_toolSettingsDrawer));
     m_quickGifFpsSpin = new QSpinBox(m_toolSettingsDrawer);
-    m_quickGifFpsSpin->setRange(1, 30);
+    m_quickGifFpsSpin->setRange(1, gifRecordingFpsLimit());
     m_quickGifFpsSpin->setButtonSymbols(QAbstractSpinBox::NoButtons);
     fpsRow->addWidget(m_quickGifFpsSpin);
     drawerLayout->addLayout(fpsRow);
@@ -966,9 +967,9 @@ void CaptureOverlay::setupToolSettingsDrawer()
     drawerLayout->addWidget(videoTitle);
 
     auto *videoFpsRow = new QHBoxLayout();
-    videoFpsRow->addWidget(new QLabel(TranslationManager::recordingFpsLabel().remove(QChar(':')), m_toolSettingsDrawer));
+    videoFpsRow->addWidget(new QLabel(TranslationManager::videoFpsLabel().remove(QChar(':')), m_toolSettingsDrawer));
     m_quickVideoFpsSpin = new QSpinBox(m_toolSettingsDrawer);
-    m_quickVideoFpsSpin->setRange(1, 60);
+    m_quickVideoFpsSpin->setRange(1, videoRecordingFpsLimit());
     m_quickVideoFpsSpin->setButtonSymbols(QAbstractSpinBox::NoButtons);
     videoFpsRow->addWidget(m_quickVideoFpsSpin);
     drawerLayout->addLayout(videoFpsRow);
@@ -1046,7 +1047,8 @@ void CaptureOverlay::setupToolSettingsDrawer()
     const QStringList audioDevices = desktopAudioDevices();
     const auto activeInputDevices = microphoneAudioDevices();
     auto *desktopDeviceRow = new QHBoxLayout();
-    desktopDeviceRow->addWidget(new QLabel(TranslationManager::audioSource(), m_toolSettingsDrawer));
+    auto *desktopDeviceLabel = new QLabel(TranslationManager::audioSource(), m_toolSettingsDrawer);
+    desktopDeviceRow->addWidget(desktopDeviceLabel);
     m_quickDesktopAudioDeviceCombo = new QComboBox(m_toolSettingsDrawer);
     bool hasDesktopCandidate = true;
     m_quickDesktopAudioDeviceCombo->addItem(TranslationManager::audioSystemLoopback(), defaultDesktopAudioDevice());
@@ -1070,15 +1072,20 @@ void CaptureOverlay::setupToolSettingsDrawer()
     drawerLayout->addLayout(desktopDeviceRow);
     if (m_quickDesktopAudioCheck)
         m_quickDesktopAudioCheck->setEnabled(true);
-    m_quickDesktopAudioDeviceCombo->setEnabled(hasDesktopCandidate && m_quickDesktopAudioCheck && m_quickDesktopAudioCheck->isChecked());
+    const bool desktopAudioEnabled = hasDesktopCandidate && m_quickDesktopAudioCheck
+        && m_quickDesktopAudioCheck->isChecked();
+    desktopDeviceLabel->setEnabled(desktopAudioEnabled);
+    m_quickDesktopAudioDeviceCombo->setEnabled(desktopAudioEnabled);
     connect(m_quickDesktopAudioCheck, &QCheckBox::toggled,
-            this, [this, hasDesktopCandidate](bool enabled) {
+            this, [this, hasDesktopCandidate, desktopDeviceLabel](bool enabled) {
+                desktopDeviceLabel->setEnabled(hasDesktopCandidate && enabled);
                 if (m_quickDesktopAudioDeviceCombo)
                     m_quickDesktopAudioDeviceCombo->setEnabled(hasDesktopCandidate && enabled);
             });
 
     auto *micDeviceRow = new QHBoxLayout();
-    micDeviceRow->addWidget(new QLabel(TranslationManager::audioMicrophoneDevice(), m_toolSettingsDrawer));
+    auto *microphoneDeviceLabel = new QLabel(TranslationManager::audioMicrophoneDevice(), m_toolSettingsDrawer);
+    micDeviceRow->addWidget(microphoneDeviceLabel);
     m_quickMicrophoneDeviceCombo = new QComboBox(m_toolSettingsDrawer);
     if (activeInputDevices.isEmpty() && audioDevices.isEmpty()) {
         m_quickMicrophoneDeviceCombo->addItem(QStringLiteral("Default"), QStringLiteral("default"));
@@ -1099,9 +1106,15 @@ void CaptureOverlay::setupToolSettingsDrawer()
 #endif
     micDeviceRow->addWidget(m_quickMicrophoneDeviceCombo);
     drawerLayout->addLayout(micDeviceRow);
-    m_quickMicrophoneDeviceCombo->setEnabled(m_quickMicrophoneCheck && m_quickMicrophoneCheck->isChecked());
+    const bool microphoneEnabled = m_quickMicrophoneCheck && m_quickMicrophoneCheck->isChecked();
+    microphoneDeviceLabel->setEnabled(microphoneEnabled);
+    m_quickMicrophoneDeviceCombo->setEnabled(microphoneEnabled);
     connect(m_quickMicrophoneCheck, &QCheckBox::toggled,
-            m_quickMicrophoneDeviceCombo, &QComboBox::setEnabled);
+            this, [this, microphoneDeviceLabel](bool enabled) {
+                microphoneDeviceLabel->setEnabled(enabled);
+                if (m_quickMicrophoneDeviceCombo)
+                    m_quickMicrophoneDeviceCombo->setEnabled(enabled);
+            });
 
     connect(m_quickPenWidthSlider, &QSlider::valueChanged, this, [this](int value) {
         if (m_quickPenWidthValueLabel)
@@ -1294,7 +1307,8 @@ void CaptureOverlay::setToolSettingsDrawerVisible(bool visible)
             m_quickVideoCrfSpin->setValue(s.value("videoRecordingCrf", 24).toInt());
         }
         if (m_quickDesktopAudioCheck)
-            m_quickDesktopAudioCheck->setChecked(s.value("videoDesktopAudioEnabled", false).toBool());
+            m_quickDesktopAudioCheck->setChecked(loadRecordingAudioEnabled(
+                s, RecordingAudioSource::Desktop));
         if (m_quickDesktopVolumeSlider) {
             QSignalBlocker blocker(m_quickDesktopVolumeSlider);
             const int value = s.value("videoDesktopAudioVolume", 80).toInt();
@@ -1316,7 +1330,8 @@ void CaptureOverlay::setToolSettingsDrawerVisible(bool visible)
             m_quickDesktopAudioDeviceCombo->setEnabled(hasDevice && m_quickDesktopAudioCheck && m_quickDesktopAudioCheck->isChecked());
         }
         if (m_quickMicrophoneCheck)
-            m_quickMicrophoneCheck->setChecked(s.value("videoMicrophoneEnabled", false).toBool());
+            m_quickMicrophoneCheck->setChecked(loadRecordingAudioEnabled(
+                s, RecordingAudioSource::Microphone));
         if (m_quickMicrophoneVolumeSlider) {
             QSignalBlocker blocker(m_quickMicrophoneVolumeSlider);
             const int value = s.value("videoMicrophoneVolume", 80).toInt();

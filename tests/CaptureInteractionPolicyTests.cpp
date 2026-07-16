@@ -60,7 +60,8 @@ private slots:
             "captureHintDrag", "captureHintScreen", "captureHintRecording",
             "captureHintCopy", "captureHintSave", "captureHintCancel",
             "captureHintQuickSettings",
-            "showCaptureHints", "showCaptureHintsTip"
+            "showCaptureHints", "showCaptureHintsTip",
+            "gifFpsLabel", "videoFpsLabel"
         };
         TranslationManager::setLanguage(TranslationManager::English, false);
         QHash<QByteArray, QString> english;

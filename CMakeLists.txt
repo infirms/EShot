@@ -67,6 +67,7 @@ set(SOURCES
     src/ui/UploadDialog.cpp
     src/recording/GifEncoder.cpp
     src/recording/LinuxRecordingSupport.cpp
+    src/recording/RecordingSettingsPolicy.cpp
     src/recording/RecordingControlLayout.cpp
     src/recording/RecordingTimeline.cpp
     src/recording/ScreenRecorder.cpp
@@ -116,6 +117,7 @@ set(HEADERS
     src/ui/UploadDialog.h
     src/recording/GifEncoder.h
     src/recording/LinuxRecordingSupport.h
+    src/recording/RecordingSettingsPolicy.h
     src/recording/RecordingControlLayout.h
     src/recording/RecordingTimeline.h
     src/recording/ScreenRecorder.h
@@ -278,6 +280,9 @@ if(BUILD_TESTING)
     )
     target_include_directories(eshot_window_snap_policy_tests PRIVATE src)
     target_link_libraries(eshot_window_snap_policy_tests PRIVATE Qt6::Core Qt6::Test)
+    if(WIN32)
+        target_link_libraries(eshot_window_snap_policy_tests PRIVATE Dwmapi)
+    endif()
     add_test(NAME window_snap_policy COMMAND eshot_window_snap_policy_tests)
 
     qt_add_executable(eshot_recording_settings_policy_tests

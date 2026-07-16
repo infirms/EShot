@@ -8,6 +8,7 @@
 #include "../core/OcrEngine.h"
 #include "../core/TranslationManager.h"
 #include "../recording/LinuxRecordingSupport.h"
+#include "../recording/RecordingSettingsPolicy.h"
 #ifdef Q_OS_LINUX
 #include "FirstRunWizard.h"
 #endif
@@ -1046,11 +1047,11 @@ QWidget* SettingsDialog::createRecordingTab()
     QFormLayout *recForm = new QFormLayout(recGroup);
 
     m_recordingFpsSpin = new QSpinBox();
-    m_recordingFpsSpin->setRange(1, 30);
+    m_recordingFpsSpin->setRange(1, gifRecordingFpsLimit());
     m_recordingFpsSpin->setSuffix(QStringLiteral(" fps"));
     m_recordingFpsSpin->setValue(10);
     m_recordingFpsSpin->setToolTip(uiLabel("GIF icin saniyedeki kare sayisi. Daha yuksek deger daha akici ama daha buyuk dosya uretir.", "Frames per second for GIF. Higher values are smoother but create larger files."));
-    recForm->addRow(TranslationManager::recordingFps(), m_recordingFpsSpin);
+    recForm->addRow(TranslationManager::gifFpsLabel(), m_recordingFpsSpin);
 
     m_recordingMaxSecSpin = new QSpinBox();
     m_recordingMaxSecSpin->setRange(0, 600);
@@ -1090,11 +1091,11 @@ QWidget* SettingsDialog::createRecordingTab()
     QFormLayout *videoForm = new QFormLayout(videoGroup);
 
     m_videoFpsSpin = new QSpinBox();
-    m_videoFpsSpin->setRange(1, 60);
+    m_videoFpsSpin->setRange(1, videoRecordingFpsLimit());
     m_videoFpsSpin->setSuffix(QStringLiteral(" fps"));
     m_videoFpsSpin->setValue(30);
     m_videoFpsSpin->setToolTip(uiLabel("Video icin saniyedeki kare sayisi.", "Frames per second for video recording."));
-    videoForm->addRow(TranslationManager::recordingFps(), m_videoFpsSpin);
+    videoForm->addRow(TranslationManager::videoFpsLabel(), m_videoFpsSpin);
 
     m_videoMaxSecSpin = new QSpinBox();
     m_videoMaxSecSpin->setRange(0, 3600);
@@ -1131,7 +1132,8 @@ QWidget* SettingsDialog::createRecordingTab()
     connect(m_videoDesktopVolumeSpin, qOverload<int>(&QSpinBox::valueChanged), m_videoDesktopVolumeSlider, &QSlider::setValue);
     desktopVolumeLayout->addWidget(m_videoDesktopVolumeSlider);
     desktopVolumeLayout->addWidget(m_videoDesktopVolumeSpin);
-    videoForm->addRow(uiLabel("Masaustu ses duzeyi", "Desktop volume"), desktopVolumeRow);
+    auto *desktopVolumeLabel = new QLabel(uiLabel("Masaustu ses duzeyi", "Desktop volume"), videoGroup);
+    videoForm->addRow(desktopVolumeLabel, desktopVolumeRow);
 
     m_videoMicrophoneCheck = new QCheckBox(TranslationManager::audioMicrophone());
     m_videoMicrophoneCheck->setToolTip(uiLabel("Video kaydina mikrofon sesini ekler.", "Include microphone audio in video recordings."));
@@ -1143,7 +1145,8 @@ QWidget* SettingsDialog::createRecordingTab()
         m_videoMicrophoneDeviceCombo->addItem(device.first, device.second);
     }
     m_videoMicrophoneDeviceCombo->setToolTip(uiLabel("Video kaydinda kullanilacak mikrofon kaynagi.", "Microphone source used for video recording."));
-    videoForm->addRow(TranslationManager::audioMicrophoneDevice(), m_videoMicrophoneDeviceCombo);
+    auto *microphoneDeviceLabel = new QLabel(TranslationManager::audioMicrophoneDevice(), videoGroup);
+    videoForm->addRow(microphoneDeviceLabel, m_videoMicrophoneDeviceCombo);
 
     QWidget *micVolumeRow = new QWidget(videoGroup);
     QHBoxLayout *micVolumeLayout = new QHBoxLayout(micVolumeRow);
@@ -1162,19 +1165,25 @@ QWidget* SettingsDialog::createRecordingTab()
     connect(m_videoMicrophoneVolumeSpin, qOverload<int>(&QSpinBox::valueChanged), m_videoMicrophoneVolumeSlider, &QSlider::setValue);
     micVolumeLayout->addWidget(m_videoMicrophoneVolumeSlider);
     micVolumeLayout->addWidget(m_videoMicrophoneVolumeSpin);
-    videoForm->addRow(uiLabel("Mikrofon ses duzeyi", "Microphone volume"), micVolumeRow);
+    auto *microphoneVolumeLabel = new QLabel(uiLabel("Mikrofon ses duzeyi", "Microphone volume"), videoGroup);
+    videoForm->addRow(microphoneVolumeLabel, micVolumeRow);
 
-    auto updateDesktopAudioState = [this](bool enabled) {
-        if (m_videoDesktopVolumeSlider) m_videoDesktopVolumeSlider->setEnabled(enabled);
-        if (m_videoDesktopVolumeSpin) m_videoDesktopVolumeSpin->setEnabled(enabled);
+    auto updateDesktopAudioState = [desktopVolumeLabel, desktopVolumeRow](bool enabled) {
+        desktopVolumeLabel->setEnabled(enabled);
+        desktopVolumeRow->setEnabled(enabled);
     };
-    auto updateMicrophoneState = [this](bool enabled) {
-        if (m_videoMicrophoneDeviceCombo) m_videoMicrophoneDeviceCombo->setEnabled(enabled);
-        if (m_videoMicrophoneVolumeSlider) m_videoMicrophoneVolumeSlider->setEnabled(enabled);
-        if (m_videoMicrophoneVolumeSpin) m_videoMicrophoneVolumeSpin->setEnabled(enabled);
+    auto updateMicrophoneState = [microphoneDeviceLabel, microphoneVolumeLabel,
+                                  micVolumeRow, this](bool enabled) {
+        microphoneDeviceLabel->setEnabled(enabled);
+        microphoneVolumeLabel->setEnabled(enabled);
+        if (m_videoMicrophoneDeviceCombo)
+            m_videoMicrophoneDeviceCombo->setEnabled(enabled);
+        micVolumeRow->setEnabled(enabled);
     };
     connect(m_videoDesktopAudioCheck, &QCheckBox::toggled, this, updateDesktopAudioState);
     connect(m_videoMicrophoneCheck, &QCheckBox::toggled, this, updateMicrophoneState);
+    updateDesktopAudioState(m_videoDesktopAudioCheck->isChecked());
+    updateMicrophoneState(m_videoMicrophoneCheck->isChecked());
 
     layout->addWidget(videoGroup);
 
@@ -2034,14 +2043,10 @@ void SettingsDialog::loadSettings()
         m_videoMaxSecSpin->setValue(m_settings->value("videoRecordingMaxSeconds", 0).toInt());
     if (m_videoCrfSpin)
         m_videoCrfSpin->setValue(m_settings->value("videoRecordingCrf", 24).toInt());
-    const bool videoDesktopAudio = m_settings->contains("videoDesktopAudioEnabled")
-        ? m_settings->value("videoDesktopAudioEnabled", false).toBool()
-        : (m_settings->value("videoAudioMode", "none").toString() == QStringLiteral("desktop") ||
-           m_settings->value("videoAudioMode", "none").toString() == QStringLiteral("both"));
-    const bool videoMicrophoneAudio = m_settings->contains("videoMicrophoneEnabled")
-        ? m_settings->value("videoMicrophoneEnabled", false).toBool()
-        : (m_settings->value("videoAudioMode", "none").toString() == QStringLiteral("microphone") ||
-           m_settings->value("videoAudioMode", "none").toString() == QStringLiteral("both"));
+    const bool videoDesktopAudio = loadRecordingAudioEnabled(
+        *m_settings, RecordingAudioSource::Desktop);
+    const bool videoMicrophoneAudio = loadRecordingAudioEnabled(
+        *m_settings, RecordingAudioSource::Microphone);
     if (m_videoDesktopAudioCheck)
         m_videoDesktopAudioCheck->setChecked(videoDesktopAudio);
     if (m_videoDesktopVolumeSlider)
@@ -2058,12 +2063,7 @@ void SettingsDialog::loadSettings()
         int idx = m_videoMicrophoneDeviceCombo->findData(m_settings->value("videoMicrophoneDevice", "default").toString());
         if (idx < 0) idx = 0;
         m_videoMicrophoneDeviceCombo->setCurrentIndex(idx);
-        m_videoMicrophoneDeviceCombo->setEnabled(videoMicrophoneAudio);
     }
-    if (m_videoDesktopVolumeSlider) m_videoDesktopVolumeSlider->setEnabled(videoDesktopAudio);
-    if (m_videoDesktopVolumeSpin) m_videoDesktopVolumeSpin->setEnabled(videoDesktopAudio);
-    if (m_videoMicrophoneVolumeSlider) m_videoMicrophoneVolumeSlider->setEnabled(videoMicrophoneAudio);
-    if (m_videoMicrophoneVolumeSpin) m_videoMicrophoneVolumeSpin->setEnabled(videoMicrophoneAudio);
 
     bool jpeg = (fmt == "JPEG");
     m_qualitySlider->setEnabled(jpeg);

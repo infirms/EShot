@@ -157,6 +157,8 @@ public:
     // ─── Kayıt tab ───
     static QString recordingSettings() { return tr("recordingSettings"); }
     static QString recordingFps()    { return tr("recordingFps"); }
+    static QString gifFpsLabel()     { return tr("gifFpsLabel"); }
+    static QString videoFpsLabel()   { return tr("videoFpsLabel"); }
     static QString recordingTimeLimit() { return tr("recordingTimeLimit"); }
     static QString recordingSeconds() { return tr("recordingSeconds"); }
     static QString recordingUnlimited() { return tr("recordingUnlimited"); }
@@ -527,6 +529,8 @@ private:
         // ─── Kayıt tab ───
         {"recordingSettings",{"Kayıt Ayarları", "Recording Settings", "Aufnahmeeinstellungen", "Paramètres d'enregistrement", "Configuración de grabación", "録画設定", "录制设置", "Параметры записи"}},
         {"recordingFps",   {"Kare Hızı (FPS):", "Frame Rate (FPS):", "Bildrate (FPS):", "Images par seconde (FPS) :", "Fotogramas por segundo (FPS):", "フレームレート (FPS):", "帧率 (FPS):", "Частота кадров (FPS):"}},
+        {"gifFpsLabel",    {"GIF FPS:", "GIF FPS:", "GIF-FPS:", "FPS GIF :", "FPS de GIF:", "GIF フレームレート:", "GIF 帧率:", "FPS GIF:"}},
+        {"videoFpsLabel",  {"Video FPS:", "Video FPS:", "Video-FPS:", "FPS vidéo :", "FPS de video:", "動画フレームレート:", "视频帧率:", "FPS видео:"}},
         {"recordingTimeLimit",{"Süre Limiti:", "Time Limit:", "Zeitlimit:", "Limite de temps :", "Límite de tiempo:", "時間制限:", "时长限制:", "Лимит времени:"}},
         {"recordingSeconds",{"saniye (0 = sınırsız)", "seconds (0 = unlimited)", "Sekunden (0 = unbegrenzt)", "secondes (0 = illimité)", "segundos (0 = ilimitado)", "秒 (0 = 無制限)", "秒 (0 = 无限制)", "секунд (0 = без лимита)"}},
         {"recordingUnlimited",{"Sınırsız", "Unlimited", "Unbegrenzt", "Illimité", "Ilimitado", "無制限", "无限制", "Без лимита"}},

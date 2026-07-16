@@ -1,4 +1,6 @@
 #include <QtTest>
+#include <QSettings>
+#include <QTemporaryDir>
 
 #include "recording/RecordingSettingsPolicy.h"
 
@@ -33,6 +35,25 @@ private slots:
     {
         QVERIFY(initialAudioEnabled(false, false, false, {}, RecordingAudioSource::Desktop));
         QVERIFY(initialAudioEnabled(false, false, false, {}, RecordingAudioSource::Microphone));
+    }
+
+    void persistsNewDefaultsAndLegacyMigrationAsExplicitSettings()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        QSettings settings(directory.filePath(QStringLiteral("settings.ini")), QSettings::IniFormat);
+
+        QVERIFY(loadRecordingAudioEnabled(settings, RecordingAudioSource::Desktop));
+        QVERIFY(loadRecordingAudioEnabled(settings, RecordingAudioSource::Microphone));
+        QVERIFY(settings.contains(QStringLiteral("videoDesktopAudioEnabled")));
+        QVERIFY(settings.contains(QStringLiteral("videoMicrophoneEnabled")));
+
+        settings.clear();
+        settings.setValue(QStringLiteral("videoAudioMode"), QStringLiteral("desktop"));
+        QVERIFY(loadRecordingAudioEnabled(settings, RecordingAudioSource::Desktop));
+        QVERIFY(!loadRecordingAudioEnabled(settings, RecordingAudioSource::Microphone));
+        QCOMPARE(settings.value(QStringLiteral("videoDesktopAudioEnabled")).toBool(), true);
+        QCOMPARE(settings.value(QStringLiteral("videoMicrophoneEnabled")).toBool(), false);
     }
 };
 

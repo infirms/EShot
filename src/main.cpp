@@ -53,6 +53,7 @@
 #include "recording/ScreenRecorder.h"
 #include "recording/VideoRecorder.h"
 #include "recording/RecordingIndicator.h"
+#include "recording/RecordingSettingsPolicy.h"
 #include "ui/SettingsDialog.h"
 #include "ui/AboutDialog.h"
 #include "ui/FirstRunWizard.h"
@@ -457,7 +458,7 @@ public slots:
         const int fps = s.value("videoRecordingFps", 30).toInt();
         const int maxSec = s.value("videoRecordingMaxSeconds", 0).toInt();
         const int crf = s.value("videoRecordingCrf", 24).toInt();
-        const bool desktopAudio = s.value("videoDesktopAudioEnabled", false).toBool();
+        const bool desktopAudio = loadRecordingAudioEnabled(s, RecordingAudioSource::Desktop);
         const int desktopVolume = s.value("videoDesktopAudioVolume", 80).toInt();
         const QString desktopDevice = s.value("videoDesktopAudioDevice",
 #ifdef Q_OS_WIN
@@ -466,7 +467,7 @@ public slots:
                                             "@DEFAULT_SINK@.monitor"
 #endif
                                             ).toString();
-        const bool microphoneAudio = s.value("videoMicrophoneEnabled", false).toBool();
+        const bool microphoneAudio = loadRecordingAudioEnabled(s, RecordingAudioSource::Microphone);
         const int microphoneVolume = s.value("videoMicrophoneVolume", 80).toInt();
         const QString microphoneDevice = s.value("videoMicrophoneDevice", "default").toString();
         const int startDelayMs = qBound(0, s.value("recordingStartDelaySeconds", 0).toInt(), 10) * 1000;

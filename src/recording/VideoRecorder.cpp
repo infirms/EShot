@@ -1,6 +1,7 @@
 #include "VideoRecorder.h"
 #include "core/LinuxPortalScreenCast.h"
 #include "LinuxRecordingSupport.h"
+#include "RecordingSettingsPolicy.h"
 
 #include <QCoreApplication>
 #include <QGuiApplication>
@@ -263,7 +264,7 @@ void VideoRecorder::start(const QRect &captureRect, int fps, int maxSeconds, int
 
     m_captureRect = captureRect;
     m_displayRect = displayRect;
-    m_fps = qBound(1, fps, 60);
+    m_fps = qBound(1, fps, videoRecordingFpsLimit());
     m_maxSeconds = qMax(0, maxSeconds);
     m_crf = qBound(18, crf, 32);
     m_desktopAudioEnabled = desktopAudioEnabled;
