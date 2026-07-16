@@ -31,6 +31,8 @@ public:
     bool linuxPortalShortcutsAvailable() const;
     UINT captureModifiers() const { return m_captureModifiers; }
     UINT captureVirtualKey() const { return m_captureVirtualKey; }
+    QString captureShortcutText() const;
+    QString windowCaptureShortcutText() const;
     QString recordingPauseShortcutText() const;
     QString recordingStopShortcutText() const;
     QString recordingCancelShortcutText() const;

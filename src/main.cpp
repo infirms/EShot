@@ -743,10 +743,16 @@ private:
         m_trayMenu->clear();
 
         QAction *captureAction = m_trayMenu->addAction(trayIcon(":/icons/copy.svg"), TranslationManager::trayCapture());
+        captureAction->setToolTip(QStringLiteral("%1 (%2)").arg(
+            TranslationManager::trayCapture(),
+            HotkeyManager::instance().captureShortcutText()));
         connect(captureAction, &QAction::triggered, this, &EShotApp::onCaptureRequested);
 #ifdef Q_OS_WIN
         QAction *windowCaptureAction = m_trayMenu->addAction(
             trayIcon(":/icons/rectangle.svg"), TranslationManager::trayWindowCapture());
+        windowCaptureAction->setToolTip(QStringLiteral("%1 (%2)").arg(
+            TranslationManager::trayWindowCapture(),
+            HotkeyManager::instance().windowCaptureShortcutText()));
         connect(windowCaptureAction, &QAction::triggered,
                 this, &EShotApp::onWindowCaptureRequested);
 #endif
@@ -790,6 +796,7 @@ private:
         m_trayIcon->setToolTip(QString("%1 v%2").arg(TranslationManager::appTitle(), QCoreApplication::applicationVersion()));
 
         m_trayMenu = new QMenu();
+        m_trayMenu->setToolTipsVisible(true);
         m_trayMenu->setStyleSheet(QStringLiteral(
             "QMenu {"
             "  background: #2b2b2b;"

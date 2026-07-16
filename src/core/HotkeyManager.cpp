@@ -109,6 +109,16 @@ QString HotkeyManager::recordingPauseShortcutText() const
     return displayShortcut(m_recordingPauseModifiers, m_recordingPauseVirtualKey);
 }
 
+QString HotkeyManager::captureShortcutText() const
+{
+    return displayShortcut(m_captureModifiers, m_captureVirtualKey);
+}
+
+QString HotkeyManager::windowCaptureShortcutText() const
+{
+    return displayShortcut(m_windowCaptureModifiers, m_windowCaptureVirtualKey);
+}
+
 QString HotkeyManager::recordingStopShortcutText() const
 {
     return displayShortcut(m_recordingStopModifiers, m_recordingStopVirtualKey);
