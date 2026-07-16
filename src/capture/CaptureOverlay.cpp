@@ -66,6 +66,9 @@
 
 #ifdef Q_OS_WIN
 #include <windows.h>
+#ifdef __MINGW32__
+#include <initguid.h>
+#endif
 #include <mmdeviceapi.h>
 #include <functiondiscoverykeys_devpkey.h>
 #include <propsys.h>
