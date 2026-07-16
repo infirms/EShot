@@ -1350,7 +1350,10 @@ int main(int argc, char *argv[])
     if (parser.isSet(captureOption) || !cliSavePath.isEmpty()) {
         QMetaObject::invokeMethod(&eshotApp, "onCaptureRequested", Qt::QueuedConnection);
     } else if (parser.isSet(settingsOption)
-               || (!silent && !firstRunRequired && !QSystemTrayIcon::isSystemTrayAvailable())) {
+#ifndef Q_OS_WIN
+               || (!silent && !firstRunRequired && !QSystemTrayIcon::isSystemTrayAvailable())
+#endif
+    ) {
         QMetaObject::invokeMethod(&eshotApp, "onSettingsRequested", Qt::QueuedConnection);
     }
 
