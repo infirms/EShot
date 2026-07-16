@@ -48,6 +48,17 @@ private slots:
                                         QRect(-1536, 0, 3456, 1080)),
                  QRect(96, 80, 800, 480));
     }
+
+    void windowHighlightUsesFastCubicGeometryTransition()
+    {
+        QCOMPARE(windowSnapAnimationDurationMs(), 85);
+        const QRect from(0, 0, 100, 100);
+        const QRect to(100, 200, 300, 500);
+        QCOMPARE(windowSnapTransitionRect(from, to, 0.0), from);
+        QCOMPARE(windowSnapTransitionRect(from, to, 0.5),
+                 QRect(88, 175, 275, 450));
+        QCOMPARE(windowSnapTransitionRect(from, to, 1.0), to);
+    }
 };
 
 QTEST_APPLESS_MAIN(WindowSnapPolicyTests)

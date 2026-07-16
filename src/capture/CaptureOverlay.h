@@ -32,6 +32,7 @@ class QPushButton;
 class QToolButton;
 class QCheckBox;
 class QPropertyAnimation;
+class QVariantAnimation;
 class QLabel;
 class ImageUploader;
 class QScreen;
@@ -81,6 +82,7 @@ private:
     QRect monitorRectAt(const QPoint &pos) const;
     void selectMonitorAt(const QPoint &pos);
     void completeSelection(const QRect &selectionRect);
+    void setHoveredWindowRect(const QRect &targetRect);
     QPixmap getSelectedPixmap();
 
     // Filename template parse
@@ -97,6 +99,9 @@ private:
     QPoint m_moveOffset;
     QVector<QRect> m_windowSnapCandidates;
     QRect m_hoveredWindowRect;
+    QRect m_animatedWindowRect;
+    QRect m_windowSnapAnimationStart;
+    QVariantAnimation *m_windowSnapAnimation = nullptr;
     QRect m_pressedWindowRect;
     QPoint m_windowSnapPressPosition;
     bool m_windowSnapClickPending = false;

@@ -47,6 +47,7 @@
 #include <QCheckBox>
 #include <QSignalBlocker>
 #include <QPropertyAnimation>
+#include <QVariantAnimation>
 #include <QAbstractAnimation>
 #include <QEasingCurve>
 #include <QDebug>
@@ -790,6 +791,21 @@ CaptureOverlay::CaptureOverlay(QWidget *parent)
     m_captureDelayTimer->setSingleShot(true);
     connect(m_captureDelayTimer, &QTimer::timeout, this, &CaptureOverlay::performCapture);
 
+    m_windowSnapAnimation = new QVariantAnimation(this);
+    m_windowSnapAnimation->setDuration(windowSnapAnimationDurationMs());
+    m_windowSnapAnimation->setStartValue(0.0);
+    m_windowSnapAnimation->setEndValue(1.0);
+    connect(m_windowSnapAnimation, &QVariantAnimation::valueChanged,
+            this, [this](const QVariant &value) {
+                m_animatedWindowRect = windowSnapTransitionRect(
+                    m_windowSnapAnimationStart, m_hoveredWindowRect, value.toReal());
+                update();
+            });
+    connect(m_windowSnapAnimation, &QVariantAnimation::finished, this, [this]() {
+        m_animatedWindowRect = m_hoveredWindowRect;
+        update();
+    });
+
 
 }
 
@@ -1503,7 +1519,7 @@ void CaptureOverlay::startCapture()
     m_selectionEnd = QPoint();
     m_selectionAnchorScreenRect = QRect();
     m_windowSnapCandidates.clear();
-    m_hoveredWindowRect = QRect();
+    setHoveredWindowRect(QRect());
     m_pressedWindowRect = QRect();
     m_windowSnapClickPending = false;
     m_eyedropperActive = false;
@@ -1618,8 +1634,8 @@ void CaptureOverlay::performCapture()
 
     m_windowSnapCandidates = windowsForCaptureOverlay(
         reinterpret_cast<quintptr>(hwnd), m_captureMonitors, m_virtualDesktopRect);
-    m_hoveredWindowRect = topmostWindowAt(
-        m_windowSnapCandidates, mapFromGlobal(QCursor::pos()), rect());
+    setHoveredWindowRect(topmostWindowAt(
+        m_windowSnapCandidates, mapFromGlobal(QCursor::pos()), rect()));
 #endif
 
     activateWindow();
@@ -1959,7 +1975,9 @@ void CaptureOverlay::paintEvent(QPaintEvent *event)
 
     const bool windowPreview = !m_isSelecting && !m_selectionComplete
         && !m_hoveredWindowRect.isEmpty();
-    QRect selRect = windowPreview ? m_hoveredWindowRect : normalizedSelectionRect();
+    QRect selRect = windowPreview
+        ? (m_animatedWindowRect.isValid() ? m_animatedWindowRect : m_hoveredWindowRect)
+        : normalizedSelectionRect();
 
     if (!selRect.isEmpty()) {
         // Clean area
@@ -2291,7 +2309,7 @@ void CaptureOverlay::mouseMoveEvent(QMouseEvent *event)
                                QApplication::startDragDistance())) {
             m_windowSnapClickPending = false;
             m_pressedWindowRect = QRect();
-            m_hoveredWindowRect = QRect();
+            setHoveredWindowRect(QRect());
             m_isSelecting = true;
             m_selectionStart = m_windowSnapPressPosition;
             m_selectionEnd = event->pos();
@@ -2369,8 +2387,7 @@ void CaptureOverlay::mouseMoveEvent(QMouseEvent *event)
     } else if (!m_selectionComplete) {
         const QRect hovered = topmostWindowAt(m_windowSnapCandidates, event->pos(), rect());
         if (hovered != m_hoveredWindowRect) {
-            m_hoveredWindowRect = hovered;
-            update();
+            setHoveredWindowRect(hovered);
         } else {
             update(); // crosshair
         }
@@ -3203,6 +3220,38 @@ QRect CaptureOverlay::monitorRectAt(const QPoint &pos) const
 #endif
 }
 
+void CaptureOverlay::setHoveredWindowRect(const QRect &targetRect)
+{
+    const QRect currentRect = m_animatedWindowRect.isValid()
+        ? m_animatedWindowRect : m_hoveredWindowRect;
+    if (m_windowSnapAnimation)
+        m_windowSnapAnimation->stop();
+
+    if (targetRect == m_hoveredWindowRect) {
+        if (targetRect.isEmpty())
+            m_animatedWindowRect = QRect();
+        return;
+    }
+
+    m_hoveredWindowRect = targetRect;
+    if (targetRect.isEmpty()) {
+        m_animatedWindowRect = QRect();
+        update();
+        return;
+    }
+    if (currentRect.isEmpty() || currentRect == targetRect || !m_windowSnapAnimation) {
+        m_animatedWindowRect = targetRect;
+        update();
+        return;
+    }
+
+    m_windowSnapAnimationStart = currentRect;
+    m_windowSnapAnimation->setDuration(windowSnapAnimationDurationMs());
+    m_windowSnapAnimation->setStartValue(0.0);
+    m_windowSnapAnimation->setEndValue(1.0);
+    m_windowSnapAnimation->start();
+}
+
 void CaptureOverlay::selectMonitorAt(const QPoint &pos)
 {
     QRect monitorRect = monitorRectAt(pos);
@@ -3215,7 +3264,7 @@ void CaptureOverlay::selectMonitorAt(const QPoint &pos)
     m_isSelecting = false;
     m_selectionComplete = true;
     m_windowSnapClickPending = false;
-    m_hoveredWindowRect = QRect();
+    setHoveredWindowRect(QRect());
     m_pressedWindowRect = QRect();
     m_isDraggingAnnotation = false;
     m_resizeMode = ResNone;
@@ -3244,7 +3293,7 @@ void CaptureOverlay::completeSelection(const QRect &selectionRect)
     m_isSelecting = false;
     m_selectionComplete = true;
     m_windowSnapClickPending = false;
-    m_hoveredWindowRect = QRect();
+    setHoveredWindowRect(QRect());
     m_pressedWindowRect = QRect();
     m_selectionStart = bounded.topLeft();
     m_selectionEnd = bounded.bottomRight();

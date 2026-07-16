@@ -11,3 +11,6 @@ QRect topmostWindowAt(const QVector<QRect> &windows,
 bool isWindowSnapClick(const QPoint &pressPosition,
                        const QPoint &releasePosition,
                        int dragThreshold);
+
+int windowSnapAnimationDurationMs();
+QRect windowSnapTransitionRect(const QRect &from, const QRect &to, qreal progress);

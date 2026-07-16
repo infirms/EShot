@@ -307,6 +307,15 @@ jobs:
           Write-Host "Using $wdq $extra"
           & $wdq --release --no-translations @extra $exe
 
+          $svgRuntime = @(
+            "${{ env.DIST_DIR }}/bin/Qt6Svg.dll",
+            "${{ env.DIST_DIR }}/bin/imageformats/qsvg.dll",
+            "${{ env.DIST_DIR }}/bin/iconengines/qsvgicon.dll"
+          )
+          foreach ($file in $svgRuntime) {
+            if (-not (Test-Path $file)) { throw "Missing SVG runtime: $file" }
+          }
+
       # windeployqt doesn't reliably deploy the loose MSVC CRT DLLs in CI: on
       # arm64 it emits vc_redist.arm64.exe instead, and on x64 it skips them when
       # it can't locate the redist (no vcvars env in this step). Copy the matching

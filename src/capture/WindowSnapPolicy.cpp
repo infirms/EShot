@@ -24,3 +24,22 @@ bool isWindowSnapClick(const QPoint &pressPosition,
     return dragThreshold > 0
         && (releasePosition - pressPosition).manhattanLength() < dragThreshold;
 }
+
+int windowSnapAnimationDurationMs()
+{
+    return 85;
+}
+
+QRect windowSnapTransitionRect(const QRect &from, const QRect &to, qreal progress)
+{
+    const qreal bounded = qBound(0.0, progress, 1.0);
+    const qreal remaining = 1.0 - bounded;
+    const qreal eased = 1.0 - remaining * remaining * remaining;
+    const auto interpolate = [eased](int start, int end) {
+        return qRound(start + (end - start) * eased);
+    };
+    return QRect(interpolate(from.x(), to.x()),
+                 interpolate(from.y(), to.y()),
+                 interpolate(from.width(), to.width()),
+                 interpolate(from.height(), to.height()));
+}
