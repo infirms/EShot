@@ -33,10 +33,11 @@ jobs:
         env:
           AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
         run: |
-          install -d -m 700 ~/.ssh
-          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+          install -d -m 700 /root/.ssh
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > /root/.ssh/id_ed25519
+          chmod 600 /root/.ssh/id_ed25519
+          ssh-keyscan aur.archlinux.org > /root/.ssh/known_hosts
+          chmod 644 /root/.ssh/known_hosts
 
       - name: Publish eshot-bin
         env:
