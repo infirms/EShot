@@ -1,5 +1,7 @@
 #include "CaptureOverlay.h"
 #include "CaptureInteractionPolicy.h"
+#include "WindowSnapPolicy.h"
+#include "WindowsWindowProvider.h"
 #include "PinnedWindow.h"
 #include "annotation/AnnotationEngine.h"
 #include "ui/AnnotationToolbar.h"
@@ -1482,6 +1484,10 @@ void CaptureOverlay::startCapture()
     m_selectionStart = QPoint();
     m_selectionEnd = QPoint();
     m_selectionAnchorScreenRect = QRect();
+    m_windowSnapCandidates.clear();
+    m_hoveredWindowRect = QRect();
+    m_pressedWindowRect = QRect();
+    m_windowSnapClickPending = false;
     m_eyedropperActive = false;
 
     if (m_textEdit) m_textEdit->hide();
@@ -1591,6 +1597,11 @@ void CaptureOverlay::performCapture()
     // Bring it to the very front and give it keyboard focus
     ::SetForegroundWindow(hwnd);
     ::BringWindowToTop(hwnd);
+
+    m_windowSnapCandidates = windowsForCaptureOverlay(
+        reinterpret_cast<quintptr>(hwnd), m_captureMonitors, m_virtualDesktopRect);
+    m_hoveredWindowRect = topmostWindowAt(
+        m_windowSnapCandidates, mapFromGlobal(QCursor::pos()), rect());
 #endif
 
     activateWindow();
@@ -1928,7 +1939,9 @@ void CaptureOverlay::paintEvent(QPaintEvent *event)
         m_annotationEngine->render(&painter, QPoint());
     painter.fillRect(rect(), QColor(0, 0, 0, m_overlayOpacity));
 
-    QRect selRect = normalizedSelectionRect();
+    const bool windowPreview = !m_isSelecting && !m_selectionComplete
+        && !m_hoveredWindowRect.isEmpty();
+    QRect selRect = windowPreview ? m_hoveredWindowRect : normalizedSelectionRect();
 
     if (!selRect.isEmpty()) {
         // Clean area
@@ -1973,10 +1986,12 @@ void CaptureOverlay::paintEvent(QPaintEvent *event)
             painter.drawRect(hr);
         };
 
-        drawHandle(selRect.topLeft());
-        drawHandle(selRect.topRight());
-        drawHandle(selRect.bottomLeft());
-        drawHandle(selRect.bottomRight());
+        if (!windowPreview) {
+            drawHandle(selRect.topLeft());
+            drawHandle(selRect.topRight());
+            drawHandle(selRect.bottomLeft());
+            drawHandle(selRect.bottomRight());
+        }
 
         // Size info — always visible (top-left of selection)
         if (m_isSelecting || m_selectionComplete) {
@@ -2004,7 +2019,8 @@ void CaptureOverlay::paintEvent(QPaintEvent *event)
     }
 
     // Crosshair
-    if (!m_isSelecting && !m_selectionComplete && m_crosshairStyle != "none" && !m_eyedropperActive) {
+    if (!m_isSelecting && !m_selectionComplete && m_hoveredWindowRect.isEmpty()
+        && m_crosshairStyle != "none" && !m_eyedropperActive) {
         QPoint cur = mapFromGlobal(QCursor::pos());
         QPen cp;
         cp.setColor(QColor(255,255,255,150));
@@ -2189,6 +2205,13 @@ void CaptureOverlay::mousePressEvent(QMouseEvent *event)
                 }
             }
         } else {
+            if (!m_hoveredWindowRect.isEmpty()) {
+                m_windowSnapPressPosition = event->pos();
+                m_pressedWindowRect = m_hoveredWindowRect;
+                m_windowSnapClickPending = true;
+                event->accept();
+                return;
+            }
             m_isSelecting = true;
             m_selectionStart = event->pos();
             m_selectionEnd = event->pos();
@@ -2207,6 +2230,8 @@ void CaptureOverlay::mousePressEvent(QMouseEvent *event)
         if (m_selectionComplete) {
             m_selectionComplete = false;
             m_isSelecting = false;
+            m_windowSnapClickPending = false;
+            m_pressedWindowRect = QRect();
             m_selectionLocked = false;
             m_selectionStart = m_selectionEnd = QPoint();
             m_selectionAnchorScreenRect = QRect();
@@ -2239,6 +2264,22 @@ void CaptureOverlay::mouseMoveEvent(QMouseEvent *event)
 {
     // In Eyedropper mode — only repaint
     if (m_eyedropperActive) {
+        update();
+        return;
+    }
+
+    if (m_windowSnapClickPending) {
+        if (!isWindowSnapClick(m_windowSnapPressPosition, event->pos(),
+                               QApplication::startDragDistance())) {
+            m_windowSnapClickPending = false;
+            m_pressedWindowRect = QRect();
+            m_hoveredWindowRect = QRect();
+            m_isSelecting = true;
+            m_selectionStart = m_windowSnapPressPosition;
+            m_selectionEnd = event->pos();
+            m_selectionAnchorScreenRect = monitorRectAt(m_windowSnapPressPosition);
+            hideToolbar();
+        }
         update();
         return;
     }
@@ -2308,7 +2349,13 @@ void CaptureOverlay::mouseMoveEvent(QMouseEvent *event)
             }
         }
     } else if (!m_selectionComplete) {
-        update(); // crosshair
+        const QRect hovered = topmostWindowAt(m_windowSnapCandidates, event->pos(), rect());
+        if (hovered != m_hoveredWindowRect) {
+            m_hoveredWindowRect = hovered;
+            update();
+        } else {
+            update(); // crosshair
+        }
     } else {
         updateCursor(event->pos());
     }
@@ -2319,6 +2366,17 @@ void CaptureOverlay::mouseReleaseEvent(QMouseEvent *event)
     if (event->button() == Qt::LeftButton) {
         if (m_ignoreNextMouseRelease) {
             m_ignoreNextMouseRelease = false;
+            return;
+        }
+
+        if (m_windowSnapClickPending) {
+            const QRect selectedWindow = m_pressedWindowRect;
+            m_windowSnapClickPending = false;
+            m_pressedWindowRect = QRect();
+            if (isWindowSnapClick(m_windowSnapPressPosition, event->pos(),
+                                  QApplication::startDragDistance())) {
+                completeSelection(selectedWindow);
+            }
             return;
         }
 
@@ -2343,22 +2401,8 @@ void CaptureOverlay::mouseReleaseEvent(QMouseEvent *event)
             m_selectionEnd = event->pos();
             QRect selRect = normalizedSelectionRect();
             if (selRect.width() > 10 && selRect.height() > 10) {
-                m_selectionComplete = true;
-
-                if (m_captureMode == ModeRecording) {
-                    finishCapture();
-                    return;
-                }
-
-                if (m_instantCopyAfterSelection) {
-                    onCopyToClipboard();
-                    if (isVisible())
-                        finishCapture();
-                    return;
-                }
-
-                showToolbar();
-                updateUndoRedoState();
+                completeSelection(selRect);
+                return;
             }
             update();
         } else if (m_selectionComplete) {
@@ -3152,6 +3196,9 @@ void CaptureOverlay::selectMonitorAt(const QPoint &pos)
 
     m_isSelecting = false;
     m_selectionComplete = true;
+    m_windowSnapClickPending = false;
+    m_hoveredWindowRect = QRect();
+    m_pressedWindowRect = QRect();
     m_isDraggingAnnotation = false;
     m_resizeMode = ResNone;
     m_selectionStart = monitorRect.topLeft();
@@ -3167,6 +3214,39 @@ void CaptureOverlay::selectMonitorAt(const QPoint &pos)
     updateUndoRedoState();
     updateCursor(pos);
 
+    update();
+}
+
+void CaptureOverlay::completeSelection(const QRect &selectionRect)
+{
+    const QRect bounded = selectionRect.intersected(rect());
+    if (bounded.width() <= 10 || bounded.height() <= 10)
+        return;
+
+    m_isSelecting = false;
+    m_selectionComplete = true;
+    m_windowSnapClickPending = false;
+    m_hoveredWindowRect = QRect();
+    m_pressedWindowRect = QRect();
+    m_selectionStart = bounded.topLeft();
+    m_selectionEnd = bounded.bottomRight();
+    m_selectionAnchorScreenRect = monitorRectAt(bounded.center());
+
+    if (m_captureMode == ModeRecording) {
+        finishCapture();
+        return;
+    }
+
+    if (m_instantCopyAfterSelection) {
+        onCopyToClipboard();
+        if (isVisible())
+            finishCapture();
+        return;
+    }
+
+    showToolbar();
+    updateUndoRedoState();
+    updateCursor(bounded.center());
     update();
 }
 

@@ -1,6 +1,7 @@
 #include <QtTest>
 
 #include "capture/WindowSnapPolicy.h"
+#include "capture/WindowsWindowProvider.h"
 
 class WindowSnapPolicyTests : public QObject
 {
@@ -34,6 +35,18 @@ private slots:
     {
         QVERIFY(isWindowSnapClick(QPoint(100, 100), QPoint(103, 102), 10));
         QVERIFY(!isWindowSnapClick(QPoint(100, 100), QPoint(112, 100), 10));
+    }
+
+    void mapsNativeWindowBoundsToOverlayCoordinatesOnScaledMonitor()
+    {
+        const QVector<CaptureMonitorGeometry> monitors = {
+            {QRect(-1536, 0, 1536, 864), QRect(-1920, 0, 1920, 1080), 1.25},
+            {QRect(0, 0, 1920, 1080), QRect(0, 0, 1920, 1080), 1.0}
+        };
+
+        QCOMPARE(overlayLocalWindowRect(QRect(-1800, 100, 1000, 600), monitors,
+                                        QRect(-1536, 0, 3456, 1080)),
+                 QRect(96, 80, 800, 480));
     }
 };
 

@@ -51,6 +51,8 @@ set(SOURCES
     src/core/NotificationFolderOpener.cpp
     src/capture/CaptureGeometry.cpp
     src/capture/CaptureInteractionPolicy.cpp
+    src/capture/WindowSnapPolicy.cpp
+    src/capture/WindowsWindowProvider.cpp
     src/capture/CaptureOverlay.cpp
     src/capture/PinnedWindow.cpp
     src/capture/PinManager.cpp
@@ -98,6 +100,8 @@ set(HEADERS
     src/core/NotificationFolderOpener.h
     src/capture/CaptureGeometry.h
     src/capture/CaptureInteractionPolicy.h
+    src/capture/WindowSnapPolicy.h
+    src/capture/WindowsWindowProvider.h
     src/capture/CaptureOverlay.h
     src/capture/PinnedWindow.h
     src/capture/PinManager.h
@@ -178,6 +182,7 @@ if(WIN32)
         User32
         Gdi32
         Shell32
+        Dwmapi
     )
 endif()
 
@@ -266,6 +271,10 @@ if(BUILD_TESTING)
         tests/WindowSnapPolicyTests.cpp
         src/capture/WindowSnapPolicy.cpp
         src/capture/WindowSnapPolicy.h
+        src/capture/WindowsWindowProvider.cpp
+        src/capture/WindowsWindowProvider.h
+        src/capture/CaptureGeometry.cpp
+        src/capture/CaptureGeometry.h
     )
     target_include_directories(eshot_window_snap_policy_tests PRIVATE src)
     target_link_libraries(eshot_window_snap_policy_tests PRIVATE Qt6::Core Qt6::Test)

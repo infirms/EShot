@@ -80,6 +80,7 @@ private:
     QRect selectedDisplayRect() const;
     QRect monitorRectAt(const QPoint &pos) const;
     void selectMonitorAt(const QPoint &pos);
+    void completeSelection(const QRect &selectionRect);
     QPixmap getSelectedPixmap();
 
     // Filename template parse
@@ -94,6 +95,11 @@ private:
     bool m_selectionComplete;
     bool m_ignoreNextMouseRelease;
     QPoint m_moveOffset;
+    QVector<QRect> m_windowSnapCandidates;
+    QRect m_hoveredWindowRect;
+    QRect m_pressedWindowRect;
+    QPoint m_windowSnapPressPosition;
+    bool m_windowSnapClickPending = false;
 
     QRect m_virtualDesktopRect;
     QScreen *m_captureScreen = nullptr;
