@@ -56,6 +56,7 @@ jobs:
           useradd -m builder
           chown -R builder:builder aur
           runuser -u builder -- sh -c 'cd aur && makepkg --printsrcinfo > .SRCINFO'
+          chown -R root:root aur
           (
             cd aur
             git config user.name 'EShot release automation'
