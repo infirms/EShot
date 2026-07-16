@@ -58,6 +58,24 @@
 #endif
 
 namespace {
+constexpr UINT defaultWindowCaptureModifiers()
+{
+#ifdef Q_OS_WIN
+    return MOD_SHIFT;
+#else
+    return 0;
+#endif
+}
+
+constexpr UINT defaultWindowCaptureVirtualKey()
+{
+#ifdef Q_OS_WIN
+    return VK_SNAPSHOT;
+#else
+    return 0;
+#endif
+}
+
 QString uiLabel(const char *tr, const char *en)
 {
     return TranslationManager::currentLanguage() == TranslationManager::Turkish
@@ -1438,9 +1456,16 @@ QWidget* SettingsDialog::createHotkeyTab()
     m_instantCaptureHotkeyEdit = makeRecordingHotkeyEdit();
     m_gifCaptureHotkeyEdit = makeRecordingHotkeyEdit();
     m_videoCaptureHotkeyEdit = makeRecordingHotkeyEdit();
+#ifdef Q_OS_WIN
+    m_windowCaptureHotkeyEdit = makeRecordingHotkeyEdit();
+#endif
     m_instantCaptureHotkeyEdit->setToolTip(uiLabel("Bos birakilirsa kapali kalir. Alan secimi bitince otomatik kopyalar.", "Leave empty to disable. Copies automatically when region selection finishes."));
     m_gifCaptureHotkeyEdit->setToolTip(uiLabel("Bos birakilirsa kapali kalir. Dogrudan GIF alan secimini acar.", "Leave empty to disable. Opens GIF area selection directly."));
     m_videoCaptureHotkeyEdit->setToolTip(uiLabel("Bos birakilirsa kapali kalir. Dogrudan video alan secimini acar.", "Leave empty to disable. Opens video area selection directly."));
+#ifdef Q_OS_WIN
+    m_windowCaptureHotkeyEdit->setToolTip(uiLabel("Bos birakilirsa kapali kalir. Fareyle pencere secme modunu acar.", "Leave empty to disable. Opens window selection mode."));
+    actionHotkeyLayout->addRow(uiLabel("Pencere:", "Window:"), m_windowCaptureHotkeyEdit);
+#endif
     actionHotkeyLayout->addRow(uiLabel("Instant bolge:", "Instant region:"), m_instantCaptureHotkeyEdit);
     actionHotkeyLayout->addRow(QStringLiteral("GIF:"), m_gifCaptureHotkeyEdit);
     actionHotkeyLayout->addRow(uiLabel("Video:", "Video:"), m_videoCaptureHotkeyEdit);
@@ -2142,6 +2167,10 @@ void SettingsDialog::loadSettings()
         m_videoCaptureHotkeyEdit->setKeySequence(win32ToKeySequence(
             static_cast<UINT>(m_settings->value("videoCaptureHotkeyModifiers", 0).toUInt()),
             static_cast<UINT>(m_settings->value("videoCaptureHotkeyVKey", 0).toUInt())));
+    if (m_windowCaptureHotkeyEdit)
+        m_windowCaptureHotkeyEdit->setKeySequence(win32ToKeySequence(
+            static_cast<UINT>(m_settings->value("windowCaptureHotkeyModifiers", defaultWindowCaptureModifiers()).toUInt()),
+            static_cast<UINT>(m_settings->value("windowCaptureHotkeyVKey", defaultWindowCaptureVirtualKey()).toUInt())));
     for (const auto &def : overlayShortcutDefaults()) {
         if (QKeySequenceEdit *edit = m_overlayHotkeyEdits.value(def.key, nullptr)) {
             edit->setKeySequence(QKeySequence(m_settings->value(QStringLiteral("overlayShortcut/%1").arg(def.key),
@@ -2406,9 +2435,11 @@ void SettingsDialog::onSave()
     UINT instantMod = 0, instantVKey = 0;
     UINT gifMod = 0, gifVKey = 0;
     UINT videoMod = 0, videoVKey = 0;
+    UINT windowMod = 0, windowVKey = 0;
     if (!optionalHotkey(m_instantCaptureHotkeyEdit, instantMod, instantVKey) ||
         !optionalHotkey(m_gifCaptureHotkeyEdit, gifMod, gifVKey) ||
-        !optionalHotkey(m_videoCaptureHotkeyEdit, videoMod, videoVKey)) {
+        !optionalHotkey(m_videoCaptureHotkeyEdit, videoMod, videoVKey) ||
+        !optionalHotkey(m_windowCaptureHotkeyEdit, windowMod, windowVKey)) {
         QMessageBox::warning(this, TranslationManager::errInvalidHotkeyTitle(), TranslationManager::errInvalidHotkey());
         return;
     }
@@ -2421,8 +2452,13 @@ void SettingsDialog::onSave()
                                static_cast<quint32>(m_settings->value("gifCaptureHotkeyVKey", 0).toUInt())}) ||
         settingsHotkeyChanged({videoMod, videoVKey},
                               {static_cast<quint32>(m_settings->value("videoCaptureHotkeyModifiers", 0).toUInt()),
-                               static_cast<quint32>(m_settings->value("videoCaptureHotkeyVKey", 0).toUInt())});
-    if (actionHotkeysChanged && !HotkeyManager::instance().reRegisterActionHotkeys(instantMod, instantVKey, gifMod, gifVKey, videoMod, videoVKey)) {
+                               static_cast<quint32>(m_settings->value("videoCaptureHotkeyVKey", 0).toUInt())}) ||
+        settingsHotkeyChanged({windowMod, windowVKey},
+                              {static_cast<quint32>(m_settings->value("windowCaptureHotkeyModifiers", defaultWindowCaptureModifiers()).toUInt()),
+                               static_cast<quint32>(m_settings->value("windowCaptureHotkeyVKey", defaultWindowCaptureVirtualKey()).toUInt())});
+    if (actionHotkeysChanged && !HotkeyManager::instance().reRegisterActionHotkeys(
+            instantMod, instantVKey, gifMod, gifVKey, videoMod, videoVKey,
+            windowMod, windowVKey)) {
         QMessageBox::warning(
             this,
             TranslationManager::errInvalidHotkeyTitle(),
@@ -2509,6 +2545,8 @@ void SettingsDialog::onSave()
     m_settings->setValue("gifCaptureHotkeyVKey",          gifVKey);
     m_settings->setValue("videoCaptureHotkeyModifiers",   videoMod);
     m_settings->setValue("videoCaptureHotkeyVKey",        videoVKey);
+    m_settings->setValue("windowCaptureHotkeyModifiers", windowMod);
+    m_settings->setValue("windowCaptureHotkeyVKey",      windowVKey);
     for (auto it = m_overlayHotkeyEdits.constBegin(); it != m_overlayHotkeyEdits.constEnd(); ++it) {
         if (it.value())
             m_settings->setValue(QStringLiteral("overlayShortcut/%1").arg(it.key()),
@@ -2639,6 +2677,7 @@ void SettingsDialog::onExportSettings()
     appendHotkey("instantCaptureHotkeyModifiers", "instantCaptureHotkeyVKey", m_instantCaptureHotkeyEdit);
     appendHotkey("gifCaptureHotkeyModifiers", "gifCaptureHotkeyVKey", m_gifCaptureHotkeyEdit);
     appendHotkey("videoCaptureHotkeyModifiers", "videoCaptureHotkeyVKey", m_videoCaptureHotkeyEdit);
+    appendHotkey("windowCaptureHotkeyModifiers", "windowCaptureHotkeyVKey", m_windowCaptureHotkeyEdit);
     obj["uploadProvider"] = m_settings->value("uploadProvider", 0).toInt();
     QJsonObject overlayShortcuts;
     for (auto it = m_overlayHotkeyEdits.constBegin(); it != m_overlayHotkeyEdits.constEnd(); ++it) {
@@ -2790,6 +2829,7 @@ void SettingsDialog::onImportSettings()
     importHotkey("instantCaptureHotkeyModifiers", "instantCaptureHotkeyVKey", m_instantCaptureHotkeyEdit);
     importHotkey("gifCaptureHotkeyModifiers", "gifCaptureHotkeyVKey", m_gifCaptureHotkeyEdit);
     importHotkey("videoCaptureHotkeyModifiers", "videoCaptureHotkeyVKey", m_videoCaptureHotkeyEdit);
+    importHotkey("windowCaptureHotkeyModifiers", "windowCaptureHotkeyVKey", m_windowCaptureHotkeyEdit);
     if (obj.contains("uploadProvider"))
         m_settings->setValue("uploadProvider", obj["uploadProvider"].toInt());
     if (obj.contains("overlayShortcuts") && obj["overlayShortcuts"].isObject()) {

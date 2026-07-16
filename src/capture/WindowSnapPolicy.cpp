@@ -25,9 +25,24 @@ bool isWindowSnapClick(const QPoint &pressPosition,
         && (releasePosition - pressPosition).manhattanLength() < dragThreshold;
 }
 
+QRect windowSnapTargetForMode(CaptureSelectionMode mode,
+                              const QVector<QRect> &windows,
+                              const QPoint &point,
+                              const QRect &overlayBounds)
+{
+    if (mode != CaptureSelectionMode::Window)
+        return {};
+    return topmostWindowAt(windows, point, overlayBounds);
+}
+
+bool allowsManualSelection(CaptureSelectionMode mode)
+{
+    return mode == CaptureSelectionMode::FreeRegion;
+}
+
 int windowSnapAnimationDurationMs()
 {
-    return 85;
+    return 120;
 }
 
 QRect windowSnapTransitionRect(const QRect &from, const QRect &to, qreal progress)

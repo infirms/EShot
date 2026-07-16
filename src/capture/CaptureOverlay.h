@@ -13,6 +13,7 @@
 #include <QPointer>
 
 #include "CaptureGeometry.h"
+#include "WindowSnapPolicy.h"
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -45,6 +46,7 @@ public:
     explicit CaptureOverlay(QWidget *parent = nullptr);
     ~CaptureOverlay();
     void startCapture();
+    void startWindowCapture();
     void startInstantCapture();
     void startCaptureForRecording();
     void refreshUI();
@@ -72,6 +74,7 @@ protected:
 
 private:
     void captureAllScreens();
+    void startCaptureInternal(CaptureSelectionMode selectionMode, bool recordingMode);
     void showToolbar();
     void hideToolbar();
     void finishCapture();
@@ -105,6 +108,7 @@ private:
     QRect m_pressedWindowRect;
     QPoint m_windowSnapPressPosition;
     bool m_windowSnapClickPending = false;
+    CaptureSelectionMode m_selectionMode = CaptureSelectionMode::FreeRegion;
 
     QRect m_virtualDesktopRect;
     QScreen *m_captureScreen = nullptr;

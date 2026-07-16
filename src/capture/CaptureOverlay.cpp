@@ -1506,10 +1506,21 @@ void CaptureOverlay::prewarm()
 
 void CaptureOverlay::startCapture()
 {
+    startCaptureInternal(CaptureSelectionMode::FreeRegion, false);
+}
+
+void CaptureOverlay::startWindowCapture()
+{
+    startCaptureInternal(CaptureSelectionMode::Window, false);
+}
+
+void CaptureOverlay::startCaptureInternal(CaptureSelectionMode selectionMode, bool recordingMode)
+{
     m_captureLatencyTimer.start();
     m_logNextCapturePaint = true;
     if (m_captureDelayTimer) m_captureDelayTimer->stop();
-    m_captureMode = ModeNormal;
+    m_captureMode = recordingMode ? ModeRecording : ModeNormal;
+    m_selectionMode = selectionMode;
     m_isSelecting = false;
     m_selectionComplete = false;
     m_ignoreNextMouseRelease = false;
@@ -1584,8 +1595,7 @@ void CaptureOverlay::startInstantCapture()
 
 void CaptureOverlay::startCaptureForRecording()
 {
-    startCapture();
-    m_captureMode = ModeRecording;
+    startCaptureInternal(CaptureSelectionMode::FreeRegion, true);
     setCursor(Qt::CrossCursor);
 }
 
@@ -1632,10 +1642,12 @@ void CaptureOverlay::performCapture()
     ::SetForegroundWindow(hwnd);
     ::BringWindowToTop(hwnd);
 
-    m_windowSnapCandidates = windowsForCaptureOverlay(
-        reinterpret_cast<quintptr>(hwnd), m_captureMonitors, m_virtualDesktopRect);
-    setHoveredWindowRect(topmostWindowAt(
-        m_windowSnapCandidates, mapFromGlobal(QCursor::pos()), rect()));
+    if (m_selectionMode == CaptureSelectionMode::Window) {
+        m_windowSnapCandidates = windowsForCaptureOverlay(
+            reinterpret_cast<quintptr>(hwnd), m_captureMonitors, m_virtualDesktopRect);
+    }
+    setHoveredWindowRect(windowSnapTargetForMode(
+        m_selectionMode, m_windowSnapCandidates, mapFromGlobal(QCursor::pos()), rect()));
 #endif
 
     activateWindow();
@@ -2248,6 +2260,10 @@ void CaptureOverlay::mousePressEvent(QMouseEvent *event)
                 event->accept();
                 return;
             }
+            if (!allowsManualSelection(m_selectionMode)) {
+                event->accept();
+                return;
+            }
             m_isSelecting = true;
             m_selectionStart = event->pos();
             m_selectionEnd = event->pos();
@@ -2285,6 +2301,8 @@ void CaptureOverlay::mouseDoubleClickEvent(QMouseEvent *event)
 {
     if (event->button() != Qt::LeftButton || m_eyedropperActive || m_selectionLocked)
         return;
+    if (!allowsManualSelection(m_selectionMode))
+        return;
     if (m_toolbar && m_toolbar->isVisible() && m_toolbar->geometry().contains(event->pos()))
         return;
     if (m_actionPanel && m_actionPanel->isVisible() && m_actionPanel->geometry().contains(event->pos()))
@@ -2309,12 +2327,17 @@ void CaptureOverlay::mouseMoveEvent(QMouseEvent *event)
                                QApplication::startDragDistance())) {
             m_windowSnapClickPending = false;
             m_pressedWindowRect = QRect();
-            setHoveredWindowRect(QRect());
-            m_isSelecting = true;
-            m_selectionStart = m_windowSnapPressPosition;
-            m_selectionEnd = event->pos();
-            m_selectionAnchorScreenRect = monitorRectAt(m_windowSnapPressPosition);
-            hideToolbar();
+            if (allowsManualSelection(m_selectionMode)) {
+                setHoveredWindowRect(QRect());
+                m_isSelecting = true;
+                m_selectionStart = m_windowSnapPressPosition;
+                m_selectionEnd = event->pos();
+                m_selectionAnchorScreenRect = monitorRectAt(m_windowSnapPressPosition);
+                hideToolbar();
+            } else {
+                setHoveredWindowRect(windowSnapTargetForMode(
+                    m_selectionMode, m_windowSnapCandidates, event->pos(), rect()));
+            }
         }
         update();
         return;
@@ -2385,7 +2408,8 @@ void CaptureOverlay::mouseMoveEvent(QMouseEvent *event)
             }
         }
     } else if (!m_selectionComplete) {
-        const QRect hovered = topmostWindowAt(m_windowSnapCandidates, event->pos(), rect());
+        const QRect hovered = windowSnapTargetForMode(
+            m_selectionMode, m_windowSnapCandidates, event->pos(), rect());
         if (hovered != m_hoveredWindowRect) {
             setHoveredWindowRect(hovered);
         } else {

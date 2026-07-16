@@ -180,6 +180,19 @@ public slots:
         m_overlay->startCapture();
     }
 
+    void onWindowCaptureRequested()
+    {
+#ifdef Q_OS_WIN
+        if (closeBlockingDialogs()) {
+            QTimer::singleShot(80, this, &EShotApp::onWindowCaptureRequested);
+            return;
+        }
+        if (m_overlay && m_overlay->isVisible()) return;
+        ensureOverlay();
+        m_overlay->startWindowCapture();
+#endif
+    }
+
     void showSuccessNotification(const QString &message, const QString &path, int timeoutMs)
     {
         if (!m_trayIcon || !m_showNotifications)
@@ -731,6 +744,12 @@ private:
 
         QAction *captureAction = m_trayMenu->addAction(trayIcon(":/icons/copy.svg"), TranslationManager::trayCapture());
         connect(captureAction, &QAction::triggered, this, &EShotApp::onCaptureRequested);
+#ifdef Q_OS_WIN
+        QAction *windowCaptureAction = m_trayMenu->addAction(
+            trayIcon(":/icons/rectangle.svg"), TranslationManager::trayWindowCapture());
+        connect(windowCaptureAction, &QAction::triggered,
+                this, &EShotApp::onWindowCaptureRequested);
+#endif
 
         if (hasPrintScreenConflict()) {
             QAction *fixPrintScreenAction = m_trayMenu->addAction(
@@ -832,6 +851,8 @@ private:
                 this, &EShotApp::onRecordGifRequested);
         connect(&HotkeyManager::instance(), &HotkeyManager::videoCaptureRequested,
                 this, &EShotApp::onRecordVideoRequested);
+        connect(&HotkeyManager::instance(), &HotkeyManager::windowCaptureRequested,
+                this, &EShotApp::onWindowCaptureRequested);
         connect(&HotkeyManager::instance(), &HotkeyManager::recordingPauseRequested, this, [this]() {
             if (m_videoRecorder && m_videoRecorder->isRecording()) {
                 if (m_videoRecorder->isPaused()) m_videoRecorder->resume();

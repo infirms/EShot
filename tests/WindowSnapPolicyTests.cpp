@@ -51,13 +51,39 @@ private slots:
 
     void windowHighlightUsesFastCubicGeometryTransition()
     {
-        QCOMPARE(windowSnapAnimationDurationMs(), 85);
+        QCOMPARE(windowSnapAnimationDurationMs(), 120);
         const QRect from(0, 0, 100, 100);
         const QRect to(100, 200, 300, 500);
         QCOMPARE(windowSnapTransitionRect(from, to, 0.0), from);
         QCOMPARE(windowSnapTransitionRect(from, to, 0.5),
                  QRect(88, 175, 275, 450));
         QCOMPARE(windowSnapTransitionRect(from, to, 1.0), to);
+    }
+
+    void freeRegionModeNeverTargetsWindows()
+    {
+        const QVector<QRect> windows = {QRect(0, 0, 1920, 1080)};
+
+        QVERIFY(windowSnapTargetForMode(CaptureSelectionMode::FreeRegion, windows,
+                                        QPoint(600, 400), QRect(0, 0, 1920, 1080)).isEmpty());
+    }
+
+    void windowModeTargetsTopmostWindow()
+    {
+        const QVector<QRect> windows = {
+            QRect(300, 200, 800, 600),
+            QRect(0, 0, 1920, 1080)
+        };
+
+        QCOMPARE(windowSnapTargetForMode(CaptureSelectionMode::Window, windows,
+                                         QPoint(600, 400), QRect(0, 0, 1920, 1080)),
+                 windows.first());
+    }
+
+    void onlyFreeRegionModeAllowsManualSelection()
+    {
+        QVERIFY(allowsManualSelection(CaptureSelectionMode::FreeRegion));
+        QVERIFY(!allowsManualSelection(CaptureSelectionMode::Window));
     }
 };
 

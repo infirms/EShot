@@ -25,7 +25,8 @@ public:
                                     UINT cancelModifiers, UINT cancelVirtualKey);
     bool reRegisterActionHotkeys(UINT instantModifiers, UINT instantVirtualKey,
                                  UINT gifModifiers, UINT gifVirtualKey,
-                                 UINT videoModifiers, UINT videoVirtualKey);
+                                 UINT videoModifiers, UINT videoVirtualKey,
+                                 UINT windowModifiers, UINT windowVirtualKey);
     bool requestLinuxPortalShortcutRebind();
     bool linuxPortalShortcutsAvailable() const;
     UINT captureModifiers() const { return m_captureModifiers; }
@@ -47,6 +48,7 @@ signals:
     void instantCaptureRequested();
     void gifCaptureRequested();
     void videoCaptureRequested();
+    void windowCaptureRequested();
 
 private:
     explicit HotkeyManager(QObject *parent = nullptr);
@@ -70,6 +72,8 @@ private:
     UINT m_gifCaptureVirtualKey = 0;
     UINT m_videoCaptureModifiers = 0;
     UINT m_videoCaptureVirtualKey = 0;
+    UINT m_windowCaptureModifiers = 0;
+    UINT m_windowCaptureVirtualKey = 0;
     void *m_x11Display = nullptr;
     unsigned long m_x11RootWindow = 0;
     LinuxPortalGlobalShortcuts *m_portalShortcuts = nullptr;
@@ -89,6 +93,7 @@ public:
     static constexpr int HOTKEY_INSTANT_CAPTURE = 5;
     static constexpr int HOTKEY_GIF_CAPTURE = 6;
     static constexpr int HOTKEY_VIDEO_CAPTURE = 7;
+    static constexpr int HOTKEY_WINDOW_CAPTURE = 8;
 };
 
 #endif

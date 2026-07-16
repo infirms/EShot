@@ -158,6 +158,7 @@ private:
     QKeySequenceEdit *m_instantCaptureHotkeyEdit = nullptr;
     QKeySequenceEdit *m_gifCaptureHotkeyEdit = nullptr;
     QKeySequenceEdit *m_videoCaptureHotkeyEdit = nullptr;
+    QKeySequenceEdit *m_windowCaptureHotkeyEdit = nullptr;
     QMap<QString, QKeySequenceEdit*> m_overlayHotkeyEdits;
     QLabel *m_hotkeyStatusLabel = nullptr;
     QLabel *m_printScreenConflictLabel = nullptr;
