@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(EShot VERSION 4.0.9 LANGUAGES CXX)
+project(EShot VERSION 4.1.0 LANGUAGES CXX)
 
 include(CTest)
 
@@ -58,6 +58,7 @@ set(SOURCES
     src/capture/PinManager.cpp
     src/annotation/AnnotationEngine.cpp
     src/ui/AnnotationToolbar.cpp
+    src/ui/ApplicationTheme.cpp
     src/ui/SettingsDialog.cpp
     src/ui/SettingsHotkeyPolicy.cpp
     src/ui/SettingsLayoutPolicy.cpp
@@ -108,6 +109,7 @@ set(HEADERS
     src/capture/PinManager.h
     src/annotation/AnnotationEngine.h
     src/ui/AnnotationToolbar.h
+    src/ui/ApplicationTheme.h
     src/ui/SettingsDialog.h
     src/ui/SettingsHotkeyPolicy.h
     src/ui/SettingsLayoutPolicy.h
@@ -311,6 +313,15 @@ if(BUILD_TESTING)
     target_include_directories(eshot_settings_hotkey_policy_tests PRIVATE src)
     target_link_libraries(eshot_settings_hotkey_policy_tests PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME settings_hotkey_policy COMMAND eshot_settings_hotkey_policy_tests)
+
+    qt_add_executable(eshot_application_theme_tests
+        tests/ApplicationThemeTests.cpp
+        src/ui/ApplicationTheme.cpp
+        src/ui/ApplicationTheme.h
+    )
+    target_include_directories(eshot_application_theme_tests PRIVATE src)
+    target_link_libraries(eshot_application_theme_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Test)
+    add_test(NAME application_theme COMMAND eshot_application_theme_tests)
 
     qt_add_executable(eshot_about_dialog_tests
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/AboutDialogTests.cpp

@@ -74,6 +74,11 @@ if (( ${#packages[@]} > 0 )); then
   fi
 fi
 
+if (( desktop )) && [[ "$(eshot_desktop_backend)" == "gnome" ]] \
+   && command -v gnome-extensions >/dev/null 2>&1; then
+  gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com >/dev/null 2>&1 || true
+fi
+
 if (( integrate_appimage )); then
   if [[ -z "${APPIMAGE:-}" || ! -x "${APPIMAGE}" ]]; then
     eshot_show_error "$(eshot_setup_text integration_unavailable)"

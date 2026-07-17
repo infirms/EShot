@@ -162,6 +162,7 @@ private:
     void updateUndoRedoState();
     bool matchesOverlayShortcut(QKeyEvent *event, const QString &key, const QString &fallback) const;
     void selectAnnotationTool(int toolId);
+    void restoreAfterModalDialog();
 
     QPushButton *m_toolSettingsButton = nullptr;
     QWidget *m_toolSettingsDrawer = nullptr;

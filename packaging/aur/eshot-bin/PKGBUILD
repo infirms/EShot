@@ -7,6 +7,7 @@ url='https://github.com/Benoks/EShot'
 license=('MIT')
 depends=('fuse2' 'xdg-desktop-portal')
 optdepends=('xdg-desktop-portal-gnome: GNOME screenshot and recording integration'
+            'gnome-shell-extension-appindicator: tray icon support on GNOME'
             'xdg-desktop-portal-kde: KDE Plasma screenshot and recording integration'
             'ffmpeg: GIF encoding and media export'
             'tesseract: OCR support'

@@ -12,6 +12,8 @@
 #include <QHBoxLayout>
 #include <QFontComboBox>
 #include <QSpinBox>
+#include <QPointer>
+#include <QTimer>
 
 namespace {
 QStringList defaultAnnotationTools()
@@ -676,7 +678,13 @@ void AnnotationToolbar::onActionButtonClicked()
 
 void AnnotationToolbar::onColorButtonClicked()
 {
+#ifdef Q_OS_LINUX
     QColorDialog dlg(m_currentColor, this);
+    dlg.setOption(QColorDialog::DontUseNativeDialog, true);
+    dlg.setWindowFlag(Qt::WindowStaysOnTopHint, true);
+#else
+    QColorDialog dlg(m_currentColor, this);
+#endif
     dlg.setWindowTitle(TranslationManager::toolColor());
     if (dlg.exec() == QDialog::Accepted) {
         QColor c = dlg.selectedColor();
@@ -689,6 +697,15 @@ void AnnotationToolbar::onColorButtonClicked()
             emit colorChanged(c);
         }
     }
+
+    QPointer<QWidget> overlay(window());
+    QTimer::singleShot(0, this, [overlay]() {
+        if (!overlay)
+            return;
+        overlay->raise();
+        overlay->activateWindow();
+        overlay->setFocus(Qt::ActiveWindowFocusReason);
+    });
 }
 
 void AnnotationToolbar::onWidthSliderChanged(int value) { emit penWidthChanged(value); }

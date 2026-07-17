@@ -36,6 +36,7 @@ public:
     QString recordingPauseShortcutText() const;
     QString recordingStopShortcutText() const;
     QString recordingCancelShortcutText() const;
+    static QString shortcutText(UINT modifiers, UINT virtualKey);
     static bool isPlainPrintScreen(UINT modifiers, UINT virtualKey);
     static bool isWindowsPrintScreenSnippingEnabled();
     static bool setWindowsPrintScreenSnippingEnabled(bool enabled);

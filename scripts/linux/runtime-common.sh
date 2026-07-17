@@ -46,7 +46,9 @@ eshot_runtime_packages() {
       local portal="xdg-desktop-portal-gtk"
       [[ "${backend}" == "kde" ]] && portal="xdg-desktop-portal-kde"
       [[ "${backend}" == "gnome" ]] && portal="xdg-desktop-portal-gnome"
-      printf '%s\n' "ffmpeg tesseract tesseract-data-eng pipewire wireplumber gst-plugin-pipewire gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav xdg-desktop-portal ${portal}"
+      local tray=""
+      [[ "${backend}" == "gnome" ]] && tray="gnome-shell-extension-appindicator"
+      printf '%s\n' "ffmpeg tesseract tesseract-data-eng pipewire wireplumber gst-plugin-pipewire gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav xdg-desktop-portal ${portal} ${tray}"
       ;;
     apt)
       local portal="xdg-desktop-portal-gtk"
@@ -96,6 +98,7 @@ eshot_selected_packages() {
     [[ "${backend}" == gnome ]] && portal="xdg-desktop-portal-gnome"
     if [[ "${manager}" == pacman ]]; then
       packages+=(pipewire wireplumber gst-plugin-pipewire gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav xdg-desktop-portal "${portal}")
+      [[ "${backend}" == gnome ]] && packages+=(gnome-shell-extension-appindicator)
     elif [[ "${manager}" == dnf ]]; then
       packages+=(pipewire wireplumber pipewire-gstreamer gstreamer1-plugins-base gstreamer1-plugins-good gstreamer1-plugins-bad-free gstreamer1-plugins-ugly-free gstreamer1-libav xdg-desktop-portal "${portal}")
     else

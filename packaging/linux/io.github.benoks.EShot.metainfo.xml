@@ -34,6 +34,11 @@
   <url type="homepage">https://github.com/Benoks/EShot</url>
   <url type="bugtracker">https://github.com/Benoks/EShot/issues</url>
   <releases>
+    <release version="4.1.0" date="2026-07-17">
+      <description>
+        <p>Improves KDE Plasma and GNOME capture reliability, restores capture shortcuts after dialogs, fixes the annotation color picker and theme startup, and improves first-run GNOME shortcut and tray integration.</p>
+      </description>
+    </release>
     <release version="4.0.9" date="2026-07-16">
       <description>
         <p>Adds a dedicated animated window capture mode on Windows, improves recording defaults and controls, and fixes Windows tray startup, audio device, and packaged SVG icon issues.</p>

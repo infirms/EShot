@@ -15,7 +15,8 @@ namespace LinuxPortalHostRegistry {
 QString applicationId();
 LinuxPortalHostRegistrationState registerApplication();
 LinuxPortalHostRegistrationState state();
-LinuxPortalHostRegistrationState classifyReply(bool success, const QString &errorName);
+LinuxPortalHostRegistrationState classifyReply(bool success, const QString &errorName,
+                                                const QString &errorMessage = QString());
 bool portalMayIdentifyApp(LinuxPortalHostRegistrationState registrationState);
 
 }

@@ -55,6 +55,7 @@
 #include "recording/RecordingIndicator.h"
 #include "recording/RecordingSettingsPolicy.h"
 #include "ui/SettingsDialog.h"
+#include "ui/ApplicationTheme.h"
 #include "ui/AboutDialog.h"
 #include "ui/FirstRunWizard.h"
 
@@ -148,7 +149,7 @@ public:
         if (initializeHotkeys)
             initializeHotkeyConnections();
         checkForUpdates();
-        QTimer::singleShot(700, this, [this]() { ensureOverlay(); });
+        QTimer::singleShot(100, this, [this]() { ensureOverlay(); });
     }
 
     ~EShotApp()
@@ -167,6 +168,7 @@ public slots:
             return;
         m_hotkeysInitialized = true;
         setupHotkey();
+        rebuildTrayMenu();
     }
 
     void onCaptureRequested()
@@ -743,16 +745,21 @@ private:
         m_trayMenu->clear();
 
         QAction *captureAction = m_trayMenu->addAction(trayIcon(":/icons/copy.svg"), TranslationManager::trayCapture());
+        QSettings hotkeySettings("EShot", "EShot");
+        const UINT captureModifiers = static_cast<UINT>(hotkeySettings.value("hotkeyModifiers", 0).toUInt());
+        const UINT captureVirtualKey = static_cast<UINT>(hotkeySettings.value("hotkeyVKey", VK_SNAPSHOT).toUInt());
         captureAction->setToolTip(QStringLiteral("%1 (%2)").arg(
             TranslationManager::trayCapture(),
-            HotkeyManager::instance().captureShortcutText()));
+            HotkeyManager::shortcutText(captureModifiers, captureVirtualKey)));
         connect(captureAction, &QAction::triggered, this, &EShotApp::onCaptureRequested);
 #ifdef Q_OS_WIN
         QAction *windowCaptureAction = m_trayMenu->addAction(
             trayIcon(":/icons/rectangle.svg"), TranslationManager::trayWindowCapture());
         windowCaptureAction->setToolTip(QStringLiteral("%1 (%2)").arg(
             TranslationManager::trayWindowCapture(),
-            HotkeyManager::instance().windowCaptureShortcutText()));
+            HotkeyManager::shortcutText(
+                static_cast<UINT>(hotkeySettings.value("windowCaptureHotkeyModifiers", MOD_SHIFT).toUInt()),
+                static_cast<UINT>(hotkeySettings.value("windowCaptureHotkeyVKey", VK_SNAPSHOT).toUInt()))));
         connect(windowCaptureAction, &QAction::triggered,
                 this, &EShotApp::onWindowCaptureRequested);
 #endif
@@ -904,10 +911,14 @@ private:
 
     bool hasPrintScreenConflict() const
     {
+#ifdef Q_OS_WIN
         return HotkeyManager::isPlainPrintScreen(
-                   HotkeyManager::instance().captureModifiers(),
-                   HotkeyManager::instance().captureVirtualKey())
+                   static_cast<UINT>(QSettings("EShot", "EShot").value("hotkeyModifiers", 0).toUInt()),
+                   static_cast<UINT>(QSettings("EShot", "EShot").value("hotkeyVKey", VK_SNAPSHOT).toUInt()))
             && HotkeyManager::isWindowsPrintScreenSnippingEnabled();
+#else
+        return false;
+#endif
     }
 
     void checkForUpdates()
@@ -1235,39 +1246,7 @@ int main(int argc, char *argv[])
     bool highContrast = settings.value("highContrast", false).toBool();
     bool darkMode = settings.value("darkMode", true).toBool();
 
-    if (highContrast || darkMode) {
-        QPalette p;
-        if (highContrast) {
-            p.setColor(QPalette::Window, Qt::black);
-            p.setColor(QPalette::WindowText, Qt::white);
-            p.setColor(QPalette::Base, Qt::black);
-            p.setColor(QPalette::AlternateBase, QColor(30,30,30));
-            p.setColor(QPalette::ToolTipBase, Qt::black);
-            p.setColor(QPalette::ToolTipText, Qt::yellow);
-            p.setColor(QPalette::Text, Qt::white);
-            p.setColor(QPalette::Button, Qt::black);
-            p.setColor(QPalette::ButtonText, Qt::white);
-            p.setColor(QPalette::BrightText, Qt::red);
-            p.setColor(QPalette::Link, Qt::cyan);
-            p.setColor(QPalette::Highlight, Qt::yellow);
-            p.setColor(QPalette::HighlightedText, Qt::black);
-        } else {
-            p.setColor(QPalette::Window, QColor(53,53,53));
-            p.setColor(QPalette::WindowText, Qt::white);
-            p.setColor(QPalette::Base, QColor(42,42,42));
-            p.setColor(QPalette::AlternateBase, QColor(66,66,66));
-            p.setColor(QPalette::ToolTipBase, QColor(53,53,53));
-            p.setColor(QPalette::ToolTipText, Qt::white);
-            p.setColor(QPalette::Text, Qt::white);
-            p.setColor(QPalette::Button, QColor(53,53,53));
-            p.setColor(QPalette::ButtonText, Qt::white);
-            p.setColor(QPalette::BrightText, Qt::red);
-            p.setColor(QPalette::Link, QColor(42,130,218));
-            p.setColor(QPalette::Highlight, QColor(42,130,218));
-            p.setColor(QPalette::HighlightedText, Qt::black);
-        }
-        app.setPalette(p);
-    }
+    applyEShotApplicationTheme(app, darkMode, highContrast);
 
     if (!QSystemTrayIcon::isSystemTrayAvailable()) {
         qWarning() << "[EShot] System tray is not available yet; keeping the app alive for startup.";

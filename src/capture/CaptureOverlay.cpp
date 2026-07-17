@@ -3066,8 +3066,7 @@ void CaptureOverlay::onOcrRequested()
     OcrDialog dlg(pix);
     dlg.setLanguageTag(lang);
     dlg.exec();
-    show();
-    if (m_selectionComplete) showToolbar();
+    restoreAfterModalDialog();
 }
 
 void CaptureOverlay::onUploadRequested()
@@ -3078,8 +3077,25 @@ void CaptureOverlay::onUploadRequested()
     UploadDialog dlg;
     dlg.setImage(pix);
     dlg.exec();
+    restoreAfterModalDialog();
+}
+
+void CaptureOverlay::restoreAfterModalDialog()
+{
     show();
-    if (m_selectionComplete) showToolbar();
+    if (m_selectionComplete)
+        showToolbar();
+
+    QPointer<CaptureOverlay> self(this);
+    QTimer::singleShot(0, this, [self]() {
+        if (!self)
+            return;
+        self->raise();
+        self->activateWindow();
+        if (self->windowHandle())
+            self->windowHandle()->requestActivate();
+        self->setFocus(Qt::ActiveWindowFocusReason);
+    });
 }
 
 void CaptureOverlay::onGoogleLensRequested()

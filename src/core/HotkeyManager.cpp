@@ -95,38 +95,36 @@ HotkeyManager& HotkeyManager::instance()
     return inst;
 }
 
-namespace {
-QString displayShortcut(UINT modifiers, UINT virtualKey)
+QString HotkeyManager::shortcutText(UINT modifiers, UINT virtualKey)
 {
     const QString portable = LinuxPortalGlobalShortcuts::preferredTrigger(modifiers, virtualKey);
     return QKeySequence::fromString(portable, QKeySequence::PortableText)
         .toString(QKeySequence::NativeText);
 }
-}
 
 QString HotkeyManager::recordingPauseShortcutText() const
 {
-    return displayShortcut(m_recordingPauseModifiers, m_recordingPauseVirtualKey);
+    return shortcutText(m_recordingPauseModifiers, m_recordingPauseVirtualKey);
 }
 
 QString HotkeyManager::captureShortcutText() const
 {
-    return displayShortcut(m_captureModifiers, m_captureVirtualKey);
+    return shortcutText(m_captureModifiers, m_captureVirtualKey);
 }
 
 QString HotkeyManager::windowCaptureShortcutText() const
 {
-    return displayShortcut(m_windowCaptureModifiers, m_windowCaptureVirtualKey);
+    return shortcutText(m_windowCaptureModifiers, m_windowCaptureVirtualKey);
 }
 
 QString HotkeyManager::recordingStopShortcutText() const
 {
-    return displayShortcut(m_recordingStopModifiers, m_recordingStopVirtualKey);
+    return shortcutText(m_recordingStopModifiers, m_recordingStopVirtualKey);
 }
 
 QString HotkeyManager::recordingCancelShortcutText() const
 {
-    return displayShortcut(m_recordingCancelModifiers, m_recordingCancelVirtualKey);
+    return shortcutText(m_recordingCancelModifiers, m_recordingCancelVirtualKey);
 }
 
 HotkeyManager::HotkeyManager(QObject *parent) : QObject(parent)

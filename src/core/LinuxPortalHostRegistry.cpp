@@ -22,10 +22,19 @@ QString applicationId()
     return QStringLiteral("io.github.benoks.EShot");
 }
 
-LinuxPortalHostRegistrationState classifyReply(bool success, const QString &errorName)
+LinuxPortalHostRegistrationState classifyReply(bool success, const QString &errorName,
+                                                const QString &errorMessage)
 {
     if (success)
         return LinuxPortalHostRegistrationState::Registered;
+
+    // Register() is connection-scoped. A second registration attempt on the
+    // same D-Bus connection means the portal already knows our application ID.
+    if (errorName == QStringLiteral("org.freedesktop.portal.Error.Failed")
+        && errorMessage.contains(QStringLiteral("already associated with an application ID"),
+                                 Qt::CaseInsensitive)) {
+        return LinuxPortalHostRegistrationState::Registered;
+    }
 
     if (errorName == QStringLiteral("org.freedesktop.DBus.Error.UnknownInterface")
         || errorName == QStringLiteral("org.freedesktop.DBus.Error.UnknownMethod")
@@ -63,7 +72,7 @@ LinuxPortalHostRegistrationState registerApplication()
     message.setArguments({applicationId(), QVariantMap()});
     const QDBusMessage reply = bus.call(message, QDBus::Block, 5000);
     const bool success = reply.type() != QDBusMessage::ErrorMessage;
-    registrationState = classifyReply(success, reply.errorName());
+    registrationState = classifyReply(success, reply.errorName(), reply.errorMessage());
     if (registrationState == LinuxPortalHostRegistrationState::Registered) {
         qInfo() << "[PortalRegistry] registered host app id=" << applicationId();
     } else if (registrationState == LinuxPortalHostRegistrationState::Unsupported) {

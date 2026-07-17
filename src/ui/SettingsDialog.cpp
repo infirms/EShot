@@ -1,6 +1,7 @@
 #include "SettingsDialog.h"
 #include "SettingsHotkeyPolicy.h"
 #include "SettingsLayoutPolicy.h"
+#include "ApplicationTheme.h"
 #include "../core/HotkeyManager.h"
 #include "../core/LinuxAutoStartPolicy.h"
 #include "../core/LinuxDesktopIntegration.h"
@@ -22,6 +23,7 @@
 #include <QFormLayout>
 #include <QMessageBox>
 #include <QApplication>
+#include <QSignalBlocker>
 #include <QDir>
 #include <QFileInfo>
 #include <QDateTime>
@@ -2094,6 +2096,8 @@ void SettingsDialog::loadSettings()
     m_qualitySlider->setEnabled(jpeg);
     m_qualitySpin->setEnabled(jpeg);
 
+    const QSignalBlocker darkModeBlocker(m_darkModeCheck);
+    const QSignalBlocker highContrastBlocker(m_highContrastCheck);
     m_darkModeCheck->setChecked(m_settings->value("darkMode", true).toBool());
     int opacity = m_settings->value("overlayOpacity", 100).toInt();
     m_opacitySlider->setValue(opacity);
@@ -2887,52 +2891,6 @@ void SettingsDialog::onImportSettings()
 
 void SettingsDialog::onThemeChanged()
 {
-    bool dark = m_darkModeCheck->isChecked();
-    bool highContrast = m_highContrastCheck->isChecked();
-    QPalette p;
-    if (highContrast) {
-        // High contrast mode
-        p.setColor(QPalette::Window, Qt::black);
-        p.setColor(QPalette::WindowText, Qt::white);
-        p.setColor(QPalette::Base, Qt::black);
-        p.setColor(QPalette::AlternateBase, QColor(30,30,30));
-        p.setColor(QPalette::ToolTipBase, Qt::black);
-        p.setColor(QPalette::ToolTipText, Qt::yellow);
-        p.setColor(QPalette::Text, Qt::white);
-        p.setColor(QPalette::Button, Qt::black);
-        p.setColor(QPalette::ButtonText, Qt::white);
-        p.setColor(QPalette::BrightText, Qt::red);
-        p.setColor(QPalette::Link, Qt::cyan);
-        p.setColor(QPalette::Highlight, Qt::yellow);
-        p.setColor(QPalette::HighlightedText, Qt::black);
-    } else if (dark) {
-        p.setColor(QPalette::Window, QColor(53,53,53));
-        p.setColor(QPalette::WindowText, Qt::white);
-        p.setColor(QPalette::Base, QColor(42,42,42));
-        p.setColor(QPalette::AlternateBase, QColor(66,66,66));
-        p.setColor(QPalette::ToolTipBase, QColor(53,53,53));
-        p.setColor(QPalette::ToolTipText, Qt::white);
-        p.setColor(QPalette::Text, Qt::white);
-        p.setColor(QPalette::Button, QColor(53,53,53));
-        p.setColor(QPalette::ButtonText, Qt::white);
-        p.setColor(QPalette::BrightText, Qt::red);
-        p.setColor(QPalette::Link, QColor(42,130,218));
-        p.setColor(QPalette::Highlight, QColor(42,130,218));
-        p.setColor(QPalette::HighlightedText, Qt::black);
-    } else {
-        p.setColor(QPalette::Window, QColor(240,240,240));
-        p.setColor(QPalette::WindowText, Qt::black);
-        p.setColor(QPalette::Base, Qt::white);
-        p.setColor(QPalette::AlternateBase, QColor(233,233,233));
-        p.setColor(QPalette::ToolTipBase, QColor(255,255,220));
-        p.setColor(QPalette::ToolTipText, Qt::black);
-        p.setColor(QPalette::Text, Qt::black);
-        p.setColor(QPalette::Button, QColor(240,240,240));
-        p.setColor(QPalette::ButtonText, Qt::black);
-        p.setColor(QPalette::BrightText, Qt::red);
-        p.setColor(QPalette::Link, QColor(0,0,255));
-        p.setColor(QPalette::Highlight, QColor(0,120,215));
-        p.setColor(QPalette::HighlightedText, Qt::white);
-    }
-    qApp->setPalette(p);
+    applyEShotApplicationTheme(*qApp, m_darkModeCheck->isChecked(),
+                               m_highContrastCheck->isChecked());
 }

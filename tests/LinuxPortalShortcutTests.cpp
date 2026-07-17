@@ -11,17 +11,22 @@ class LinuxPortalShortcutTests : public QObject {
 private slots:
     void classifiesHostPortalRegistration()
     {
-        QCOMPARE(LinuxPortalHostRegistry::classifyReply(true, QString()),
+        QCOMPARE(LinuxPortalHostRegistry::classifyReply(true, QString(), QString()),
                  LinuxPortalHostRegistrationState::Registered);
         QCOMPARE(LinuxPortalHostRegistry::classifyReply(
-                     false, QStringLiteral("org.freedesktop.DBus.Error.UnknownInterface")),
+                     false, QStringLiteral("org.freedesktop.DBus.Error.UnknownInterface"), QString()),
                  LinuxPortalHostRegistrationState::Unsupported);
         QCOMPARE(LinuxPortalHostRegistry::classifyReply(
-                     false, QStringLiteral("org.freedesktop.DBus.Error.UnknownMethod")),
+                     false, QStringLiteral("org.freedesktop.DBus.Error.UnknownMethod"), QString()),
                  LinuxPortalHostRegistrationState::Unsupported);
         QCOMPARE(LinuxPortalHostRegistry::classifyReply(
-                     false, QStringLiteral("org.freedesktop.portal.Error.NotAllowed")),
+                     false, QStringLiteral("org.freedesktop.portal.Error.NotAllowed"), QString()),
                  LinuxPortalHostRegistrationState::Failed);
+        QCOMPARE(LinuxPortalHostRegistry::classifyReply(
+                     false,
+                     QStringLiteral("org.freedesktop.portal.Error.Failed"),
+                     QStringLiteral("Connection already associated with an application ID")),
+                 LinuxPortalHostRegistrationState::Registered);
         QVERIFY(LinuxPortalHostRegistry::portalMayIdentifyApp(
             LinuxPortalHostRegistrationState::Registered));
         QVERIFY(LinuxPortalHostRegistry::portalMayIdentifyApp(
