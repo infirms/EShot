@@ -31,7 +31,7 @@ grep -F 'release-assets/EShot-Setup-x64/*.exe' "${workflow}" >/dev/null
 grep -F 'release-assets/EShot-Setup-arm64/*.exe' "${workflow}" >/dev/null
 grep -F '      - linux-build' "${workflow}" >/dev/null
 grep -F 'release-assets/EShot-linux-packages/EShot-${{ github.ref_name }}-x86_64.AppImage' "${workflow}" >/dev/null
-grep -F 'body_path: packaging/release-notes/v4.1.0.md' "${workflow}" >/dev/null
+grep -F 'body_path: packaging/release-notes/v4.1.1.md' "${workflow}" >/dev/null
 grep -F 'if: startsWith(github.ref, '"'"'refs/tags/v'"'"')' "${workflow}" >/dev/null
 grep -F 'scripts/linux/apply-release-version.sh' "${workflow}" >/dev/null
 grep -F 'libqt6svg6' "${workflow}" >/dev/null

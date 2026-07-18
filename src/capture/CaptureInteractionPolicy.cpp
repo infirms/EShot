@@ -30,3 +30,23 @@ QRect captureHintRect(const QRect &monitorRect, const QSize &preferredSize)
     const int y = monitorRect.top() + qMin(TopMargin, qMax(0, monitorRect.height() - height));
     return QRect(x, y, width, height);
 }
+
+int quickSettingsTabHeight(int textWidth, int availableHeight)
+{
+    constexpr int MinimumHeight = 118;
+    constexpr int TextPadding = 32;
+    constexpr int ScreenMargins = 64;
+    const int preferredHeight = qMax(MinimumHeight, qMax(0, textWidth) + TextPadding);
+    const int maximumHeight = qMax(28, availableHeight - ScreenMargins);
+    return qMin(preferredHeight, maximumHeight);
+}
+
+bool shouldForwardCaptureKeyFromManagedProxy(bool textEditorVisible)
+{
+    return !textEditorVisible;
+}
+
+bool shouldDetachModalFromOverlay(bool xwaylandOverlay)
+{
+    return xwaylandOverlay;
+}

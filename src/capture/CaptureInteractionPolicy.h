@@ -8,3 +8,6 @@ int initialAnnotationTool(bool rememberLastTool, int storedTool, int noneTool);
 bool shouldShowCaptureHints(bool enabled, bool selecting, bool selectionComplete,
                             bool eyedropperActive);
 QRect captureHintRect(const QRect &monitorRect, const QSize &preferredSize);
+int quickSettingsTabHeight(int textWidth, int availableHeight);
+bool shouldForwardCaptureKeyFromManagedProxy(bool textEditorVisible);
+bool shouldDetachModalFromOverlay(bool xwaylandOverlay);

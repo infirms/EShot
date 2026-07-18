@@ -34,6 +34,11 @@
   <url type="homepage">https://github.com/Benoks/EShot</url>
   <url type="bugtracker">https://github.com/Benoks/EShot/issues</url>
   <releases>
+    <release version="4.1.1" date="2026-07-18">
+      <description>
+        <p>Restores capture shortcuts after modal dialogs on Linux, fixes the XWayland color picker freeze, and makes the vertical Quick Settings tab responsive to longer translations.</p>
+      </description>
+    </release>
     <release version="4.1.0" date="2026-07-17">
       <description>
         <p>Improves KDE Plasma and GNOME capture reliability, restores capture shortcuts after dialogs, fixes the annotation color picker and theme startup, and improves first-run GNOME shortcut and tray integration.</p>

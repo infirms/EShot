@@ -231,7 +231,14 @@ public:
     explicit SideTabButton(const QString &text, QWidget *parent = nullptr)
         : QPushButton(text, parent)
     {
-        setFixedSize(28, 118);
+        setFixedWidth(28);
+        fitToAvailableHeight(10000);
+    }
+
+    void fitToAvailableHeight(int availableHeight)
+    {
+        setFixedHeight(quickSettingsTabHeight(
+            QFontMetrics(labelFont()).horizontalAdvance(text()), availableHeight));
     }
 
 protected:
@@ -266,17 +273,23 @@ protected:
         painter.setPen(QPen(QColor(0, 0, 0, 90), 1));
         painter.drawLine(rect().topLeft(), rect().bottomLeft());
 
-        QFont labelFont = font();
-        labelFont.setPointSize(8);
-        labelFont.setBold(true);
-        labelFont.setLetterSpacing(QFont::AbsoluteSpacing, 1.1);
-        painter.setFont(labelFont);
+        painter.setFont(labelFont());
         painter.setPen(QColor(245, 245, 245));
         painter.translate(width() / 2.0, height() / 2.0);
         painter.rotate(-90);
         painter.drawText(QRect(-height() / 2, -width() / 2, height(), width()),
                          Qt::AlignCenter,
                          text());
+    }
+
+private:
+    QFont labelFont() const
+    {
+        QFont result = font();
+        result.setPointSize(8);
+        result.setBold(true);
+        result.setLetterSpacing(QFont::AbsoluteSpacing, 1.1);
+        return result;
     }
 };
 
@@ -689,6 +702,8 @@ CaptureOverlay::CaptureOverlay(QWidget *parent)
     connect(m_toolbar, &AnnotationToolbar::colorChanged, [this](const QColor &c) {
         if (m_annotationEngine) m_annotationEngine->setColor(c);
     });
+    connect(m_toolbar, &AnnotationToolbar::modalDialogClosed,
+            this, &CaptureOverlay::restoreAfterModalDialog);
     connect(m_toolbar, &AnnotationToolbar::penWidthChanged, [this](int w) {
         if (m_annotationEngine) m_annotationEngine->setPenWidth(w);
         if (m_quickPenWidthSlider) {
@@ -1215,6 +1230,8 @@ void CaptureOverlay::updateToolSettingsDrawerPosition()
     if (monitorRect.isEmpty())
         monitorRect = rect();
 
+    static_cast<SideTabButton *>(m_toolSettingsButton)
+        ->fitToAvailableHeight(monitorRect.height());
     m_toolSettingsDrawer->adjustSize();
     const bool drawerOpen = m_toolSettingsDrawer->isVisible()
         && !m_toolSettingsDrawer->property("closing").toBool();
@@ -1261,6 +1278,8 @@ void CaptureOverlay::setToolSettingsDrawerVisible(bool visible)
     if (monitorRect.isEmpty())
         monitorRect = rect();
 
+    static_cast<SideTabButton *>(m_toolSettingsButton)
+        ->fitToAvailableHeight(monitorRect.height());
     m_toolSettingsDrawer->adjustSize();
     const int drawerW = m_toolSettingsDrawer->width();
     const int drawerH = m_toolSettingsDrawer->height();
@@ -2581,6 +2600,18 @@ void CaptureOverlay::keyReleaseEvent(QKeyEvent *event)
 
 bool CaptureOverlay::eventFilter(QObject *obj, QEvent *event)
 {
+    if (obj == m_textFocusProxy
+        && shouldForwardCaptureKeyFromManagedProxy(m_textEdit && m_textEdit->isVisible())) {
+        if (event->type() == QEvent::KeyPress) {
+            keyPressEvent(static_cast<QKeyEvent *>(event));
+            return true;
+        }
+        if (event->type() == QEvent::KeyRelease) {
+            keyReleaseEvent(static_cast<QKeyEvent *>(event));
+            return true;
+        }
+    }
+
     if ((obj == m_textMoveHandle || obj == m_textEditPanel) && m_textEdit && m_textEdit->isVisible()) {
         if (event->type() == QEvent::MouseButtonPress) {
             QMouseEvent *me = static_cast<QMouseEvent*>(event);
@@ -2905,6 +2936,28 @@ void CaptureOverlay::acquireTextKeyboardFocus()
             << "focusWidget=" << QApplication::focusWidget();
 }
 
+void CaptureOverlay::acquireCaptureKeyboardFocus()
+{
+    if (!m_textFocusProxy) {
+        activateWindow();
+        if (windowHandle())
+            windowHandle()->requestActivate();
+        setFocus(Qt::ActiveWindowFocusReason);
+        return;
+    }
+
+    m_textFocusProxy->move(mapToGlobal(QPoint(4, 4)));
+    m_textFocusProxy->show();
+    m_textFocusProxy->raise();
+    if (QWindow *window = m_textFocusProxy->windowHandle())
+        window->requestActivate();
+    m_textFocusProxy->activateWindow();
+    m_textFocusProxy->setFocus(Qt::ActiveWindowFocusReason);
+    qInfo() << "[CaptureOverlay] managed capture focus requested; activeWindow="
+            << QApplication::activeWindow()
+            << "focusWidget=" << QApplication::focusWidget();
+}
+
 void CaptureOverlay::releaseTextKeyboardFocus()
 {
     if (QWidget::keyboardGrabber() == m_textEdit)
@@ -3091,10 +3144,7 @@ void CaptureOverlay::restoreAfterModalDialog()
         if (!self)
             return;
         self->raise();
-        self->activateWindow();
-        if (self->windowHandle())
-            self->windowHandle()->requestActivate();
-        self->setFocus(Qt::ActiveWindowFocusReason);
+        self->acquireCaptureKeyboardFocus();
     });
 }
 

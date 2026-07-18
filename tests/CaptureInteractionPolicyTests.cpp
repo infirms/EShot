@@ -36,6 +36,25 @@ private slots:
                  QRect(16, 24, 448, 76));
     }
 
+    void quickSettingsTabFitsTranslatedTextAndScreen()
+    {
+        QCOMPARE(quickSettingsTabHeight(70, 1080), 118);
+        QCOMPARE(quickSettingsTabHeight(136, 1080), 168);
+        QCOMPARE(quickSettingsTabHeight(400, 300), 236);
+    }
+
+    void managedProxyRoutesCaptureShortcutsOutsideTextEditing()
+    {
+        QVERIFY(shouldForwardCaptureKeyFromManagedProxy(false));
+        QVERIFY(!shouldForwardCaptureKeyFromManagedProxy(true));
+    }
+
+    void xwaylandModalIsDetachedFromUnmanagedOverlay()
+    {
+        QVERIFY(shouldDetachModalFromOverlay(true));
+        QVERIFY(!shouldDetachModalFromOverlay(false));
+    }
+
     void annotationPersistenceLabelsExistInEveryLanguage()
     {
         for (int language = 0; language < TranslationManager::LangCount; ++language) {

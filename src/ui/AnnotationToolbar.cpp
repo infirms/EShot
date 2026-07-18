@@ -2,6 +2,7 @@
 #include "annotation/AnnotationEngine.h"
 #include "../core/TranslationManager.h"
 #include "../core/VisualSearch.h"
+#include "../capture/CaptureInteractionPolicy.h"
 #include <QColorDialog>
 #include <QSlider>
 #include <QLabel>
@@ -12,8 +13,6 @@
 #include <QHBoxLayout>
 #include <QFontComboBox>
 #include <QSpinBox>
-#include <QPointer>
-#include <QTimer>
 
 namespace {
 QStringList defaultAnnotationTools()
@@ -679,9 +678,16 @@ void AnnotationToolbar::onActionButtonClicked()
 void AnnotationToolbar::onColorButtonClicked()
 {
 #ifdef Q_OS_LINUX
-    QColorDialog dlg(m_currentColor, this);
+    const bool detachFromOverlay = shouldDetachModalFromOverlay(
+        qEnvironmentVariableIntValue("ESHOT_WAYLAND_XWAYLAND_OVERLAY") == 1);
+    if (detachFromOverlay && window())
+        window()->hide();
+    QColorDialog dlg(m_currentColor, detachFromOverlay ? nullptr : this);
     dlg.setOption(QColorDialog::DontUseNativeDialog, true);
-    dlg.setWindowFlag(Qt::WindowStaysOnTopHint, true);
+    if (detachFromOverlay) {
+        dlg.setWindowFlag(Qt::WindowStaysOnTopHint, true);
+        dlg.setWindowModality(Qt::ApplicationModal);
+    }
 #else
     QColorDialog dlg(m_currentColor, this);
 #endif
@@ -698,14 +704,7 @@ void AnnotationToolbar::onColorButtonClicked()
         }
     }
 
-    QPointer<QWidget> overlay(window());
-    QTimer::singleShot(0, this, [overlay]() {
-        if (!overlay)
-            return;
-        overlay->raise();
-        overlay->activateWindow();
-        overlay->setFocus(Qt::ActiveWindowFocusReason);
-    });
+    emit modalDialogClosed();
 }
 
 void AnnotationToolbar::onWidthSliderChanged(int value) { emit penWidthChanged(value); }

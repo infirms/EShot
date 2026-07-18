@@ -34,6 +34,7 @@ signals:
     void undoRequested();
     void redoRequested();
     void colorChanged(const QColor &color);
+    void modalDialogClosed();
     void penWidthChanged(int width);
     void blurIntensityChanged(int intensity);
     void textFontFamilyChanged(const QString &family);

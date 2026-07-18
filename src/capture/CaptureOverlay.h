@@ -158,6 +158,7 @@ private:
     void updateTextEditorStyle();
     void updateTextEditPanelPosition();
     void acquireTextKeyboardFocus();
+    void acquireCaptureKeyboardFocus();
     void releaseTextKeyboardFocus();
     void updateUndoRedoState();
     bool matchesOverlayShortcut(QKeyEvent *event, const QString &key, const QString &fallback) const;
