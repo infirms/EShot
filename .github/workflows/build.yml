@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 env:
-  APP_VERSION: '4.1.1'
+  APP_VERSION: '4.1.2'
   QT_VERSION: '6.8.2'
 
 jobs:
@@ -217,14 +217,31 @@ jobs:
           New-Item -ItemType Directory -Force third_party/ffmpeg/bin | Out-Null
           Copy-Item (Get-ChildItem -Recurse ffmpeg_extract/*/bin/*.exe) third_party/ffmpeg/bin/ -Force
 
+      # GitHub-hosted runner images periodically update their bundled vcpkg ports
+      # and compiler toolchain. Include both identities in the immutable Actions
+      # cache key so a stale exact hit never prevents newly built ABI archives
+      # from being saved for the next release.
+      - name: Resolve vcpkg cache identity
+        shell: pwsh
+        run: |
+          $revision = (& git -C "$env:VCPKG_INSTALLATION_ROOT" rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $revision) {
+            throw "Could not resolve the bundled vcpkg revision"
+          }
+          $imageVersion = if ($env:ImageVersion) { $env:ImageVersion } else { "unknown-image" }
+          "VCPKG_CACHE_REVISION=$revision" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "VCPKG_CACHE_ID=$revision-$imageVersion" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       # Build Tesseract natively from source with vcpkg for both arches.
       # Cache the binary archives so we don't recompile leptonica/tesseract every run.
       - name: Cache vcpkg archives
         uses: actions/cache@v4
         with:
           path: ~/AppData/Local/vcpkg/archives
-          key: vcpkg-tesseract-${{ matrix.vcpkg_triplet }}-v1
-          restore-keys: vcpkg-tesseract-${{ matrix.vcpkg_triplet }}-
+          key: vcpkg-tesseract-${{ matrix.vcpkg_triplet }}-${{ env.VCPKG_CACHE_ID }}-v2
+          restore-keys: |
+            vcpkg-tesseract-${{ matrix.vcpkg_triplet }}-${{ env.VCPKG_CACHE_REVISION }}-
+            vcpkg-tesseract-${{ matrix.vcpkg_triplet }}-
 
       - name: Stage Tesseract (${{ matrix.arch }}, vcpkg native)
         shell: pwsh
@@ -391,7 +408,7 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          body_path: packaging/release-notes/v4.1.1.md
+          body_path: packaging/release-notes/v4.1.2.md
           files: |
             release-assets/EShot-Setup-x64/*.exe
             release-assets/EShot-Setup-arm64/*.exe

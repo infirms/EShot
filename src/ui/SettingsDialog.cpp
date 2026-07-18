@@ -298,8 +298,8 @@ QVector<OcrPackageDef> ocrPackageDefs()
 QString packageStatusText(bool installed)
 {
     return installed
-        ? uiLabel("Kurulu", "Installed")
-        : uiLabel("Eksik - indirilebilir", "Missing - downloadable");
+        ? TranslationManager::tr("packageInstalled")
+        : TranslationManager::tr("packageMissingDownloadable");
 }
 
 QString packageSourceUrl(const QString &code)
@@ -626,7 +626,7 @@ void SettingsDialog::setupUI()
 
     QTabWidget *tabs = new QTabWidget(this);
     tabs->addTab(createGeneralTab(),     TranslationManager::tabGeneral());
-    tabs->addTab(createPackagesTab(),    uiLabel("Paketler", "Packages"));
+    tabs->addTab(createPackagesTab(),    TranslationManager::tr("tabPackages"));
     tabs->addTab(createCaptureTab(),     TranslationManager::tabCapture());
     tabs->addTab(createRecordingTab(),   TranslationManager::tabRecording());
     tabs->addTab(createAppearanceTab(),  TranslationManager::tabAppearance());
@@ -662,6 +662,12 @@ void SettingsDialog::setupUI()
         QPushButton:hover { background-color: #1a8cff; }
     )");
     connect(saveBtn, &QPushButton::clicked, this, &SettingsDialog::onSave);
+
+    const QSize actionButtonSize = settingsDialogActionButtonSize(
+        {resetBtn->sizeHint(), cancelBtn->sizeHint(), saveBtn->sizeHint()});
+    resetBtn->setFixedSize(actionButtonSize);
+    cancelBtn->setFixedSize(actionButtonSize);
+    saveBtn->setFixedSize(actionButtonSize);
     btnLayout->addWidget(saveBtn);
 
     mainLayout->addLayout(btnLayout);
@@ -719,7 +725,7 @@ QWidget* SettingsDialog::createGeneralTab()
     pathLayout->addWidget(browseBtn);
     layout->addWidget(pathGroup);
 
-    QGroupBox *mediaPathGroup = new QGroupBox(uiLabel("Medya klasorleri", "Media folders"));
+    QGroupBox *mediaPathGroup = new QGroupBox(TranslationManager::tr("mediaFolders"));
     QFormLayout *mediaPathLayout = new QFormLayout(mediaPathGroup);
     auto makePathRow = [this, mediaPathGroup](QLineEdit **editPtr, const QString &placeholder) {
         QWidget *row = new QWidget(mediaPathGroup);
@@ -742,12 +748,12 @@ QWidget* SettingsDialog::createGeneralTab()
         rowLayout->addWidget(browse);
         return row;
     };
-    mediaPathLayout->addRow(uiLabel("Ekran goruntuleri:", "Screenshots:"),
-                            makePathRow(&m_screenshotPathEdit, uiLabel("Bos birakilirsa varsayilan klasor kullanilir", "Leave empty to use the default folder")));
+    mediaPathLayout->addRow(TranslationManager::tr("screenshotsLabel"),
+                            makePathRow(&m_screenshotPathEdit, TranslationManager::tr("defaultFolderHint")));
     mediaPathLayout->addRow(QStringLiteral("GIF:"),
-                            makePathRow(&m_gifPathEdit, uiLabel("Bos birakilirsa varsayilan klasor kullanilir", "Leave empty to use the default folder")));
-    mediaPathLayout->addRow(uiLabel("Videolar:", "Videos:"),
-                            makePathRow(&m_videoPathEdit, uiLabel("Bos birakilirsa varsayilan klasor kullanilir", "Leave empty to use the default folder")));
+                            makePathRow(&m_gifPathEdit, TranslationManager::tr("defaultFolderHint")));
+    mediaPathLayout->addRow(TranslationManager::tr("videosLabel"),
+                            makePathRow(&m_videoPathEdit, TranslationManager::tr("defaultFolderHint")));
     layout->addWidget(mediaPathGroup);
 
     // Filename template
@@ -854,7 +860,7 @@ QWidget* SettingsDialog::createPackagesTab()
     QVBoxLayout *layout = new QVBoxLayout(content);
     layout->setSpacing(10);
 
-    QGroupBox *componentsGroup = new QGroupBox(uiLabel("Bileşen durumu", "Component status"));
+    QGroupBox *componentsGroup = new QGroupBox(TranslationManager::tr("componentStatus"));
     QGridLayout *componentsLayout = new QGridLayout(componentsGroup);
     const bool tesseractInstalled = QFileInfo::exists(OcrEngine::tesseractPath());
     const bool tesseractBundled = !bundledTesseractDir().isEmpty();
@@ -869,8 +875,8 @@ QWidget* SettingsDialog::createPackagesTab()
                                QLabel **statusPtr, QPushButton **buttonPtr, const QObject *receiver, const char *slot) {
         QLabel *nameLabel = new QLabel(name, componentsGroup);
         QLabel *statusLabel = new QLabel(status, componentsGroup);
-        statusLabel->setStyleSheet(status == uiLabel("Kurulu", "Installed") ? "color: #8bd17c;" : "color: #f0c36d;");
-        QPushButton *deleteButton = new QPushButton(QIcon::fromTheme(QStringLiteral("edit-delete")), uiLabel("Sil", "Delete"), componentsGroup);
+        statusLabel->setStyleSheet(status == TranslationManager::tr("packageInstalled") ? "color: #8bd17c;" : "color: #f0c36d;");
+        QPushButton *deleteButton = new QPushButton(QIcon::fromTheme(QStringLiteral("edit-delete")), TranslationManager::tr("packageDelete"), componentsGroup);
         deleteButton->setEnabled(canDelete);
         deleteButton->setFixedWidth(82);
         deleteButton->setStyleSheet("color: #ff6b6b;");
@@ -881,9 +887,9 @@ QWidget* SettingsDialog::createPackagesTab()
         componentsLayout->addWidget(statusLabel, row, 1);
         componentsLayout->addWidget(deleteButton, row, 2);
     };
-    addComponentRow(0, QStringLiteral("Tesseract OCR:"), tesseractInstalled ? uiLabel("Kurulu", "Installed") : uiLabel("Eksik", "Missing"),
+    addComponentRow(0, QStringLiteral("Tesseract OCR:"), tesseractInstalled ? TranslationManager::tr("packageInstalled") : TranslationManager::tr("packageMissing"),
                     tesseractBundled, &m_tesseractStatusLabel, &m_tesseractDeleteButton, this, SLOT(onTesseractComponentAction()));
-    addComponentRow(1, QStringLiteral("FFmpeg:"), ffmpegInstalled ? uiLabel("Kurulu", "Installed") : uiLabel("Eksik", "Missing"),
+    addComponentRow(1, QStringLiteral("FFmpeg:"), ffmpegInstalled ? TranslationManager::tr("packageInstalled") : TranslationManager::tr("packageMissing"),
                     ffmpegBundled, &m_ffmpegStatusLabel, &m_ffmpegDeleteButton, this, SLOT(onFfmpegComponentAction()));
     componentsLayout->setColumnStretch(1, 1);
     layout->addWidget(componentsGroup);
@@ -893,11 +899,9 @@ QWidget* SettingsDialog::createPackagesTab()
     layout->addWidget(linuxSetupButton);
 #endif
 
-    QGroupBox *ocrGroup = new QGroupBox(uiLabel("OCR dil paketleri", "OCR language packs"));
+    QGroupBox *ocrGroup = new QGroupBox(TranslationManager::tr("ocrLanguagePacks"));
     QVBoxLayout *ocrLayout = new QVBoxLayout(ocrGroup);
-    QLabel *hint = new QLabel(uiLabel(
-        "Eksik dilleri buradan indirebilir, kullanmadıklarını silebilirsin.",
-        "Download missing languages here, or remove the ones you do not use."), ocrGroup);
+    QLabel *hint = new QLabel(TranslationManager::tr("ocrPackagesHint"), ocrGroup);
     hint->setWordWrap(true);
     hint->setStyleSheet("color: #aaa; font-size: 12px;");
     ocrLayout->addWidget(hint);
@@ -920,8 +924,8 @@ QWidget* SettingsDialog::createPackagesTab()
     ocrLayout->addWidget(m_packageList);
 
     QHBoxLayout *bulkLayout = new QHBoxLayout();
-    m_essentialOcrButton = new QPushButton(uiLabel("Temel paketleri indir", "Download essentials"), ocrGroup);
-    m_deleteSelectedOcrButton = new QPushButton(uiLabel("Seçili paketleri sil", "Delete selected"), ocrGroup);
+    m_essentialOcrButton = new QPushButton(TranslationManager::tr("downloadEssentials"), ocrGroup);
+    m_deleteSelectedOcrButton = new QPushButton(TranslationManager::tr("deleteSelected"), ocrGroup);
     m_deleteSelectedOcrButton->setStyleSheet("color: #ff6b6b;");
     connect(m_essentialOcrButton, &QPushButton::clicked, this, &SettingsDialog::onDownloadEssentialOcr);
     connect(m_deleteSelectedOcrButton, &QPushButton::clicked, this, &SettingsDialog::onDeleteSelectedOcr);
@@ -964,7 +968,7 @@ QWidget* SettingsDialog::createCaptureTab()
     m_formatCombo->addItem(TranslationManager::formatJpeg(), "JPEG");
     m_formatCombo->addItem(TranslationManager::formatBmp(), "BMP");
     m_formatCombo->setToolTip(uiLabel("Kaydedilen ekran görüntüsünün dosya biçimi.", "File format for saved screenshots."));
-    fmtLayout->addRow("Format:", m_formatCombo);
+    fmtLayout->addRow(TranslationManager::tr("formatLabel"), m_formatCombo);
 
     QHBoxLayout *qLayout = new QHBoxLayout();
     m_qualitySlider = new QSlider(Qt::Horizontal);
@@ -1001,7 +1005,7 @@ QWidget* SettingsDialog::createCaptureTab()
     m_copyAfterCaptureCheck->hide();
     m_closeAfterCopyCheck = new QCheckBox(TranslationManager::closeAfterCopy());
     m_closeAfterCopyCheck->setToolTip(uiLabel("Kopyala komutundan sonra seçim ekranını otomatik kapatır.", "Automatically closes the capture overlay after copying."));
-    m_instantCopyAfterSelectionCheck = new QCheckBox(uiLabel("Alan secimi bitince hemen kopyala", "Copy immediately after selecting a region"));
+    m_instantCopyAfterSelectionCheck = new QCheckBox(TranslationManager::tr("instantCopyAfterSelection"));
     m_instantCopyAfterSelectionCheck->setToolTip(uiLabel("Varsayilan kapali. Aciksa alan secimini bitirdigin anda goruntu panoya kopyalanir.", "Off by default. When enabled, the image is copied as soon as you finish selecting a region."));
     capLayout->addRow(m_closeAfterCopyCheck);
     capLayout->addRow(m_instantCopyAfterSelectionCheck);
@@ -1092,18 +1096,18 @@ QWidget* SettingsDialog::createRecordingTab()
     recForm->addRow(TranslationManager::recordingLoop(), m_recordingLoopCombo);
 
     m_gifSizePresetCombo = new QComboBox();
-    m_gifSizePresetCombo->addItem(uiLabel("En dusuk boyut", "Smallest size"), 720);
-    m_gifSizePresetCombo->addItem(uiLabel("Dengeli", "Balanced"), 1280);
-    m_gifSizePresetCombo->addItem(uiLabel("En iyi kalite", "Best quality"), 1920);
+    m_gifSizePresetCombo->addItem(TranslationManager::tr("gifSizeSmallest"), 720);
+    m_gifSizePresetCombo->addItem(TranslationManager::tr("gifSizeBalanced"), 1280);
+    m_gifSizePresetCombo->addItem(TranslationManager::tr("gifSizeBest"), 1920);
     m_gifSizePresetCombo->setToolTip(uiLabel("GIF'in uzun kenar sinirini belirler. Dusuk deger dosya boyutunu ciddi azaltir.", "Controls the GIF max side length. Lower values can greatly reduce file size."));
-    recForm->addRow(uiLabel("GIF boyut preset'i:", "GIF size preset:"), m_gifSizePresetCombo);
+    recForm->addRow(TranslationManager::tr("gifSizePresetLabel"), m_gifSizePresetCombo);
 
     m_recordingStartDelaySpin = new QSpinBox();
     m_recordingStartDelaySpin->setRange(0, 10);
     m_recordingStartDelaySpin->setSuffix(QStringLiteral(" s"));
     m_recordingStartDelaySpin->setSpecialValueText(TranslationManager::noDelay());
     m_recordingStartDelaySpin->setToolTip(uiLabel("Alan secildikten sonra GIF/video kaydinin baslamadan once bekleyecegi sure.", "Delay after selecting the area before GIF/video recording starts."));
-    recForm->addRow(uiLabel("Baslangic gecikmesi:", "Start delay:"), m_recordingStartDelaySpin);
+    recForm->addRow(TranslationManager::tr("recordingStartDelayLabel"), m_recordingStartDelaySpin);
 
     layout->addWidget(recGroup);
 
@@ -1152,7 +1156,7 @@ QWidget* SettingsDialog::createRecordingTab()
     connect(m_videoDesktopVolumeSpin, qOverload<int>(&QSpinBox::valueChanged), m_videoDesktopVolumeSlider, &QSlider::setValue);
     desktopVolumeLayout->addWidget(m_videoDesktopVolumeSlider);
     desktopVolumeLayout->addWidget(m_videoDesktopVolumeSpin);
-    auto *desktopVolumeLabel = new QLabel(uiLabel("Masaustu ses duzeyi", "Desktop volume"), videoGroup);
+    auto *desktopVolumeLabel = new QLabel(TranslationManager::tr("desktopVolumeLabel"), videoGroup);
     videoForm->addRow(desktopVolumeLabel, desktopVolumeRow);
 
     m_videoMicrophoneCheck = new QCheckBox(TranslationManager::audioMicrophone());
@@ -1160,7 +1164,7 @@ QWidget* SettingsDialog::createRecordingTab()
     videoForm->addRow(QString(), m_videoMicrophoneCheck);
 
     m_videoMicrophoneDeviceCombo = new QComboBox(videoGroup);
-    m_videoMicrophoneDeviceCombo->addItem(QStringLiteral("Default"), QStringLiteral("default"));
+    m_videoMicrophoneDeviceCombo->addItem(TranslationManager::tr("defaultAudioDevice"), QStringLiteral("default"));
     for (const auto &device : microphoneAudioDevices()) {
         m_videoMicrophoneDeviceCombo->addItem(device.first, device.second);
     }
@@ -1185,7 +1189,7 @@ QWidget* SettingsDialog::createRecordingTab()
     connect(m_videoMicrophoneVolumeSpin, qOverload<int>(&QSpinBox::valueChanged), m_videoMicrophoneVolumeSlider, &QSlider::setValue);
     micVolumeLayout->addWidget(m_videoMicrophoneVolumeSlider);
     micVolumeLayout->addWidget(m_videoMicrophoneVolumeSpin);
-    auto *microphoneVolumeLabel = new QLabel(uiLabel("Mikrofon ses duzeyi", "Microphone volume"), videoGroup);
+    auto *microphoneVolumeLabel = new QLabel(TranslationManager::tr("microphoneVolumeLabel"), videoGroup);
     videoForm->addRow(microphoneVolumeLabel, micVolumeRow);
 
     auto updateDesktopAudioState = [desktopVolumeLabel, desktopVolumeRow](bool enabled) {
@@ -1224,7 +1228,7 @@ QWidget* SettingsDialog::createInterfaceTab()
     m_visualSearchProviderCombo->addItem(TranslationManager::visualSearchGoogleLens(), QStringLiteral("google"));
     m_visualSearchProviderCombo->addItem(TranslationManager::visualSearchYandexImages(), QStringLiteral("yandex"));
     visualSearchLayout->addRow(TranslationManager::visualSearchProvider(), m_visualSearchProviderCombo);
-    QLabel *visualSearchPrivacy = new QLabel(tr("Privacy: visual search uploads the selected image to a temporary public image host, then sends that public URL to Google Lens or Yandex Images."), visualSearchGroup);
+    QLabel *visualSearchPrivacy = new QLabel(TranslationManager::tr("visualSearchPrivacy"), visualSearchGroup);
     visualSearchPrivacy->setWordWrap(true);
     visualSearchPrivacy->setStyleSheet("color: #aaa; font-size: 12px;");
     visualSearchLayout->addRow(visualSearchPrivacy);
@@ -1542,11 +1546,11 @@ void SettingsDialog::refreshPackageStatus()
 #endif
     auto setComponentStatus = [](QLabel *label, QPushButton *button, bool installed, bool canUse, bool downloadWhenMissing = false) {
         if (label) {
-            label->setText(installed ? uiLabel("Kurulu", "Installed") : uiLabel("Eksik", "Missing"));
+            label->setText(installed ? TranslationManager::tr("packageInstalled") : TranslationManager::tr("packageMissing"));
             label->setStyleSheet(installed ? "color: #8bd17c;" : "color: #f0c36d;");
         }
         if (button) {
-            button->setText(installed ? uiLabel("Sil", "Delete") : uiLabel("İndir", "Download"));
+            button->setText(installed ? TranslationManager::tr("packageDelete") : TranslationManager::tr("packageDownload"));
             button->setIcon(installed ? QIcon::fromTheme(QStringLiteral("edit-delete")) : QIcon());
             button->setStyleSheet(installed ? "color: #ff6b6b;" : QString());
             button->setEnabled(canUse || (!installed && downloadWhenMissing));
@@ -1586,12 +1590,12 @@ void SettingsDialog::refreshPackageStatus()
         QLabel *nameLabel = new QLabel(QStringLiteral("%1 (%2)").arg(name, code), row);
         nameLabel->setFixedWidth(150);
         nameLabel->setToolTip(QStringLiteral("%1 (%2)").arg(name, code));
-        QLabel *statusLabel = new QLabel(active ? uiLabel("İndiriliyor...", "Downloading...") : packageStatusText(installed), row);
+        QLabel *statusLabel = new QLabel(active ? TranslationManager::tr("packageDownloading") : packageStatusText(installed), row);
         statusLabel->setStyleSheet(installed ? "color: #8bd17c;" : "color: #f0c36d;");
         statusLabel->setFixedWidth(128);
 
-        QPushButton *downloadButton = new QPushButton(uiLabel("İndir", "Download"), row);
-        QPushButton *deleteButton = new QPushButton(QIcon::fromTheme(QStringLiteral("edit-delete")), uiLabel("Sil", "Delete"), row);
+        QPushButton *downloadButton = new QPushButton(TranslationManager::tr("packageDownload"), row);
+        QPushButton *deleteButton = new QPushButton(QIcon::fromTheme(QStringLiteral("edit-delete")), TranslationManager::tr("packageDelete"), row);
         downloadButton->setFixedWidth(78);
         deleteButton->setFixedWidth(78);
         deleteButton->setStyleSheet("color: #ff6b6b;");
@@ -1614,10 +1618,8 @@ void SettingsDialog::refreshPackageStatus()
         m_packageStatusLabel->setText(!m_packageOperationStatus.isEmpty()
             ? m_packageOperationStatus
             : tesseractInstalled
-            ? uiLabel("Paketler tesseract/tessdata klasörüne yazılır. Kurulum klasörü korumalıysa yönetici izni gerekebilir.",
-                      "Packages are written to the tesseract/tessdata folder. Administrator permission may be required if the install folder is protected.")
-            : uiLabel("Tesseract OCR motoru eksik. Dil paketleri indirilebilir ama OCR için motorun da kurulu olması gerekir.",
-                      "Tesseract OCR engine is missing. Language packs can be downloaded, but OCR also needs the engine."));
+            ? TranslationManager::tr("ocrPackageInstallHint")
+            : TranslationManager::tr("ocrEngineMissingHint"));
     }
     if (m_essentialOcrButton) m_essentialOcrButton->setEnabled(tesseractInstalled && !busy);
     if (m_deleteSelectedOcrButton) m_deleteSelectedOcrButton->setEnabled(tesseractInstalled && !busy);

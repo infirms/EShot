@@ -31,7 +31,14 @@ grep -F 'release-assets/EShot-Setup-x64/*.exe' "${workflow}" >/dev/null
 grep -F 'release-assets/EShot-Setup-arm64/*.exe' "${workflow}" >/dev/null
 grep -F '      - linux-build' "${workflow}" >/dev/null
 grep -F 'release-assets/EShot-linux-packages/EShot-${{ github.ref_name }}-x86_64.AppImage' "${workflow}" >/dev/null
-grep -F 'body_path: packaging/release-notes/v4.1.1.md' "${workflow}" >/dev/null
+grep -F 'body_path: packaging/release-notes/v4.1.2.md' "${workflow}" >/dev/null
+grep -F 'VCPKG_CACHE_REVISION=' "${workflow}" >/dev/null
+grep -F 'VCPKG_CACHE_ID=' "${workflow}" >/dev/null
+grep -F 'key: vcpkg-tesseract-${{ matrix.vcpkg_triplet }}-${{ env.VCPKG_CACHE_ID }}-v2' "${workflow}" >/dev/null
+if grep -F 'key: vcpkg-tesseract-${{ matrix.vcpkg_triplet }}-v1' "${workflow}" >/dev/null; then
+  echo 'vcpkg cache key must change when the runner toolchain or ports revision changes' >&2
+  exit 1
+fi
 grep -F 'if: startsWith(github.ref, '"'"'refs/tags/v'"'"')' "${workflow}" >/dev/null
 grep -F 'scripts/linux/apply-release-version.sh' "${workflow}" >/dev/null
 grep -F 'libqt6svg6' "${workflow}" >/dev/null

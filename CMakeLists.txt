@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(EShot VERSION 4.1.1 LANGUAGES CXX)
+project(EShot VERSION 4.1.2 LANGUAGES CXX)
 
 include(CTest)
 
@@ -41,6 +41,7 @@ set(SOURCES
     src/core/LinuxAutoStartPolicy.cpp
     src/core/LinuxScreenshotPolicy.cpp
     src/core/ImageUploader.cpp
+    src/core/UploadResponseParser.cpp
     src/core/VisualSearch.cpp
     src/core/UpdateAssetSelector.cpp
     src/core/LinuxUpdateScript.cpp
@@ -92,6 +93,7 @@ set(HEADERS
     src/core/LinuxAutoStartPolicy.h
     src/core/LinuxScreenshotPolicy.h
     src/core/ImageUploader.h
+    src/core/UploadResponseParser.h
     src/core/VisualSearch.h
     src/core/UpdateAssetSelector.h
     src/core/LinuxUpdateScript.h
@@ -252,6 +254,22 @@ if(BUILD_TESTING)
     target_include_directories(eshot_visual_search_tests PRIVATE src)
     target_link_libraries(eshot_visual_search_tests PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME visual_search COMMAND eshot_visual_search_tests)
+
+    qt_add_executable(eshot_upload_response_parser_tests
+        tests/UploadResponseParserTests.cpp
+        src/core/UploadResponseParser.cpp
+        src/core/UploadResponseParser.h
+    )
+    target_include_directories(eshot_upload_response_parser_tests PRIVATE src)
+    target_link_libraries(eshot_upload_response_parser_tests PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME upload_response_parser COMMAND eshot_upload_response_parser_tests)
+
+    qt_add_executable(eshot_settings_translation_tests
+        tests/SettingsTranslationTests.cpp
+    )
+    target_include_directories(eshot_settings_translation_tests PRIVATE src)
+    target_link_libraries(eshot_settings_translation_tests PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME settings_translation COMMAND eshot_settings_translation_tests)
 
     qt_add_executable(eshot_capture_geometry_tests
         tests/CaptureGeometryTests.cpp

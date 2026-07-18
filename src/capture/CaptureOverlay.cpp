@@ -3165,6 +3165,7 @@ void CaptureOverlay::onGoogleLensRequested()
     }
 
     const quint64 generation = m_visualSearchOperations.begin();
+    m_visualSearchUploadFallbacks = VisualSearchUploadFallbackState();
     QImage uploadImage = pix.toImage();
     const QSize uploadSize = visualSearchUploadSize(uploadImage.size());
     if (uploadSize != uploadImage.size())
@@ -3172,7 +3173,8 @@ void CaptureOverlay::onGoogleLensRequested()
     QTemporaryFile uploadFile(QDir::tempPath() + QStringLiteral("/eshot_visual_search_XXXXXX.jpg"));
     uploadFile.setAutoRemove(false);
     if (!uploadFile.open()) {
-        QMessageBox::warning(this, tr("Visual search failed"), tr("Could not create the temporary image for visual search."));
+        QMessageBox::warning(this, TranslationManager::visualSearchFailed(),
+                             TranslationManager::visualSearchTempCreateError());
         return;
     }
     m_visualSearchImagePath = uploadFile.fileName();
@@ -3180,48 +3182,94 @@ void CaptureOverlay::onGoogleLensRequested()
     if (!uploadImage.save(m_visualSearchImagePath, "JPEG", 88)) {
         QFile::remove(m_visualSearchImagePath);
         m_visualSearchImagePath.clear();
-        QMessageBox::warning(this, tr("Visual search failed"), tr("Could not prepare the selected image for visual search."));
+        QMessageBox::warning(this, TranslationManager::visualSearchFailed(),
+                             TranslationManager::visualSearchTempPrepareError());
         return;
     }
 
-    m_googleLensUploader = ImageUploader::create(ImageUploader::Provider::Litterbox, this);
+    QSettings settings(QStringLiteral("EShot"), QStringLiteral("EShot"));
+    const VisualSearchProvider provider = visualSearchProviderFromSettings(
+        settings.value("visualSearchProvider", QStringLiteral("google")).toString());
+    hide();
+    hideToolbar();
+    startNextVisualSearchUpload(generation, provider);
+}
+
+void CaptureOverlay::startNextVisualSearchUpload(quint64 generation, VisualSearchProvider provider)
+{
+    if (!m_visualSearchOperations.isCurrent(generation))
+        return;
+
+    VisualSearchUploadProvider fallbackProvider;
+    if (!m_visualSearchUploadFallbacks.takeNext(&fallbackProvider)) {
+        const QString details = m_visualSearchUploadFallbacks.failureSummary();
+        clearVisualSearchUpload();
+        QMessageBox::warning(this, TranslationManager::uploadFailed(),
+                             TranslationManager::visualSearchUploadUnavailable(details));
+        restoreAfterModalDialog();
+        return;
+    }
+
+    ImageUploader::Provider imageProvider = ImageUploader::Provider::Catbox;
+    switch (fallbackProvider) {
+    case VisualSearchUploadProvider::Catbox:
+        imageProvider = ImageUploader::Provider::Catbox;
+        break;
+    case VisualSearchUploadProvider::Uguu:
+        imageProvider = ImageUploader::Provider::Uguu;
+        break;
+    case VisualSearchUploadProvider::TmpFiles:
+        imageProvider = ImageUploader::Provider::TmpFiles;
+        break;
+    }
+
+    m_googleLensUploader = ImageUploader::create(imageProvider, this);
     if (!m_googleLensUploader) {
-        QFile::remove(m_visualSearchImagePath);
-        m_visualSearchImagePath.clear();
-        QMessageBox::warning(this, tr("Visual search failed"), tr("Could not create the temporary image uploader."));
+        m_visualSearchUploadFallbacks.recordFailure(
+            QStringLiteral("EShot"), TranslationManager::visualSearchUploaderCreateError());
+        startNextVisualSearchUpload(generation, provider);
         return;
     }
 
     ImageUploader *uploader = m_googleLensUploader;
-    QSettings settings(QStringLiteral("EShot"), QStringLiteral("EShot"));
-    const VisualSearchProvider provider = visualSearchProviderFromSettings(
-        settings.value("visualSearchProvider", QStringLiteral("google")).toString());
-
+    const QString uploaderName = uploader->providerDisplayName();
     QPointer<CaptureOverlay> self(this);
-    connect(uploader, &ImageUploader::succeeded, this, [this, self, uploader, generation, provider](const QString &url, const QString &) {
+    connect(uploader, &ImageUploader::succeeded, this,
+            [this, self, uploader, generation, provider](const QString &url, const QString &) {
         if (!self || !m_visualSearchOperations.isCurrent(generation) || m_googleLensUploader != uploader)
             return;
         const bool browserOpened = QDesktopServices::openUrl(visualSearchResultUrl(provider, QUrl(url)));
-        if (!browserOpened)
-            QMessageBox::warning(this, TranslationManager::visualSearchBrowserLaunchTitle(), TranslationManager::visualSearchBrowserLaunchError());
         uploader->deleteLater();
         m_googleLensUploader = nullptr;
-        QFile::remove(m_visualSearchImagePath);
-        m_visualSearchImagePath.clear();
+        clearVisualSearchUpload();
+        if (!browserOpened) {
+            QMessageBox::warning(this, TranslationManager::visualSearchBrowserLaunchTitle(),
+                                 TranslationManager::visualSearchBrowserLaunchError());
+            restoreAfterModalDialog();
+        }
     });
-    connect(uploader, &ImageUploader::failed, this, [this, self, uploader, generation](const QString &reason) {
+    connect(uploader, &ImageUploader::failed, this,
+            [this, self, uploader, uploaderName, generation, provider](const QString &reason) {
         if (!self || !m_visualSearchOperations.isCurrent(generation) || m_googleLensUploader != uploader)
             return;
-        QMessageBox::warning(this, TranslationManager::uploadFailed(), reason);
+        m_visualSearchUploadFallbacks.recordFailure(uploaderName, reason);
         uploader->deleteLater();
         m_googleLensUploader = nullptr;
-        QFile::remove(m_visualSearchImagePath);
-        m_visualSearchImagePath.clear();
+        QTimer::singleShot(0, this, [this, self, generation, provider]() {
+            if (self)
+                startNextVisualSearchUpload(generation, provider);
+        });
     });
-    hide();
-    hideToolbar();
     uploader->setImagePath(m_visualSearchImagePath);
     uploader->upload();
+}
+
+void CaptureOverlay::clearVisualSearchUpload()
+{
+    if (!m_visualSearchImagePath.isEmpty()) {
+        QFile::remove(m_visualSearchImagePath);
+        m_visualSearchImagePath.clear();
+    }
 }
 
 void CaptureOverlay::onGifRequested()

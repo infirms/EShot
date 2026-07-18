@@ -1,6 +1,32 @@
 #include "VisualSearch.h"
 
 #include <QUrlQuery>
+#include <iterator>
+
+bool VisualSearchUploadFallbackState::takeNext(VisualSearchUploadProvider *provider)
+{
+    if (!provider)
+        return false;
+    static constexpr VisualSearchUploadProvider providers[] = {
+        VisualSearchUploadProvider::Catbox,
+        VisualSearchUploadProvider::Uguu,
+        VisualSearchUploadProvider::TmpFiles,
+    };
+    if (m_nextProvider >= static_cast<int>(std::size(providers)))
+        return false;
+    *provider = providers[m_nextProvider++];
+    return true;
+}
+
+void VisualSearchUploadFallbackState::recordFailure(const QString &providerName, const QString &reason)
+{
+    m_failures.append(QStringLiteral("%1: %2").arg(providerName, reason));
+}
+
+QString VisualSearchUploadFallbackState::failureSummary() const
+{
+    return m_failures.join(QLatin1Char('\n'));
+}
 
 VisualSearchProvider visualSearchProviderFromSettings(const QString &key)
 {

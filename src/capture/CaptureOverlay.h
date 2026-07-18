@@ -137,6 +137,7 @@ private:
     AnnotationEngine *m_annotationEngine;
     ImageUploader *m_googleLensUploader = nullptr;
     VisualSearchOperationState m_visualSearchOperations;
+    VisualSearchUploadFallbackState m_visualSearchUploadFallbacks;
     QString m_visualSearchImagePath;
 
     // Text editing — multi-line support
@@ -164,6 +165,8 @@ private:
     bool matchesOverlayShortcut(QKeyEvent *event, const QString &key, const QString &fallback) const;
     void selectAnnotationTool(int toolId);
     void restoreAfterModalDialog();
+    void startNextVisualSearchUpload(quint64 generation, VisualSearchProvider provider);
+    void clearVisualSearchUpload();
 
     QPushButton *m_toolSettingsButton = nullptr;
     QWidget *m_toolSettingsDrawer = nullptr;

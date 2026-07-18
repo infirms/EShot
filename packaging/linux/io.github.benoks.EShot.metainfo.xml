@@ -34,6 +34,11 @@
   <url type="homepage">https://github.com/Benoks/EShot</url>
   <url type="bugtracker">https://github.com/Benoks/EShot/issues</url>
   <releases>
+    <release version="4.1.2" date="2026-07-19">
+      <description>
+        <p>Improves settings localization and layout, adds resilient visual search uploads, repairs TmpFiles links, removes the unavailable Litterbox provider, restores Yandex Disk, and improves Windows dependency caching.</p>
+      </description>
+    </release>
     <release version="4.1.1" date="2026-07-18">
       <description>
         <p>Restores capture shortcuts after modal dialogs on Linux, fixes the XWayland color picker freeze, and makes the vertical Quick Settings tab responsive to longer translations.</p>

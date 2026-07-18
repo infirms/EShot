@@ -1,5 +1,6 @@
 #include "ImageUploader.h"
 #include "TranslationManager.h"
+#include "UploadResponseParser.h"
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
 #include <QNetworkReply>
@@ -333,9 +334,13 @@ public:
             if (m_responseMode == ResponseMode::PlainTextUrl) {
                 url = QString::fromUtf8(data).trimmed();
             } else {
-                const QJsonObject obj = QJsonDocument::fromJson(data).object();
-                url = obj.value(QStringLiteral("data")).toObject().value(QStringLiteral("url")).toString();
-                url.replace(QStringLiteral("https://tmpfiles.org/"), QStringLiteral("https://tmpfiles.org/dl/"));
+                const QUrl landingUrl = tmpFilesLandingUrl(data);
+                if (!landingUrl.isValid()) {
+                    finishWithError(TranslationManager::uploadErrorUnexpectedResponse(QString::fromUtf8(data).left(120)));
+                    return;
+                }
+                resolveTmpFilesDirectUrl(landingUrl);
+                return;
             }
 
             if (url.isEmpty() || !url.startsWith(QStringLiteral("https://"))) {
@@ -352,6 +357,41 @@ public:
     }
 
 private:
+    void resolveTmpFilesDirectUrl(const QUrl &landingUrl)
+    {
+        QNetworkRequest req(landingUrl);
+        req.setRawHeader("User-Agent", "EShot/3.0");
+        req.setTransferTimeout(60000);
+        m_reply = nam()->get(req);
+
+        QPointer<SimpleFileUploader> self(this);
+        QObject::connect(m_reply, &QNetworkReply::finished, this, [this, self]() {
+            if (!self) return;
+            const QByteArray data = m_reply->readAll();
+            const int code = m_reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            const QNetworkReply::NetworkError err = m_reply->error();
+            const QString errStr = m_reply->errorString();
+            clearReply();
+
+            if (err != QNetworkReply::NoError) {
+                finishWithError(TranslationManager::uploadErrorNetwork(errStr));
+                return;
+            }
+            if (code < 200 || code >= 300) {
+                finishWithError(TranslationManager::uploadErrorHttp(code));
+                return;
+            }
+
+            const QUrl directUrl = tmpFilesDirectUrl(data);
+            if (!directUrl.isValid()) {
+                finishWithError(TranslationManager::uploadErrorUnexpectedResponse(
+                    QString::fromUtf8(data).simplified().left(120)));
+                return;
+            }
+            finishWithSuccess(directUrl.toString());
+        });
+    }
+
     void clearReply(bool abort = false)
     {
         QNetworkReply *reply = m_reply;

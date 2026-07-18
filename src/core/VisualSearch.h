@@ -2,11 +2,30 @@
 
 #include <QString>
 #include <QSize>
+#include <QStringList>
 #include <QUrl>
 
 enum class VisualSearchProvider {
     GoogleLens,
     YandexImages
+};
+
+enum class VisualSearchUploadProvider {
+    Catbox,
+    Uguu,
+    TmpFiles,
+};
+
+class VisualSearchUploadFallbackState
+{
+public:
+    bool takeNext(VisualSearchUploadProvider *provider);
+    void recordFailure(const QString &providerName, const QString &reason);
+    QString failureSummary() const;
+
+private:
+    int m_nextProvider = 0;
+    QStringList m_failures;
 };
 
 VisualSearchProvider visualSearchProviderFromSettings(const QString &key);

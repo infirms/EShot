@@ -14,6 +14,8 @@ private slots:
     void buildsEncodedResultUrls();
     void ignoresStaleOperationGenerations();
     void capsVisualSearchUploadDimensions();
+    void retriesTemporaryUploadProvidersInOrder();
+    void reportsEveryTemporaryUploadFailure();
 };
 
 void VisualSearchTests::parsesProviderSettings()
@@ -94,6 +96,31 @@ void VisualSearchTests::capsVisualSearchUploadDimensions()
     QCOMPARE(visualSearchUploadSize(QSize(4096, 2048)), QSize(2048, 1024));
     QCOMPARE(visualSearchUploadSize(QSize(1200, 800)), QSize(1200, 800));
     QCOMPARE(visualSearchUploadSize(QSize()), QSize());
+}
+
+void VisualSearchTests::retriesTemporaryUploadProvidersInOrder()
+{
+    VisualSearchUploadFallbackState state;
+    VisualSearchUploadProvider provider;
+
+    QVERIFY(state.takeNext(&provider));
+    QCOMPARE(provider, VisualSearchUploadProvider::Catbox);
+    QVERIFY(state.takeNext(&provider));
+    QCOMPARE(provider, VisualSearchUploadProvider::Uguu);
+    QVERIFY(state.takeNext(&provider));
+    QCOMPARE(provider, VisualSearchUploadProvider::TmpFiles);
+    QVERIFY(!state.takeNext(&provider));
+}
+
+void VisualSearchTests::reportsEveryTemporaryUploadFailure()
+{
+    VisualSearchUploadFallbackState state;
+    state.recordFailure(QStringLiteral("Catbox"), QStringLiteral("Host unreachable"));
+    state.recordFailure(QStringLiteral("Uguu"), QStringLiteral("Timeout"));
+
+    const QString summary = state.failureSummary();
+    QVERIFY(summary.contains(QStringLiteral("Catbox: Host unreachable")));
+    QVERIFY(summary.contains(QStringLiteral("Uguu: Timeout")));
 }
 
 QTEST_APPLESS_MAIN(VisualSearchTests)
