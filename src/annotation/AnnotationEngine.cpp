@@ -313,6 +313,12 @@ void AnnotationEngine::drawAnnotation(QPainter *painter, const Annotation &ann, 
 
 void AnnotationEngine::clear()
 {
+    // Discard any in-progress annotaion so it won't appear in the next capture
+    // this won't affect rememberLastAnnotationTool
+    m_isDrawing = false;
+    m_currentAnnotation = Annotation();
+    m_selectedIndex = -1;
+
     m_annotations.clear();
     m_undoStack.clear();
     m_redoStack.clear();
