@@ -31,7 +31,7 @@ grep -F 'release-assets/EShot-Setup-x64/*.exe' "${workflow}" >/dev/null
 grep -F 'release-assets/EShot-Setup-arm64/*.exe' "${workflow}" >/dev/null
 grep -F '      - linux-build' "${workflow}" >/dev/null
 grep -F 'release-assets/EShot-linux-packages/EShot-${{ github.ref_name }}-x86_64.AppImage' "${workflow}" >/dev/null
-grep -F 'body_path: packaging/release-notes/v4.1.2.md' "${workflow}" >/dev/null
+grep -F 'body_path: packaging/release-notes/v4.1.3.md' "${workflow}" >/dev/null
 grep -F 'VCPKG_CACHE_REVISION=' "${workflow}" >/dev/null
 grep -F 'VCPKG_CACHE_ID=' "${workflow}" >/dev/null
 grep -F 'key: vcpkg-tesseract-${{ matrix.vcpkg_triplet }}-${{ env.VCPKG_CACHE_ID }}-v2' "${workflow}" >/dev/null

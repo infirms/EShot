@@ -34,6 +34,11 @@
   <url type="homepage">https://github.com/Benoks/EShot</url>
   <url type="bugtracker">https://github.com/Benoks/EShot/issues</url>
   <releases>
+    <release version="4.1.3" date="2026-07-22">
+      <description>
+        <p>Fixes unfinished annotations appearing in the next capture after cancelling before releasing the mouse button.</p>
+      </description>
+    </release>
     <release version="4.1.2" date="2026-07-19">
       <description>
         <p>Improves settings localization and layout, adds resilient visual search uploads, repairs TmpFiles links, removes the unavailable Litterbox provider, restores Yandex Disk, and improves Windows dependency caching.</p>
