@@ -13,6 +13,7 @@ permissions:
 env:
   APP_VERSION: '4.1.3'
   QT_VERSION: '6.8.2'
+  TESSERACT_RUNTIME_RELEASE: 'v4.1.2'
 
 jobs:
   linux-build:
@@ -154,7 +155,6 @@ jobs:
             runner: windows-latest
             cmake_arch: x64
             qt_arch: win64_msvc2022_64
-            vcpkg_triplet: x64-windows
             ffmpeg_url: 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip'
 
           # ARM64 build on the native Windows 11 Arm runner (FFmpeg is native Arm)
@@ -162,7 +162,6 @@ jobs:
             runner: windows-11-arm
             cmake_arch: ARM64
             qt_arch: win64_msvc2022_arm64_cross_compiled
-            vcpkg_triplet: arm64-windows
             ffmpeg_url: 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-winarm64-gpl.zip'
 
     env:
@@ -217,56 +216,27 @@ jobs:
           New-Item -ItemType Directory -Force third_party/ffmpeg/bin | Out-Null
           Copy-Item (Get-ChildItem -Recurse ffmpeg_extract/*/bin/*.exe) third_party/ffmpeg/bin/ -Force
 
-      # GitHub-hosted runner images periodically update their bundled vcpkg ports
-      # and compiler toolchain. Include both identities in the immutable Actions
-      # cache key so a stale exact hit never prevents newly built ABI archives
-      # from being saved for the next release.
-      - name: Resolve vcpkg cache identity
+      # Reuse the architecture-specific runtime already validated in v4.1.2.
+      # Actions caches created by tag builds are scoped to that tag, so compiling
+      # with vcpkg here would repeat the full Tesseract build for every release.
+      - name: Stage Tesseract (${{ matrix.arch }}, verified runtime)
         shell: pwsh
         run: |
-          $revision = (& git -C "$env:VCPKG_INSTALLATION_ROOT" rev-parse HEAD).Trim()
-          if ($LASTEXITCODE -ne 0 -or -not $revision) {
-            throw "Could not resolve the bundled vcpkg revision"
-          }
-          $imageVersion = if ($env:ImageVersion) { $env:ImageVersion } else { "unknown-image" }
-          "VCPKG_CACHE_REVISION=$revision" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "VCPKG_CACHE_ID=$revision-$imageVersion" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-
-      # Build Tesseract natively from source with vcpkg for both arches.
-      # Cache the binary archives so we don't recompile leptonica/tesseract every run.
-      - name: Cache vcpkg archives
-        uses: actions/cache@v4
-        with:
-          path: ~/AppData/Local/vcpkg/archives
-          key: vcpkg-tesseract-${{ matrix.vcpkg_triplet }}-${{ env.VCPKG_CACHE_ID }}-v2
-          restore-keys: |
-            vcpkg-tesseract-${{ matrix.vcpkg_triplet }}-${{ env.VCPKG_CACHE_REVISION }}-
-            vcpkg-tesseract-${{ matrix.vcpkg_triplet }}-
-
-      - name: Stage Tesseract (${{ matrix.arch }}, vcpkg native)
-        shell: pwsh
-        run: |
-          $maxAttempts = 3
-          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-            Write-Host "vcpkg install attempt $attempt/$maxAttempts"
-            & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install tesseract:${{ matrix.vcpkg_triplet }}
-            if ($LASTEXITCODE -eq 0) { break }
-            if ($attempt -eq $maxAttempts) { throw "vcpkg install failed after $maxAttempts attempts" }
-            Start-Sleep -Seconds (20 * $attempt)
-          }
-          $inst = "$env:VCPKG_INSTALLATION_ROOT\installed\${{ matrix.vcpkg_triplet }}"
-          $dst  = "third_party/tesseract"
+          $release = "${{ env.TESSERACT_RUNTIME_RELEASE }}"
+          $archive = "EShot-$release-${{ matrix.arch }}-portable.zip"
+          $url = "https://github.com/${{ github.repository }}/releases/download/$release/$archive"
+          curl.exe -L --fail --retry 3 --retry-delay 5 -o tesseract-runtime.zip $url
+          if ($LASTEXITCODE -ne 0) { throw "Could not download $archive" }
+          Expand-Archive tesseract-runtime.zip -DestinationPath tesseract-runtime -Force
+          $runtime = Get-ChildItem tesseract-runtime -Recurse -Directory |
+            Where-Object { Test-Path (Join-Path $_.FullName "tesseract.exe") } |
+            Select-Object -First 1
+          if (-not $runtime) { throw "Tesseract runtime not found in $archive" }
+          $dst = "third_party/tesseract"
           New-Item -ItemType Directory -Force $dst | Out-Null
-          # vcpkg_copy_tools makes tools/tesseract self-contained (exe + its
-          # dependency DLLs: tesseract55, leptonica, libcurl, archive, zlib, ...).
-          Copy-Item "$inst\tools\tesseract\*" $dst -Recurse -Force
-          # Belt-and-suspenders: also pull any shared release DLLs from bin.
-          Copy-Item "$inst\bin\*.dll" $dst -Force -ErrorAction SilentlyContinue
-          Write-Host "=== staged tesseract files ==="
-          Get-ChildItem $dst -File | Select-Object -ExpandProperty Name
-          # Validate the DLL closure by launching the binary natively on the runner.
-          & "$dst/tesseract.exe" --version
-          if ($LASTEXITCODE -ne 0) { throw "tesseract.exe failed to launch (incomplete DLL closure)" }
+          Copy-Item "$($runtime.FullName)\*" $dst -Recurse -Force
+          & "$dst\tesseract.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw "Downloaded tesseract.exe failed to launch" }
 
       # Let CMake pick the default (newest installed) Visual Studio generator
       # and select the target arch with -A. We deliberately don't pin the
