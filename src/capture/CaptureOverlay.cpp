@@ -2062,7 +2062,8 @@ void CaptureOverlay::paintEvent(QPaintEvent *event)
 
         // Size info — always visible (top-left of selection)
         if (m_isSelecting || m_selectionComplete) {
-            QString dim = QString("%1 x %2").arg(selRect.width()).arg(selRect.height());
+            const QSize pixelSize = logicalToSnapshot(selRect).size();
+            QString dim = QString("%1 x %2").arg(pixelSize.width()).arg(pixelSize.height());
             QFont f = painter.font(); f.setPointSize(10); f.setBold(true);
             painter.setFont(f);
             QFontMetrics fm(f);

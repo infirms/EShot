@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QRect>
+#include <QSize>
 #include <QVector>
 
 struct CaptureMonitorGeometry
@@ -11,6 +12,10 @@ struct CaptureMonitorGeometry
 };
 
 QRect physicalRectFromLogical(const QRect &logicalRect, qreal scale);
+QRect snapshotRectFromLogical(const QRect &logicalRect,
+                              const QSize &logicalCanvasSize,
+                              const QSize &snapshotSize,
+                              qreal fallbackScale = 1.0);
 QRect portalCropRect(const QRect &screenPhysicalRect, const QRect &virtualPhysicalRect);
 
 QRect displayRectFromPhysical(const QRect &physicalRect,

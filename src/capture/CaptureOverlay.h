@@ -118,13 +118,7 @@ private:
     // (window geometry, mouse, selection) to the physical-pixel m_screenSnapshot.
     qreal m_dpr = 1.0;
     QRect logicalToSnapshot(const QRect &r) const {
-        const qreal sx = width() > 0 ? (m_screenSnapshot.width() / static_cast<qreal>(width())) : m_dpr;
-        const qreal sy = height() > 0 ? (m_screenSnapshot.height() / static_cast<qreal>(height())) : m_dpr;
-        const int x1 = qRound(r.x() * sx);
-        const int y1 = qRound(r.y() * sy);
-        const int x2 = qRound((r.x() + r.width()) * sx);
-        const int y2 = qRound((r.y() + r.height()) * sy);
-        return QRect(x1, y1, qMax(0, x2 - x1), qMax(0, y2 - y1));
+        return snapshotRectFromLogical(r, size(), m_screenSnapshot.size(), m_dpr);
     }
     QPoint logicalToSnapshot(const QPoint &p) const {
         const qreal sx = width() > 0 ? (m_screenSnapshot.width() / static_cast<qreal>(width())) : m_dpr;

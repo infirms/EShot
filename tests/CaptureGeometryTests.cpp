@@ -11,6 +11,7 @@ private slots:
     void leavesPhysicalSelectionOnUnscaledPrimaryMonitorUnchanged();
     void mapsScaledWaylandScreenGeometryToPhysicalCoordinates();
     void cropsRightWaylandScreenFromVirtualPortalImage();
+    void reportsPhysicalCapturePixelsOnScaledDisplay();
 };
 
 void CaptureGeometryTests::mapsPhysicalSelectionOnScaledLeftMonitorToLogicalDisplayRect()
@@ -48,6 +49,13 @@ void CaptureGeometryTests::cropsRightWaylandScreenFromVirtualPortalImage()
 {
     QCOMPARE(portalCropRect(QRect(1920, 0, 2560, 1440), QRect(0, 0, 4480, 1440)),
              QRect(1920, 0, 2560, 1440));
+}
+
+void CaptureGeometryTests::reportsPhysicalCapturePixelsOnScaledDisplay()
+{
+    QCOMPARE(snapshotRectFromLogical(QRect(0, 0, 2752, 1152),
+                                     QSize(2752, 1152), QSize(3440, 1440), 1.25),
+             QRect(0, 0, 3440, 1440));
 }
 
 QTEST_APPLESS_MAIN(CaptureGeometryTests)
